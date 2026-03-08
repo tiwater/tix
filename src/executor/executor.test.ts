@@ -4,11 +4,8 @@ import path from 'path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { RegisteredProject } from '../core/types.js';
 import { Executor } from './executor.js';
-import { TmuxBridge } from './tmux.js';
 
-const sessionId = `tc-executor-test-${Date.now()}`;
-
-describe('Executor integration', () => {
+describe('Executor (subprocess mode)', () => {
   const testDir = path.join(os.tmpdir(), `executor-test-${Date.now()}`);
   const group: RegisteredProject = {
     name: 'test-group',
@@ -17,34 +14,49 @@ describe('Executor integration', () => {
     added_at: new Date().toISOString(),
   };
 
-  afterAll(async () => {
-    try {
-      const bridge = new TmuxBridge(group.folder);
-      await bridge.killSession();
-    } catch {}
+  afterAll(() => {
     try {
       fs.rmSync(testDir, { recursive: true, force: true });
     } catch {}
   });
 
-  it('creates a tmux session and sends prompt via sendPrompt', async () => {
+  it('capture() returns ready message', async () => {
     const executor = new Executor({
       group,
       workspacePath: testDir,
-      codingCli: 'bash',
+      codingCli: 'gemini',
     });
-
-    // capture() should create the session
     const screen = await executor.capture();
-    expect(typeof screen).toBe('string');
+    expect(screen).toContain('Workspace ready');
+  });
 
-    // send() should send text
-    await executor.send('echo hello');
+  it('waitForIdle() returns Ready', async () => {
+    const executor = new Executor({
+      group,
+      workspacePath: testDir,
+      codingCli: 'gemini',
+    });
+    const result = await executor.waitForIdle();
+    expect(result).toBe('Ready.');
+  });
 
-    // capture() again should show the result
-    // (give bash a moment to process)
-    await new Promise((r) => setTimeout(r, 500));
-    const afterScreen = await executor.capture();
-    expect(afterScreen).toContain('hello');
+  it('runPromptAndNotify calls onIdle with output', async () => {
+    fs.mkdirSync(testDir, { recursive: true });
+    // Use a test script that mimics gemini headless (-p for prompt)
+    const scriptPath = path.join(testDir, 'mock-cli.js');
+    fs.writeFileSync(
+      scriptPath,
+      `const i=process.argv.indexOf('-p'); console.log('Output:', process.argv[i+1]||'');`,
+    );
+    const executor = new Executor({
+      group,
+      workspacePath: testDir,
+      codingCli: `node ${scriptPath}`,
+    });
+    const output = await new Promise<string>((resolve) => {
+      executor.runPromptAndNotify('hello world', resolve);
+    });
+    expect(output).toContain('Output:');
+    expect(output).toContain('hello world');
   });
 });

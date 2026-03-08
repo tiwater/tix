@@ -20,6 +20,7 @@ export const ASSISTANT_NAME =
 export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER ||
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
+/** Workspace skill CLI: gemini, codex, claude, etc. Used only when agent needs to run code. */
 export const TC_CODING_CLI =
   process.env.TC_CODING_CLI || envConfig.TC_CODING_CLI || 'gemini';
 
@@ -56,8 +57,30 @@ export const MOUNT_ALLOWLIST_PATH = path.join(
   'mount-allowlist.json',
 );
 export const STORE_DIR = path.join(TICLAW_HOME, 'store');
-export const GROUPS_DIR = path.join(TICLAW_HOME, 'groups');
+export const AGENTS_DIR = (() => {
+  const agents = path.join(TICLAW_HOME, 'agents');
+  const groups = path.join(TICLAW_HOME, 'groups');
+  if (!fs.existsSync(agents) && fs.existsSync(groups)) {
+    fs.renameSync(groups, agents);
+  }
+  if (!fs.existsSync(agents)) fs.mkdirSync(agents, { recursive: true });
+  return agents;
+})();
 export const DATA_DIR = path.join(TICLAW_HOME, 'data');
+
+/** @deprecated Use AGENTS_DIR. Kept for migration. */
+export const GROUPS_DIR = AGENTS_DIR;
+
+/** OpenClaw-compatible mind files (boot-md order). Evolved through conversation. */
+export const AGENT_MIND_FILES = ['SOUL.md', 'IDENTITY.md', 'USER.md', 'MEMORY.md'] as const;
+
+/** Legacy: single memory file (pre–OpenClaw split). Kept for migration. */
+export const AGENT_MEMORY_FILENAME = 'MEMORY.md';
+
+/** @deprecated Use AGENT_MIND_FILES. */
+export const GROUP_MIND_FILES = AGENT_MIND_FILES;
+/** @deprecated Use AGENT_MEMORY_FILENAME. */
+export const GROUP_MEMORY_FILENAME = AGENT_MEMORY_FILENAME;
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'ticlaw-agent:latest';

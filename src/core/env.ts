@@ -22,9 +22,13 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   HTTPS_PROXY: ['proxy'],
   HTTP_PROXY: ['proxy'],
   TC_DISCORD_TOKEN: ['channels', 'discord', 'token'],
+  TC_DISCORD_ENABLED: ['channels', 'discord', 'enabled'],
   DISCORD_BOT_TOKEN: ['channels', 'discord', 'token'],
   TC_TELEGRAM_BOT_TOKEN: ['channels', 'telegram', 'token'],
   TC_SLACK_TOKEN: ['channels', 'slack', 'token'],
+  TC_FEISHU_APP_ID: ['channels', 'feishu', 'app_id'],
+  TC_FEISHU_APP_SECRET: ['channels', 'feishu', 'app_secret'],
+  TC_FEISHU_ENABLED: ['channels', 'feishu', 'enabled'],
   GEMINI_API_KEY: ['api_keys', 'gemini'],
   ANTHROPIC_API_KEY: ['api_keys', 'anthropic'],
   CLAUDE_CODE_OAUTH_TOKEN: ['api_keys', 'claude_oauth'],
@@ -35,6 +39,9 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   OPENROUTER_API_KEY: ['llm', 'api_key'],
   LLM_MODEL: ['llm', 'model'],
   LLM_BASE_URL: ['llm', 'base_url'],
+  SUPABASE_URL: ['supabase', 'url'],
+  SUPABASE_SERVICE_KEY: ['supabase', 'service_key'],
+  SUPABASE_SYNC_ENABLED: ['supabase', 'sync_enabled'],
 };
 
 /**
@@ -117,3 +124,34 @@ export function readEnvFile(keys: string[]): Record<string, string> {
 
 /** Path to the YAML config file */
 export { TICLAW_CONFIG_PATH };
+
+/** Channels that can be enabled via config. */
+const CONFIGURABLE_CHANNELS = ['discord', 'feishu', 'telegram', 'slack'] as const;
+
+/**
+ * Returns channel names enabled in config.yaml.
+ * Config-driven: only channels with a config block and enabled !== false are started.
+ * Credentials can come from config or env; the channel factory returns null if missing.
+ * If no channels are configured, returns [] and index falls back to all registered.
+ */
+export function getEnabledChannelsFromConfig(): string[] {
+  let doc: any;
+  try {
+    const content = fs.readFileSync(TICLAW_CONFIG_PATH, 'utf-8');
+    doc = yaml.parse(content);
+  } catch {
+    return [];
+  }
+
+  const channels = doc?.channels;
+  if (!channels || typeof channels !== 'object') return [];
+
+  const enabled: string[] = [];
+  for (const name of CONFIGURABLE_CHANNELS) {
+    const block = channels[name];
+    if (!block || typeof block !== 'object') continue;
+    if (block.enabled === false || block.enabled === 'false') continue;
+    enabled.push(name);
+  }
+  return enabled;
+}

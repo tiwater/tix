@@ -458,6 +458,22 @@ export function listMindPackages(limit = 20): MindPackage[] {
   }));
 }
 
+/** @internal - for sync. Upserts a mind package from cloud restore. */
+export function syncUpsertMindPackage(pkg: MindPackage): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO mind_packages (id, version, lifecycle, persona_json, memory_summary, changelog, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    pkg.id,
+    pkg.version,
+    pkg.lifecycle,
+    JSON.stringify(pkg.persona),
+    pkg.memory_summary,
+    pkg.changelog,
+    pkg.created_at,
+  );
+}
+
 export function rollbackMindPackage(version: number): MindState | null {
   const row = db
     .prepare(
@@ -733,6 +749,18 @@ export function setRouterState(key: string, value: string): void {
   db.prepare(
     'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
   ).run(key, value);
+}
+
+/** @internal - for sync. Returns all router_state key-value pairs. */
+export function getAllRouterState(): Record<string, string> {
+  const rows = db
+    .prepare('SELECT key, value FROM router_state')
+    .all() as Array<{ key: string; value: string }>;
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    result[row.key] = row.value;
+  }
+  return result;
 }
 
 // --- Session accessors ---

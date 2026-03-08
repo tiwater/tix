@@ -61,7 +61,16 @@ import {
 
 import { runAgentOrchestrator, getModelName } from './agent.js';
 import type { ContainerOutput } from './core/types.js';
-import { readEnvFile } from './core/env.js';
+import {
+  getEnabledChannelsFromConfig,
+  readEnvFile,
+} from './core/env.js';
+import {
+  isSupabaseConfigured,
+  pullFromSupabase,
+  scheduleSupabasePush,
+  startPeriodicSupabasePush,
+} from './sync/supabase-sync.js';
 
 // Define ChannelOpts locally as it was removed from registry.ts
 export interface ChannelOpts {
@@ -115,7 +124,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
   // Extract raw text from messages for agent thinking
   const rawText = messages.map((m) => m.content).join('\n');
 
-  // Natural conversation updates mind (non-blocking simple updater)
+  // Mind evolution: natural conversation updates persona and memory (non-blocking)
   const latestMsg = messages[messages.length - 1];
   if (latestMsg?.content && !latestMsg.content.trim().startsWith('/mind')) {
     try {
@@ -163,7 +172,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
     // Show typing indicator while we process
     routeSetTyping(channels, chatJid, true);
 
-    // Mind commands (text-only control plane)
+    // Mind control plane: /mind status, lock, unlock, set, package, diff, rollback
     const latestText = messages[messages.length - 1]?.content?.trim() || '';
     if (latestText.startsWith('/mind')) {
       const parts = latestText.split(/\s+/);
@@ -398,15 +407,16 @@ async function processMessages(chatJid: string): Promise<boolean> {
           };
 
           return async (output: ContainerOutput) => {
-            // Capture Gemini CLI session ID for future --resume
+            // Capture workspace CLI session ID for future --resume
             if (output.newSessionId) {
               sessions[group.folder] = output.newSessionId;
               setSession(group.folder, output.newSessionId);
+              scheduleSupabasePush();
               logger.info(
                 { folder: group.folder, sessionId: output.newSessionId },
-                'Captured new Gemini CLI session ID',
+                'Captured new workspace CLI session ID',
               );
-              // Show typing while workspace agent is working
+              // Show typing while workspace skill is working
               routeSetTyping(channels, chatJid, true);
               return;
             }
@@ -478,7 +488,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
                 delete sessions[group.folder];
                 logger.info(
                   { folder: group.folder },
-                  'Cleared stale Gemini CLI session',
+                  'Cleared stale workspace CLI session',
                 );
               }
               streamBuf.text +=
@@ -546,6 +556,7 @@ function registerProject(jid: string, group: RegisteredProject): void {
   storeChatMetadata(jid, new Date().toISOString(), group.name);
   setRegisteredProject(jid, group);
   registeredProjects[jid] = group;
+  scheduleSupabasePush();
   logger.info({ jid, folder: group.folder }, 'Group registered');
 }
 
@@ -681,6 +692,10 @@ let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
+  if (isSupabaseConfigured()) {
+    await pullFromSupabase();
+    startPeriodicSupabasePush();
+  }
   loadState();
 
   const channelOpts: ChannelOpts = {
@@ -698,8 +713,12 @@ async function main(): Promise<void> {
   };
 
   const CHANNEL_CONNECT_TIMEOUT = 15_000;
+  const enabledFromConfig = getEnabledChannelsFromConfig();
   const registeredChannelNames = getRegisteredChannelNames();
-  for (const name of registeredChannelNames) {
+  const toConnect = enabledFromConfig.length > 0
+    ? registeredChannelNames.filter((n) => enabledFromConfig.includes(n))
+    : registeredChannelNames;
+  for (const name of toConnect) {
     const factory = getChannelFactory(name);
     if (factory) {
       const channel = factory(channelOpts as any);

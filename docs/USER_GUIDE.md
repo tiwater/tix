@@ -1,6 +1,6 @@
 # 🦀 TiClaw User Guide
 
-Welcome to TiClaw, your distributed AI R&D engine. This guide explains how to use the system to automate your development workflows via Discord.
+Welcome to TiClaw, a robot mind builder. This guide explains how to use the system via your chosen channel (Discord, Feishu, etc.) — from mind evolution to build tasks.
 
 ---
 
@@ -14,58 +14,68 @@ pnpm install
 pnpm run build
 pnpm start
 ```
-*Look for `Discord bot connected` in the terminal.*
+*Look for channel connection messages in the terminal (e.g. `Discord bot connected`, `Feishu long connection active`).*
 
-### 2. Environment Prerequisites
-Ensure your `.env` is configured with:
-- `TC_DISCORD_TOKEN`: Your bot token.
-- `OPENROUTER_API_KEY`: For LLM access.
-- `TC_CODING_CLI`: Set to `"gemini"` (default) or `"claude"`.
-- `HTTPS_PROXY`: (Optional) If you are in a region with restricted access.
+### 2. Configuration
+Configure `~/ticlaw/config.yaml` with at least one channel:
+- **Discord:** Disabled by default. Set `channels.discord.enabled: true` and `channels.discord.token` (or `TC_DISCORD_ENABLED=true` and `TC_DISCORD_TOKEN`) to enable.
+- **Feishu:** `channels.feishu.app_id` and `channels.feishu.app_secret` — see [Feishu Setup](FEISHU_SETUP.md)
+- **LLM:** `llm.api_key` (OpenRouter), `llm.model`
+- **Workspace skill:** `TC_CODING_CLI` — optional. Set to `"gemini"`, `"codex"`, or `"claude"` when you want the agent to use a coding CLI for repo/code tasks. The agent handles most tasks directly; this is just one skill.
+- **Proxy:** `proxy` (or `HTTPS_PROXY` / `HTTP_PROXY`) — **required in China** for LLM calls, Discord, and Feishu. Example: `proxy: "http://127.0.0.1:7890"` in config.yaml, or `HTTPS_PROXY="http://127.0.0.1:7890"` in .env.
 
 ### 3. Repository Environment Seeding (Optional but Recommended)
 To automate the creation of `.env` files for the projects TiClaw works on:
 1. Create a directory: `config/environments/`.
 2. Add `.env` files named after your repositories (e.g., `ticos.env` for `tiwater/ticos`).
-3. TiClaw will automatically copy this file into the workspace during the `/claw` phase.
+3. TiClaw will automatically copy this file into the workspace when setting up a build task.
 
 ---
 
 ## 🛠 Command Reference
 
-TiClaw is commanded entirely through **Discord**. All task-specific commands should be run within the **Thread** created for that task.
+TiClaw is commanded through your channels (Discord, Feishu, etc.). All task-specific commands should be run within the **thread** or **chat** created for that task.
 
-### 🦀 `/claw [GitHub Issue URL]`
-**Usage:** Start a new research or development task.
-- **What it does:** 
-  1. Creates a dedicated Discord Thread.
-  2. Creates a physical workspace at `~/ticlaw/factory/{thread_id}`.
-  3. Clones the repository.
-  4. Starts a persistent Tmux session for the AI.
-- **Example:** `/claw https://github.com/user/repo/issues/42`
+### 🧠 Mind-first: natural conversation
 
-### 📸 `/verify [URL]`
-**Usage:** Trigger an automated UI verification.
-- **What it does:** 
-  1. Spins up a headless Playwright browser.
-  2. Navigates to the provided URL.
-  3. Captures a full-page screenshot.
-  4. Automatically uploads the screenshot to the Discord thread.
-- **Example:** `/verify http://localhost:3000`
+**Every message you send** (except `/mind` commands) updates the robot's mind. Persona and memory evolve through daily interaction. No special command needed — just talk.
 
-### 🛠 `/skill [skill-name]`
-**Usage:** Inject specialized capabilities into the active workspace.
-- **What it does:** Applies an OpenClaw skill (found in `skills/`) to the current physical factory.
-- **Example:** `/skill add-slack`
+### 🧠 `/mind` — Mind control plane
 
-### 🚀 `/push`
-**Usage:** Finalize the task and submit your work.
-- **What it does:** 
-  1. Summarizes all code changes using Gemini.
-  2. Collects the Discord thread history for context.
-  3. Uses the GitHub CLI (`gh`) to create a Pull Request with an AI-generated description.
-- **Pro Tip:** We strongly recommend enabling **Live Preview Environments** (e.g., via **Render.com** or **Vercel**) on your target repository.
-  - If you configure `TC_PREVIEW_URL_PATTERN` in your `.env` (e.g., `https://myapp-pr-${PR_NUMBER}.onrender.com`), TiClaw will automatically relay the live deployment URL to your Discord thread upon creating the PR.
+**Usage:** Inspect and govern the robot's mind.
+
+| Subcommand | Description |
+|------------|-------------|
+| `/mind status` | Show mind version, lifecycle, persona |
+| `/mind lock` | Lock the mind for production (main group only) |
+| `/mind unlock` | Unlock for further evolution |
+| `/mind set <tone\|verbosity\|emoji> <value>` | Adjust persona |
+| `/mind package create` | Create a mind snapshot (main group only) |
+| `/mind package list` | List recent mind packages |
+| `/mind diff <from> <to>` | Diff two mind versions |
+| `/mind rollback <version>` | Roll back to a previous mind version (main group only) |
+
+### 🦀 Workspace and build tasks
+
+**Usage:** @mention the bot. The agent handles most tasks directly. When it needs to run code or access a repo, it uses the workspace skill (coding CLI in Tmux).
+
+- **Discord:** `@TiClaw fix the bug in auth.ts` or `@TiClaw what was the last commit?`
+- **Feishu:** Same pattern — mention the bot and describe the task.
+- **Legacy `/claw`:** On Discord, `/claw <task>` is converted to `@TiClaw <task>`.
+
+The workspace skill creates `~/ticlaw/factory/{folder}` when needed, clones the repo, and runs the coding CLI (Gemini, Codex, or Claude) in headless mode.
+
+### 📸 `/verify [URL]` (planned)
+
+**Usage:** Trigger automated UI verification.
+
+- **Planned:** Playwright browser, screenshot, upload to channel.
+
+### 🚀 `/push` (planned)
+
+**Usage:** Finalize the task and create a PR.
+
+- **Planned:** Summarize changes, create PR via GitHub CLI, optionally relay live preview URL.
 
 ---
 
@@ -73,12 +83,9 @@ TiClaw is commanded entirely through **Discord**. All task-specific commands sho
 
 TiClaw provides three layers of "Live Monitoring":
 
-1.  **The Delta Feed:** Every time the AI modifies a file, a Gemini-powered summary (e.g., *"Modified auth logic to support JWT"*) is posted to the Discord thread.
+1.  **The Delta Feed:** Every time the AI modifies a file, a Gemini-powered summary (e.g., *"Modified auth logic to support JWT"*) is posted to the channel.
 2.  **Live Snapshots:** If the AI is working on UI, it may automatically trigger snapshots that appear in the thread.
-3.  **Tmux Bridge (Terminal):** On the host machine, you can attach to the live session at any time:
-    ```bash
-    tmux attach -t tc-{thread_id}
-    ```
+3.  **Workspace output:** When the workspace skill completes, the result is delivered to the channel.
 
 ---
 
@@ -86,8 +93,8 @@ TiClaw provides three layers of "Live Monitoring":
 
 - **Physical Isolation:** Each task is isolated in its own folder. TiClaw will never touch files outside of `~/ticlaw/factory/`.
 - **Port Locking:** If your task starts a web server, TiClaw assigns a unique port (3000-3050) to prevent conflicts.
-- **Review Before Merge:** Always review the AI-generated PR before merging. Use the automated Playwright screenshots to verify UI changes visually from your phone or desktop Discord app.
+- **Review Before Merge:** Always review the AI-generated PR before merging. Use the automated Playwright screenshots to verify UI changes visually from your phone or desktop app.
 
 ---
 
-*TiClaw: Autonomous R&D for the modern engineering team.*
+*TiClaw: Robot mind builder — personality and memory through interaction.*

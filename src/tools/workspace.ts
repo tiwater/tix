@@ -17,7 +17,7 @@ export const buildWorkspaceTool = (
   registeredProjects: Record<string, RegisteredProject>,
 ) => {
   return tool({
-    description: `Manage workspaces for GitHub repositories. You can setup (clone), update (git pull), or delete a workspace.`,
+    description: `Manage workspaces for GitHub repositories. Setup (clone), update (git pull), or delete. Use when the task requires code execution or repo access.`,
     inputSchema: z.object({
       operation: z
         .enum(['setup', 'update', 'delete'])

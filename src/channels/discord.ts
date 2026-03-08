@@ -106,8 +106,7 @@ export class DiscordChannel implements Channel {
       const sender = message.author.id;
       const msgId = message.id;
 
-      // Legacy: /claw is deprecated — the agent handles all messages now.
-      // If someone types /claw, treat it as a normal message to the agent.
+      // Legacy: /claw is converted to @mention — the mind builder agent handles all messages.
       if (content.startsWith('/claw')) {
         content = content.replace(/^\/claw\s*/, '').trim();
         if (!content) {
@@ -521,16 +520,26 @@ export class DiscordChannel implements Channel {
 }
 
 registerChannel('discord', (opts: ChannelOpts) => {
-  const envVars = readEnvFile(['DISCORD_BOT_TOKEN', 'TC_DISCORD_TOKEN']);
+  const envVars = readEnvFile([
+    'DISCORD_BOT_TOKEN',
+    'TC_DISCORD_TOKEN',
+    'TC_DISCORD_ENABLED',
+  ]);
+  const enabled =
+    process.env.TC_DISCORD_ENABLED === 'true' ||
+    process.env.TC_DISCORD_ENABLED === '1' ||
+    envVars.TC_DISCORD_ENABLED === 'true' ||
+    envVars.TC_DISCORD_ENABLED === '1';
+  if (!enabled) return null;
+
   const token =
     process.env.TC_DISCORD_TOKEN ||
     process.env.DISCORD_BOT_TOKEN ||
     envVars.TC_DISCORD_TOKEN ||
     envVars.DISCORD_BOT_TOKEN ||
     '';
-
   if (!token) {
-    logger.warn('Discord: TC_DISCORD_TOKEN not set');
+    logger.warn('Discord: TC_DISCORD_ENABLED but TC_DISCORD_TOKEN not set');
     return null;
   }
   return new DiscordChannel(token, opts as DiscordChannelOpts);

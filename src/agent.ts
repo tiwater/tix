@@ -1,18 +1,33 @@
 import { generateText, stepCountIs, type ModelMessage } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { fetch as undiciFetch, ProxyAgent } from 'undici';
 import type { ContainerOutput } from './core/types.js';
 import { buildSessionTools } from './tools/executor.js';
 import { buildWorkspaceTool } from './tools/workspace.js';
+import { loadGroupMindContext } from './core/mind-files.js';
 import { readEnvFile } from './core/env.js';
 import { logger } from './core/logger.js';
 import { RegisteredProject } from './core/types.js';
 
 let openrouterInstance: ReturnType<typeof createOpenRouter> | null = null;
 
+/** Create a fetch that routes requests through the given proxy URL. Required for regions (e.g. China) where OpenRouter must use a proxy. */
+function createProxyFetch(proxyUrl: string): typeof fetch {
+  const dispatcher = new ProxyAgent(proxyUrl);
+  return (async (input: unknown, init?: unknown) =>
+    undiciFetch(input as URL, { ...(init as object), dispatcher })) as typeof fetch;
+}
+
 function getOpenRouter(): ReturnType<typeof createOpenRouter> {
   if (openrouterInstance) return openrouterInstance;
 
-  const env = readEnvFile(['OPENROUTER_API_KEY', 'LLM_MODEL', 'LLM_BASE_URL']);
+  const env = readEnvFile([
+    'OPENROUTER_API_KEY',
+    'LLM_MODEL',
+    'LLM_BASE_URL',
+    'HTTPS_PROXY',
+    'HTTP_PROXY',
+  ]);
   const apiKey = process.env.OPENROUTER_API_KEY || env.OPENROUTER_API_KEY;
 
   if (!apiKey) {
@@ -21,7 +36,19 @@ function getOpenRouter(): ReturnType<typeof createOpenRouter> {
     );
   }
 
-  openrouterInstance = createOpenRouter({ apiKey });
+  const proxyUrl =
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    env.HTTPS_PROXY ||
+    env.HTTP_PROXY;
+
+  const providerOptions: Parameters<typeof createOpenRouter>[0] = { apiKey };
+  if (proxyUrl) {
+    providerOptions.fetch = createProxyFetch(proxyUrl);
+    logger.info({ proxy: proxyUrl }, 'OpenRouter: using proxy for LLM calls');
+  }
+
+  openrouterInstance = createOpenRouter(providerOptions);
   return openrouterInstance;
 }
 
@@ -31,7 +58,7 @@ export function getModelName(): string {
 }
 
 /**
- * Lightweight LLM call to interpret a raw Gemini screen and format for Discord.
+ * Lightweight LLM call to interpret a raw Gemini screen and format for the channel.
  * Used by the async idle callback — no tools, just text in → text out.
  */
 async function interpretScreen(
@@ -41,22 +68,18 @@ async function interpretScreen(
   const openrouter = getOpenRouter();
   const model = getModelName();
 
-  const interpretPrompt = `You are formatting a terminal screen capture for Discord.
+  const interpretPrompt = `You are formatting output from the workspace coding CLI for a chat channel.
 
-The terminal shows output from Gemini CLI (an AI coding agent) working on the "${groupName}" repository.
-The GitHub repository is at: https://github.com/${groupName}
+The output is from the "${groupName}" repository (https://github.com/${groupName}).
 
 ## Your task
 
-Extract the meaningful response from the screen and format it for Discord.
-
-- Find text after the last "✦" marker — that's the agent's answer.
-- Ignore TUI chrome (status bars, separators, "Type your message", spinners, tool call boxes).
+Format the output for the chat. If it's plain text, clean it up. If it contains TUI artifacts (✦ markers, status bars, "Type your message"), extract the meaningful response.
 - Include clickable GitHub links for commits, PRs, issues, and files.
-- Use Discord markdown: **bold**, \`code\`, > blockquotes, bullet lists.
+- Use markdown: **bold**, \`code\`, > blockquotes, bullet lists.
 - Keep it concise and scannable.
 
-## Raw screen content
+## Raw output
 
 ${screenContent}`;
 
@@ -69,7 +92,7 @@ ${screenContent}`;
     return result.text || '🦀 Task completed but could not extract response.';
   } catch (err) {
     logger.error({ err }, 'Screen interpretation failed');
-    return '🦀 Task completed. Check the workspace agent for details.';
+    return '🦀 Task completed. Check the workspace for details.';
   }
 }
 
@@ -98,8 +121,8 @@ export async function runAgentOrchestrator(opts: {
 
   logger.info({ model, chatJid: opts.chatJid }, 'Starting agent orchestrator');
 
-  // Async callback: when Gemini becomes idle after a prompt,
-  // interpret the screen and deliver the formatted result to Discord.
+  // Async callback: when the workspace CLI becomes idle after a prompt,
+  // interpret the screen and deliver the formatted result to the channel.
   const onIdleCallback = async (screen: string) => {
     logger.info(
       { chatJid: opts.chatJid, screenLength: screen.length },
@@ -110,14 +133,14 @@ export async function runAgentOrchestrator(opts: {
       const formatted = await interpretScreen(screen, opts.group.name);
       logger.info(
         { chatJid: opts.chatJid, responseLength: formatted.length },
-        'Interpreted response, sending to Discord',
+        'Interpreted response, sending to channel',
       );
       if (opts.onReply) await opts.onReply(formatted);
     } catch (err) {
       logger.error({ err, chatJid: opts.chatJid }, 'Idle callback failed');
       if (opts.onReply) {
         await opts.onReply(
-          '🦀 Task completed. Check the workspace agent for details.',
+          '🦀 Task completed. Check the workspace for details.',
         );
       }
     }
@@ -132,7 +155,7 @@ export async function runAgentOrchestrator(opts: {
     try {
       const result = await generateText({
         model: openrouter(model),
-        prompt: `You are summarizing what an AI coding agent is currently doing, based on its terminal screen capture.
+        prompt: `You are summarizing what the workspace coding CLI is currently doing, based on its terminal screen capture.
 
 Return a SINGLE short sentence (max 15 words) describing the current activity. Start with a verb.
 Examples: "Reading seed-data.ts to find legacy table references", "Running unit tests", "Editing auth.ts to fix the login bug", "Searching for open issues in the repository"
@@ -175,56 +198,34 @@ ${screen}`,
     opts.registeredProjects,
   );
 
-  const systemPrompt = `You are TiClaw 🦀, a Discord-based coding agent orchestrator.
-You manage tasks for the repository "${opts.group.name}" by delegating work to an AI coding agent (Gemini CLI) running in a tmux terminal session.
+  const mindContext = loadGroupMindContext(opts.group.folder);
+  const systemPrompt = `You are TiClaw 🦀, a robot mind builder.
+You evolve personality and memory through interaction. You handle most tasks directly — conversation, questions, planning, advice. You have optional skills for when you need to run code or access a repository.
 
-## CRITICAL: Always delegate
+## Primary mode: you handle everything
 
-For ANY user message that is not a simple greeting (like "hi" or "thanks"), you MUST delegate to Gemini. NEVER answer user questions yourself. You do not have access to the codebase, the machine, system resources, git, or anything else — only Gemini does.
+Answer questions, chat, and help directly. You have access to the LLM and can respond to almost anything. Do NOT delegate unless the task genuinely requires code execution, git, or repository access.
 
-If you find yourself about to type an answer without having called any tools, STOP and delegate to Gemini instead.
+## Optional skill: workspace (coding CLI)
 
-## Your tools
+When a task needs to run code, access a repo, build, or fix something, you can use the **workspace skill**. It runs a coding CLI (e.g. Gemini, Codex, Claude) in headless mode. Use it only when necessary.
 
-1. \`captureSessionTool\`: Reads the current terminal screen. Use \`waitForIdle=true\` to wait until Gemini is ready.
-2. \`sendToSessionTool\`: Types text into Gemini and presses Enter. **After sending, a background monitor automatically watches Gemini and delivers the result to Discord when done.** You do NOT need to capture the result yourself.
+### Workspace tools (use only when needed)
+
+1. \`captureSessionTool\`: Check workspace readiness (returns immediately in headless mode).
+2. \`sendToSessionTool\`: Run a natural-language prompt in the workspace CLI. The result is delivered when done. Send ONCE only.
 3. \`workspaceTool\`: Clone, update, or delete a repository workspace.
 
-## Understanding the session
+When using the workspace skill: send via \`sendToSessionTool\`. The result is delivered when the CLI completes.
 
-The tmux session runs **Gemini CLI** — an AI coding agent with its own TUI. You communicate with Gemini by typing natural language prompts. Gemini reads the codebase, runs tools, and responds.
-
-**You do NOT run shell commands directly.** Always send natural language like "What was the last commit?" or "Fix the bug in auth.ts", never raw commands like "git log".
-
-### Session lifecycle (cold start)
-
-1. **Bare shell** (0-2s): Shell prompt with \`gemini -y\` being launched. NOT ready.
-2. **Loading** (2-20s): "Loading extension..." messages. NOT ready.
-3. **Idle** (after ~20s): "Type your message" visible. NOW ready.
-
-## Workflow
-
-For any user message (except greetings):
-
-1. **Capture** the screen to check Gemini's state.
-2. **If not ready** (shell prompt, loading, spinners): use \`captureSessionTool\` with waitForIdle=true to wait.
-3. **Send** the user's request via \`sendToSessionTool\`. Send ONCE only.
-4. **Acknowledge**: Tell the user their task has been sent. The background monitor will deliver Gemini's response automatically.
-
-That's it — you do NOT need to poll or capture after sending. The async monitor handles delivery.
+**Communicate with the CLI in natural language** (e.g. "What was the last commit?", "Fix the bug in auth.ts"), never raw shell commands.
 
 ## Rules
 
-1. NEVER answer questions yourself. ALWAYS delegate to Gemini.
-2. NEVER send raw shell commands. Always natural language.
-3. NEVER re-send a prompt.
-4. NEVER ask "would you like me to proceed?" — just do it.
-
-## Formatting your acknowledgment
-
-When acknowledging a sent task, briefly confirm what you sent. For example:
-- "🦀 Asked Gemini to check the last commit. I'll post the answer shortly."
-- "🦀 Sent your bug fix request to Gemini. Will update you when it's done."`;
+1. Answer directly whenever you can. Use the workspace skill only when the task requires code, git, or repo access.
+2. Never send raw shell commands to the workspace CLI. Always natural language.
+3. Never re-send a prompt.
+4. Never ask "would you like me to proceed?" — just do it.${mindContext}`;
 
   try {
     const result = await generateText({
@@ -266,7 +267,7 @@ When acknowledging a sent task, briefly confirm what you sent. For example:
     }
 
     // Fallback: tools ran successfully but no final text
-    const fallbackMsg = '🦀 Task sent to workspace agent.';
+    const fallbackMsg = '🦀 Task sent to workspace.';
     if (opts.onReply) await opts.onReply(fallbackMsg);
     return fallbackMsg;
   } catch (err: any) {

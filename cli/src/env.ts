@@ -22,7 +22,7 @@ import {
 const WORKSPACES_DIR = path.join(TICLAW_HOME, 'workspaces');
 const ENVS_DIR = path.join(TICLAW_HOME, 'envs');
 const STORE_DIR = path.join(TICLAW_HOME, 'store');
-const GROUPS_DIR = path.join(TICLAW_HOME, 'groups');
+const AGENTS_DIR = path.join(TICLAW_HOME, 'agents');
 
 function ghAvailable(): boolean {
   try {
@@ -270,7 +270,7 @@ async function addEnv(name: string): Promise<void> {
   // 5. Save env config
   const envDir = path.join(ENVS_DIR, name);
   fs.mkdirSync(envDir, { recursive: true });
-  fs.mkdirSync(path.join(GROUPS_DIR, `${owner}/${repo}/${branch}`, 'logs'), {
+  fs.mkdirSync(path.join(AGENTS_DIR, `${owner}/${repo}/${branch}`, 'logs'), {
     recursive: true,
   });
 

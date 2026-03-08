@@ -14,7 +14,7 @@ export interface MountAllowlist {
   allowedRoots: AllowedRoot[];
   // Glob patterns for paths that should never be mounted (e.g., ".ssh", ".gnupg")
   blockedPatterns: string[];
-  // If true, non-main groups can only mount read-only regardless of config
+  // If true, non-main agents can only mount read-only regardless of config
   nonMainReadOnly: boolean;
 }
 
@@ -27,14 +27,15 @@ export interface AllowedRoot {
   description?: string;
 }
 
+/** Agent config for a room (chat). One agent can have multiple rooms across channels. */
 export interface RegisteredProject {
   name: string;
-  folder: string;
+  folder: string; // Agent folder (e.g. main, family-chat)
   trigger: string;
   added_at: string;
 
-  requiresTrigger?: boolean; // Default: true for groups, false for solo chats
-  isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
+  requiresTrigger?: boolean; // Default: true for rooms, false for solo chats
+  isMain?: boolean; // True for the main agent (no trigger, elevated privileges)
 }
 
 export interface NewMessage {

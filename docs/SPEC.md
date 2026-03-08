@@ -1,6 +1,6 @@
 # TiClaw Specification
 
-A distributed AI R&D engine with multi-channel support, physical workspace isolation, automated observability, and multi-CLI agent execution. Supports Gemini CLI (default), Claude Code, and Codex.
+A robot mind builder with multi-channel support, personality & memory evolution, physical workspace isolation, and multi-CLI agent execution. Supports Gemini CLI (default), Claude Code, and Codex.
 
 ---
 
@@ -11,7 +11,7 @@ A distributed AI R&D engine with multi-channel support, physical workspace isola
 | Runtime | Node.js 20+ | Host process for routing and scheduling |
 | Agent | Multi-CLI (Gemini CLI default, Claude Code, Codex) | Run AI agent with tools and MCP servers |
 | Workspace | Physical directories (`~/ticlaw/factory/`) | Isolated per-task work environments |
-| Persistence | Tmux sessions | Agent survives host process restarts |
+| Workspace | Subprocess (headless) | Fresh process per prompt |
 | Observability | Gemini 2.0 Flash + Playwright | Delta feed summaries and UI verification |
 | Channel | Channel registry (`src/channels/registry.ts`) | Channels self-register at startup |
 | Storage | SQLite (better-sqlite3) | Messages, groups, sessions, tasks |
@@ -23,13 +23,13 @@ A distributed AI R&D engine with multi-channel support, physical workspace isola
 
 TiClaw operates in two execution modes selected at runtime:
 
-1. **Physical Mode** (default) — Agent runs directly on the host in a Tmux session within a physical workspace (`~/ticlaw/factory/{id}/`). Provides native toolchain access.
+1. **Physical Mode** (default) — Agent runs directly on the host. Workspace skill uses headless subprocess within a physical workspace (`~/ticlaw/factory/{id}/`). Provides native toolchain access.
 2. **Container Mode** (fallback) — Agent runs inside a Linux container. Used when container runtime is available and desired for stronger isolation.
 
 ### System Diagram
 
 ```
-[Discord / Slack / WhatsApp / Telegram]
+[Discord / Feishu / Slack / WhatsApp / Telegram]
          │
          ▼
    ┌──────────────────────────┐
@@ -55,8 +55,8 @@ TiClaw operates in two execution modes selected at runtime:
    │  │  runAgent()         │  │
    │  │  ┌───────────────┐  │  │
    │  │  │ Physical Mode │  │  │
-   │  │  │ TcWorkspace   │◄─┼──┼── /verify, /push, /skill
-   │  │  │ + TmuxBridge  │  │  │
+   │  │  │ TcWorkspace   │◄─┼──┼── workspace delegation, /mind
+   │  │  │ + Subprocess  │  │  │
    │  │  └───────────────┘  │  │
    │  │  ┌───────────────┐  │  │
    │  │  │ Container Mode│  │  │
@@ -102,9 +102,6 @@ Channels are instantiated with these callbacks:
 | `onMessage` | Stores inbound message to SQLite |
 | `onChatMetadata` | Records chat/group discovery |
 | `onGroupRegistered` | Registers a new group |
-| `onVerify` | Triggers Playwright verification |
-| `onPush` | Triggers GitHub PR creation |
-| `onSkill` | Applies a skill to the workspace |
 
 ### Adding a Channel
 
@@ -121,7 +118,6 @@ Channels are added via skills. Each channel skill:
 
 ```
 ticlaw/                              # Project root (source code)
-├── CLAUDE.md / GEMINI.md              # Project context for AI coding CLIs
 ├── docs/
 │   ├── SPEC.md                        # This specification document
 │   ├── ARCHITECTURE.md                # High-level architecture guide
@@ -137,7 +133,7 @@ ticlaw/                              # Project root (source code)
 │   ├── types.ts                       # TypeScript interfaces
 │   ├── env.ts                         # .env file reader
 │   ├── logger.ts                      # Pino logger
-│   ├── group-folder.ts               # Group folder management
+│   ├── agent-folder.ts               # Agent folder management (group-folder.ts re-exports)
 │   ├── group-queue.ts                 # Concurrency-controlled message queue
 │   ├── router.ts                      # Outbound message routing
 │   ├── task-scheduler.ts              # Cron/interval/one-time task scheduler
@@ -184,10 +180,16 @@ ticlaw/                              # Project root (source code)
 ├── store/
 │   ├── messages.db                    # SQLite database
 │   └── auth/                          # Channel auth data (WhatsApp sessions)
-├── groups/                            # Group memory folders
-│   ├── CLAUDE.md                      # Global memory (all groups)
-│   └── {group-name}/
-│       └── CLAUDE.md                  # Per-group memory
+├── agents/                            # Agent mind folders (OpenClaw-compatible)
+│   ├── SOUL.md                        # Personality, voice, values (evolves via conversation)
+│   ├── IDENTITY.md                    # Who the agent is (stable)
+│   ├── USER.md                        # User context
+│   ├── MEMORY.md                      # Long-term facts, preferences (evolves)
+│   └── {agent-folder}/                # Per-agent (e.g. main, family-chat)
+│       ├── SOUL.md                    # Per-agent overrides
+│       ├── IDENTITY.md
+│       ├── USER.md
+│       └── MEMORY.md
 ├── data/
 │   ├── env/env                        # Filtered secrets for container mode
 │   └── sessions/{group}/.claude/      # Session transcripts
@@ -284,18 +286,25 @@ The trigger pattern is auto-generated as `@{ASSISTANT_NAME}` (case-insensitive).
 
 ## Memory System
 
-TiClaw uses a hierarchical memory system based on instruction files (CLAUDE.md / GEMINI.md).
+TiClaw uses the OpenClaw mind spec: SOUL, IDENTITY, USER, MEMORY. All four are loaded at conversation start (boot-md order). SOUL and MEMORY evolve through conversation.
 
-### Memory Hierarchy
+### Mind Files (OpenClaw-Compatible)
 
-| Level | File | Scope | Writable From |
-|-------|------|-------|---------------|
-| Global | `~/ticlaw/groups/CLAUDE.md` | All groups | Main group only |
-| Group | `~/ticlaw/groups/{name}/CLAUDE.md` | One group | That group |
+| File | Purpose | Evolution |
+|------|---------|-----------|
+| SOUL.md | Personality, voice, values | Via conversation (tone, verbosity, etc.) |
+| IDENTITY.md | Who the agent is | Manual or static |
+| USER.md | User context | Manual or static |
+| MEMORY.md | Long-term facts, preferences | Via conversation ("remember X") |
 
-The AI coding CLI automatically loads project instructions:
-- `../CLAUDE.md` or `../GEMINI.md` (parent directory = global memory)
-- `./CLAUDE.md` or `./GEMINI.md` (current directory = group memory)
+### Hierarchy
+
+| Level | Path | Scope |
+|-------|------|-------|
+| Global | `~/ticlaw/agents/{SOUL,IDENTITY,USER,MEMORY}.md` | All agents |
+| Per-agent | `~/ticlaw/agents/{folder}/{SOUL,...}.md` | That agent (overrides) |
+
+When persona or memory evolves through conversation, TiClaw syncs to SOUL.md and MEMORY.md. Legacy `CLAUDE.md` is supported for migration.
 
 ---
 
@@ -476,7 +485,7 @@ launchctl list | grep ticlaw
 tail -f ~/ticlaw/logs/ticlaw.log
 
 # Rebuild after code changes
-npm run build && launchctl kickstart -k gui/$(id -u)/com.ticlaw
+pnpm run build && launchctl kickstart -k gui/$(id -u)/com.ticlaw
 ```
 
 ---

@@ -11,10 +11,11 @@ This document outlines the architectural decisions that differentiate TiClaw fro
 
 ## 2. Core Components
 
-### A. Discord Command Adapter (The Command Center)
-Replaces the generic multi-channel message registry with a high-fidelity Discord-focused adapter.
-*   **Command:** `/claw [GitHub Issue URL]`
-*   **Response Pattern:** Every new task creates a dedicated **Thread** in Discord. All logs, screenshots, and status updates are sent to this thread to keep the main channel clean.
+### A. Multi-Channel Command Adapter
+TiClaw treats Discord, Feishu, and other platforms as adapters. Messages route through a unified flow.
+*   **Mind-first:** Natural conversation updates persona and memory. `/mind` for status, lock, unlock, package, diff, rollback.
+*   **Workspace skill:** The agent handles most tasks directly. When it needs to build or fix things, it uses the optional workspace skill (coding CLI).
+*   **Response Pattern:** Logs, screenshots, and status updates are sent to the active thread or chat.
 
 ### B. The Factory (`TcWorkspace`)
 The physical engine that manages workspaces.
@@ -31,10 +32,9 @@ To ensure flexibility and resilience against account-level issues, TiClaw abstra
 *   **Codex Driver:** A specialized driver for Codex-based workflows.
 *   **Switching:** Controlled via the `TC_CODING_CLI` environment variable.
 
-### D. The Tmux Bridge (The Live Stream)
-Encapsulates the Claude Agent SDK inside a persistent Tmux session.
-*   **Purpose:** Allows the AI to persist even if the TiClaw process restarts.
-*   **Streaming:** Real-time stdout/stderr is piped from the Tmux session directly to the Discord thread.
+### D. Workspace Skill (Headless)
+Runs the coding CLI (Gemini, Codex, Claude) in headless mode — no persistent terminal.
+*   **Subprocess:** Each prompt spawns a fresh process. Output is captured and delivered to the channel when done.
 
 ### D. The Delta Feed (Gemini Powered Audit)
 *   **Function:** Periodically (or upon file save/command completion) calculates the `git diff`.
@@ -47,19 +47,25 @@ Encapsulates the Claude Agent SDK inside a persistent Tmux session.
 ## 3. Workflow Diagram
 
 ```
-[Discord User] --(/claw)--> [Bot Adapter]
-                                    |
-                            [TcWorkspace Factory]
-                                    |
-                            (mkdir + git clone)
-                                    |
-                            [Tmux Session (Claude)] <--- (Standard Input)
-                                    |                           |
-                            (Streaming Logs) -------------- [User Debugging]
-                                    |
-                            [Delta Feed/Screenshots]
-                                    |
-                            [PR Automation] --(gh pr create)--> [GitHub]
+[User (Discord/Feishu/etc)] --> [Message Router]
+                                        |
+                    [Mind Update] <-- natural conversation
+                                        |
+                    [/mind commands] --> status, lock, unlock, package, diff, rollback
+                                        |
+                    [Workspace delegation] --> [Mind Builder Agent]
+                                                        |
+                                                [TcWorkspace Factory]
+                                                        |
+                                                (mkdir + git clone)
+                                                        |
+                                                [Subprocess (Gemini/Claude headless)] <--- (--prompt)
+                                                        |                           |
+                                                (Streaming Logs) -------------- [User Debugging]
+                                                        |
+                                                [Delta Feed/Screenshots]
+                                                        |
+                                                [PR Automation] --(gh pr create)--> [GitHub]
 ```
 
 ## 4. Key Security Decisions

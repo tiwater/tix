@@ -1,0 +1,22 @@
+# TiClaw 配置示例
+# 复制为 ~/ticlaw/config.yaml 并填入实际值
+
+channels:
+  # Config-driven: only channels with a block and enabled !== false are started.
+  # discord:
+  #   enabled: true
+  #   token: "your-discord-bot-token"
+
+  feishu:
+    enabled: true
+    app_id: "cli_xxxxxxxx"       # 飞书应用 App ID
+    app_secret: "xxxxxxxx"       # 飞书应用 App Secret
+
+# assistant_name: Andy          # 机器人名称，触发格式 @Andy
+
+# Proxy (required for China; LLM calls, Discord, Feishu all use it)
+# proxy: "http://127.0.0.1:7890"
+
+# llm:
+#   api_key: "sk-or-..."        # OpenRouter API key
+#   model: "google/gemini-2.5-flash"

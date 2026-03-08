@@ -9,7 +9,7 @@
 import { runAgentOrchestrator } from '../agent.js';
 
 async function test() {
-  // Proxy for Gemini CLI
+  // Proxy for workspace CLI
   process.env.http_proxy = process.env.http_proxy || 'http://127.0.0.1:7897';
   process.env.https_proxy = process.env.https_proxy || 'http://127.0.0.1:7897';
 
@@ -25,7 +25,7 @@ async function test() {
   const workspacePath = '/Users/hugh/ticlaw/factory/tiwater-ticos';
 
   console.log(
-    '\n=== E2E Test: Event-Driven Gemini via Agent Orchestrator ===\n',
+    '\n=== E2E Test: Event-Driven Workspace Skill via Agent Orchestrator ===\n',
   );
   console.log('Group:', group.name);
   console.log('Workspace:', workspacePath);

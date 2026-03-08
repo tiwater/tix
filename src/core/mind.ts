@@ -7,6 +7,8 @@ import {
   updateMindState,
 } from './db.js';
 import { MIND_LOCK_MODE } from './config.js';
+import { syncMindStateToFiles } from './mind-files.js';
+import { scheduleSupabasePush } from '../sync/supabase-sync.js';
 import type {
   InteractionEvent,
   InteractionIntent,
@@ -43,10 +45,13 @@ function applyPersonaHints(state: MindState, content: string): MindState {
   if (content.includes('少点表情')) nextPersona.emoji = false;
   if (content.includes('多点表情')) nextPersona.emoji = true;
 
-  return updateMindState({
+  const next = updateMindState({
     persona: nextPersona,
     memory_summary: state.memory_summary,
   });
+  syncMindStateToFiles();
+  scheduleSupabasePush();
+  return next;
 }
 
 export function recordUserInteraction(
@@ -82,11 +87,15 @@ export function recordUserInteraction(
 }
 
 export function lockMind(): MindState {
-  return updateMindState({ lifecycle: 'locked' });
+  const state = updateMindState({ lifecycle: 'locked' });
+  scheduleSupabasePush();
+  return state;
 }
 
 export function unlockMind(): MindState {
-  return updateMindState({ lifecycle: 'draft' });
+  const state = updateMindState({ lifecycle: 'draft' });
+  scheduleSupabasePush();
+  return state;
 }
 
 export function setMindPersonaPatch(
@@ -94,12 +103,15 @@ export function setMindPersonaPatch(
 ): MindState {
   const state = getMindState();
   if (state.lifecycle === 'locked') return state;
-  return updateMindState({
+  const next = updateMindState({
     persona: {
       ...state.persona,
       ...patch,
     },
   });
+  syncMindStateToFiles();
+  scheduleSupabasePush();
+  return next;
 }
 
 export function diffMindVersions(
@@ -140,7 +152,9 @@ export function createPackage(
 ): MindPackage {
   const state = getMindState();
   const next = updateMindState({ version: state.version + 1 });
-  return createMindPackage(changelog || `Package from mind v${next.version}`);
+  const pkg = createMindPackage(changelog || `Package from mind v${next.version}`);
+  scheduleSupabasePush();
+  return pkg;
 }
 
 export function listPackages(limit = 10): MindPackage[] {
@@ -148,5 +162,7 @@ export function listPackages(limit = 10): MindPackage[] {
 }
 
 export function rollbackPackage(version: number): MindState | null {
-  return rollbackMindPackage(version);
+  const result = rollbackMindPackage(version);
+  if (result) syncMindStateToFiles();
+  return result;
 }

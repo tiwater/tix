@@ -36,7 +36,7 @@ export function readSecrets(): Record<string, string> {
 }
 
 /**
- * Callback that fires when Gemini becomes idle after a prompt is sent.
+ * Callback that fires when the workspace CLI becomes idle after a prompt is sent.
  * The agent layer provides this so we can deliver results asynchronously.
  */
 export type OnIdleCallback = (screen: string) => void;
@@ -61,7 +61,7 @@ export const buildSessionTools = (
 
   const captureSessionTool = tool({
     description:
-      'Capture the terminal screen of the workspace agent session. ' +
+      'Capture the terminal screen of the workspace coding CLI session. ' +
       'Set waitForIdle=true to wait until the agent finishes processing (blocking). ' +
       'Set waitSeconds to add a fixed delay before capturing. ' +
       'Returns the raw terminal screen content.',
@@ -111,46 +111,40 @@ export const buildSessionTools = (
 
   const sendToSessionTool = tool({
     description:
-      'Send text to the workspace agent session (types text + Enter). ' +
-      'After sending, a background monitor automatically watches for the agent to finish ' +
-      'and will deliver the result to Discord asynchronously. ' +
-      'You do NOT need to capture the result yourself — just send and tell the user the task is underway.',
+      'Run a natural-language prompt in the workspace coding CLI (headless mode). ' +
+      'The result is delivered to the channel when done. ' +
+      'Use only when the task requires code execution, git, or repo access.',
     inputSchema: z.object({
       text: z
         .string()
-        .describe('The natural language prompt to send to Gemini.'),
+        .describe('Natural language prompt for the coding CLI (e.g. "What was the last commit?")'),
     }),
     execute: async ({ text }) => {
       logger.info(
         { chatJid, text: text.slice(0, 100) },
         'sendToSession called',
       );
-      try {
-        await executor.send(text);
-
-        // Start background idle monitor
-        if (onIdleCallback) {
-          logger.info({ chatJid }, 'Starting background idle monitor');
-          executor.monitorForIdle(
-            (screen) => {
-              logger.info(
-                { chatJid, screenLength: screen.length },
-                'Background monitor: idle detected, firing callback',
-              );
-              onIdleCallback(screen);
-            },
-            {
-              onProgress: onProgressCallback,
-            },
-          );
-        }
-
-        return 'Sent. A background monitor is watching the agent and will deliver the result to Discord automatically when done.';
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        logger.error({ chatJid, err: message }, 'sendToSession failed');
-        return `Error: ${message}`;
+      if (!onIdleCallback) {
+        return 'Error: No callback configured';
       }
+      executor
+        .runPromptAndNotify(
+          text,
+          (output) => {
+            logger.info(
+              { chatJid, outputLength: output.length },
+              'Workspace CLI done, delivering result',
+            );
+            onIdleCallback(output);
+          },
+          { onProgress: onProgressCallback },
+        )
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          logger.error({ chatJid, err: msg }, 'sendToSession failed');
+          onIdleCallback(`Error: ${msg}`);
+        });
+      return 'Running. The result will be delivered to the channel when done.';
     },
   });
 

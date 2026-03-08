@@ -1,12 +1,12 @@
 # TiClaw Requirements & Philosophy
 
-This document outlines the foundational requirements and engineering principles for TiClaw — a distributed AI R&D engine designed as a black-box core with a plugin ecosystem.
+This document outlines the foundational requirements and design principles for TiClaw — a robot mind builder designed as a black-box core with a plugin ecosystem.
 
 ---
 
-## 🎯 The Mission: Professional R&D Engine
+## 🎯 The Mission: Robot Mind Builder
 
-TiClaw is designed to be a **Distributed AI R&D Engine**. It transforms local hardware into an autonomous, transparent, and persistent AI collaborator capable of executing real-world engineering tasks.
+TiClaw is designed to be a **robot mind builder**. It builds personality and memory that evolve through daily interaction, with lock, rollback, and cloud sync for deployment. It can also execute coding tasks when the mind needs to build or fix things.
 
 ---
 
@@ -28,16 +28,17 @@ While we support containers for generic tasks, TiClaw prioritizes **Physical Wor
 - Every task lives in a dedicated directory: `~/ticlaw/factory/{id}`.
 - This provides the AI native access to host toolchains (Node, Go, Rust, etc.) while preventing cross-task contamination.
 
-### 4. Channel-Agnostic Control Plane
-The core engine treats communication platforms (Discord, Slack, etc.) as **Adapters**.
-- The engine provides generic hooks for commands (`/claw`, `/push`, `/verify`) and relays (logs, screenshots, summaries).
-- **Discord** serves as our primary reference implementation for high-fidelity R&D workflows (using threads for context isolation and rich media for audits).
+### 4. Agent-Centric Model
+Each **agent** has one mind (SOUL, MEMORY, IDENTITY, USER) and multiple **channels** (Discord, Feishu, etc.). One agent can serve multiple rooms (chats) across channels. For cloud deployment, multiple agents can run on one instance, each with its own Feishu bot mapping.
 
-### 5. Multi-CLI Driver Pattern
-To ensure provider resilience, the coding agent logic is abstracted into a **Driver Pattern**:
-- **Gemini CLI (Default):** For leveraging personal subscriptions and high-speed execution.
-- **Claude Code:** For deep integration with Anthropic's agentic SDK.
-- **Programmatic ADK:** For API-based scaling.
+### 5. Config-Driven Channels
+Channels are enabled via `config.yaml`, not code changes. Only channels with a config block and `enabled !== false` are started. Add `channels.discord` or `channels.feishu` to enable; omit or set `enabled: false` to disable. No code merge required.
+
+### 6. Workspace Skill (Optional)
+The agent handles most tasks directly. When it needs to run code or access a repo, it can use the **workspace skill** — a pluggable coding CLI:
+- **Gemini CLI (Default):** Personal subscriptions, high-speed execution.
+- **Claude Code:** Anthropic's agentic SDK.
+- **Codex:** Alternative coding CLI.
 
 ---
 
@@ -51,7 +52,7 @@ To ensure provider resilience, the coding agent logic is abstracted into a **Dri
 ### B. Deep Observability (The Audit Trail)
 - **The Delta Feed:** An engine-level event that generates Gemini-powered "Plain English" summaries of code changes.
 - **Artifact Relay:** Automated mechanism to push screenshots and terminal logs back to the control channel.
-- **Persistent Sessions:** Every session must be manageable via Tmux to allow for manual human-in-the-loop intervention.
+- **Headless Workspace:** The workspace skill runs the coding CLI in headless mode (subprocess per prompt). No persistent terminal.
 
 ### C. Verification & Delivery
 - **UI Verification Loop:** Integrated browser automation (Playwright) within the physical factory for visual audits.
@@ -68,15 +69,19 @@ The engine extends through **skills** — self-contained packages that combine a
 
 | Extension Point | Mechanism | Example |
 |----------------|-----------|---------|
-| **Channels** | Skill with `Channel` implementation | `skills/add-discord/` — adds Discord connectivity |
+| **Channels** | Skill with `Channel` implementation | `skills/add-discord/`, `skills/add-feishu/` — adds channel connectivity |
 | **CLI Drivers** | Config (`TC_CODING_CLI`) | `TC_CODING_CLI=gemini` switches the agent backend |
 | **MCP Tools** | Standard MCP config | MCP server discovery and tool calling |
 
 Skills are the primary extensibility mechanism. Adding a new channel means creating a skill that provides a `Channel` implementation, handles credential setup, and self-registers at startup.
+
+### OpenClaw Mind Spec (SOUL / MEMORY / IDENTITY / USER)
+
+TiClaw uses the **OpenClaw mind format** for full compatibility: SOUL.md (personality), MEMORY.md (facts), IDENTITY.md, USER.md. These evolve through conversation — persona and memory updates sync to files automatically. No ClawHub; skills come from a curated list only.
 
 ### Data Decentralization
 All transient data, databases, and logs must reside in **`~/ticlaw/`**, keeping the source repository strictly for engine logic.
 
 ---
 
-*TiClaw: Built for the future of autonomous engineering teams.*
+*TiClaw: Robot mind builder — personality and memory through interaction.*
