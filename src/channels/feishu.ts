@@ -163,15 +163,27 @@ export class FeishuChannel implements Channel {
     }
 
     try {
+      // Use interactive card with lark_md so Feishu renders markdown (bold, links, code, etc.)
+      const cardContent = {
+        elements: [
+          {
+            tag: 'div',
+            text: {
+              content: text,
+              tag: 'lark_md',
+            },
+          },
+        ],
+      };
       await this.client.im.message.create({
         params: { receive_id_type: 'chat_id' },
         data: {
           receive_id: chatId,
-          content: JSON.stringify({ text }),
-          msg_type: 'text',
+          content: JSON.stringify(cardContent),
+          msg_type: 'interactive',
         },
       });
-      logger.info({ jid, length: text.length }, 'Feishu message sent');
+      logger.info({ jid, length: text.length }, 'Feishu message sent (markdown)');
     } catch (err) {
       logger.error({ jid, err }, 'Failed to send Feishu message');
     }
