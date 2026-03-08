@@ -7,6 +7,7 @@ import {
   ASSISTANT_NAME,
   TICLAW_HOME,
   IDLE_TIMEOUT,
+  MIND_ADMIN_USERS,
   POLL_INTERVAL,
   TRIGGER_PATTERN,
 } from './core/config.js';
@@ -118,6 +119,9 @@ async function processMessages(chatJid: string): Promise<boolean> {
   const latestMsg = messages[messages.length - 1];
   if (latestMsg?.content && !latestMsg.content.trim().startsWith('/mind')) {
     try {
+      const isAdminUser = latestMsg.sender
+        ? MIND_ADMIN_USERS.includes(latestMsg.sender)
+        : false;
       recordUserInteraction({
         chat_jid: chatJid,
         channel: chatJid.startsWith('dc:')
@@ -130,6 +134,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
         timestamp: latestMsg.timestamp,
         sender: latestMsg.sender,
         sender_name: latestMsg.sender_name,
+        is_admin: isAdminUser,
       });
     } catch (err) {
       logger.warn({ err }, 'mind updater failed (ignored)');
@@ -181,7 +186,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
           return true;
         }
         const state = lockMind();
-        logger.info({ chatJid, cmd: '/mind lock', version: state.version }, 'mind governance command');
+        logger.info(
+          { chatJid, cmd: '/mind lock', version: state.version },
+          'mind governance command',
+        );
         await sendFn(chatJid, `✅ Mind locked at version ${state.version}`);
         return true;
       }
@@ -192,7 +200,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
           return true;
         }
         const state = unlockMind();
-        logger.info({ chatJid, cmd: '/mind unlock', lifecycle: state.lifecycle }, 'mind governance command');
+        logger.info(
+          { chatJid, cmd: '/mind unlock', lifecycle: state.lifecycle },
+          'mind governance command',
+        );
         await sendFn(
           chatJid,
           `✅ Mind unlocked (lifecycle=${state.lifecycle})`,
@@ -204,21 +215,28 @@ async function processMessages(chatJid: string): Promise<boolean> {
         const field = parts[2];
         const value = parts.slice(3).join(' ').trim();
         if (!field || !value) {
-          await sendFn(chatJid, 'Usage: /mind set <tone|verbosity|emoji> <value>');
+          await sendFn(
+            chatJid,
+            'Usage: /mind set <tone|verbosity|emoji> <value>',
+          );
           return true;
         }
 
         const patch: any = {};
         if (field === 'tone') patch.tone = value;
         else if (field === 'verbosity') patch.verbosity = value;
-        else if (field === 'emoji') patch.emoji = value === 'true' || value === 'on' || value === '1';
+        else if (field === 'emoji')
+          patch.emoji = value === 'true' || value === 'on' || value === '1';
         else {
           await sendFn(chatJid, `Unsupported field: ${field}`);
           return true;
         }
 
         const state = setMindPersonaPatch(patch);
-        await sendFn(chatJid, `✅ Mind persona updated: ${JSON.stringify(state.persona)}`);
+        await sendFn(
+          chatJid,
+          `✅ Mind persona updated: ${JSON.stringify(state.persona)}`,
+        );
         return true;
       }
 
@@ -226,11 +244,17 @@ async function processMessages(chatJid: string): Promise<boolean> {
         const sub = parts[2] || 'create';
         if (sub === 'create') {
           if (!isMainGroup) {
-            await sendFn(chatJid, '⛔ /mind package create requires main control group');
+            await sendFn(
+              chatJid,
+              '⛔ /mind package create requires main control group',
+            );
             return true;
           }
           const pkg = createPackage('Created via /mind package create');
-          logger.info({ chatJid, cmd: '/mind package create', version: pkg.version }, 'mind governance command');
+          logger.info(
+            { chatJid, cmd: '/mind package create', version: pkg.version },
+            'mind governance command',
+          );
           await sendFn(
             chatJid,
             `📦 Mind package created: v${pkg.version} (${pkg.id})`,
@@ -264,7 +288,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
       if (cmd === 'rollback') {
         if (!isMainGroup) {
-          await sendFn(chatJid, '⛔ /mind rollback requires main control group');
+          await sendFn(
+            chatJid,
+            '⛔ /mind rollback requires main control group',
+          );
           return true;
         }
         const version = Number(parts[2]);
@@ -277,7 +304,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
           await sendFn(chatJid, `❌ Mind package version ${version} not found`);
           return true;
         }
-        logger.info({ chatJid, cmd: '/mind rollback', version: state.version }, 'mind governance command');
+        logger.info(
+          { chatJid, cmd: '/mind rollback', version: state.version },
+          'mind governance command',
+        );
         await sendFn(
           chatJid,
           `↩️ Rolled back to mind version ${state.version}`,

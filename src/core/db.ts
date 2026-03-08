@@ -97,6 +97,7 @@ function createSchema(database: Database.Database): void {
       sender TEXT,
       sender_name TEXT,
       intent TEXT,
+      is_admin INTEGER DEFAULT 0,
       metadata TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_interaction_events_chat_time
@@ -298,8 +299,8 @@ export function setLastGroupSync(): void {
 
 export function storeInteractionEvent(event: InteractionEvent): void {
   db.prepare(
-    `INSERT OR REPLACE INTO interaction_events (id, chat_jid, channel, role, content, timestamp, sender, sender_name, intent, metadata)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO interaction_events (id, chat_jid, channel, role, content, timestamp, sender, sender_name, intent, is_admin, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     event.id,
     event.chat_jid,
@@ -310,6 +311,7 @@ export function storeInteractionEvent(event: InteractionEvent): void {
     event.sender || null,
     event.sender_name || null,
     event.intent || null,
+    event.is_admin ? 1 : 0,
     event.metadata ? JSON.stringify(event.metadata) : null,
   );
 }
@@ -320,7 +322,7 @@ export function getRecentInteractionEvents(
 ): InteractionEvent[] {
   const rows = db
     .prepare(
-      `SELECT id, chat_jid, channel, role, content, timestamp, sender, sender_name, intent, metadata
+      `SELECT id, chat_jid, channel, role, content, timestamp, sender, sender_name, intent, is_admin, metadata
        FROM interaction_events WHERE chat_jid = ? ORDER BY timestamp DESC LIMIT ?`,
     )
     .all(chatJid, limit) as any[];
@@ -335,6 +337,7 @@ export function getRecentInteractionEvents(
     sender: row.sender || undefined,
     sender_name: row.sender_name || undefined,
     intent: row.intent || undefined,
+    is_admin: row.is_admin === 1,
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
   }));
 }

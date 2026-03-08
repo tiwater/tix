@@ -149,6 +149,7 @@ export interface InteractionEvent {
   sender?: string;
   sender_name?: string;
   intent?: InteractionIntent;
+  is_admin?: boolean;
   metadata?: Record<string, unknown>;
 }
 

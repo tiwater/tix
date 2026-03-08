@@ -15,7 +15,11 @@ describe('mind lock P0 anti-tamper regression', () => {
   });
 
   it('blocks natural-language persona mutation when mind is locked', () => {
-    setMindPersonaPatch({ tone: 'professional', verbosity: 'normal', emoji: false });
+    setMindPersonaPatch({
+      tone: 'professional',
+      verbosity: 'normal',
+      emoji: false,
+    });
     const before = getMindState();
 
     lockMind();
@@ -24,6 +28,7 @@ describe('mind lock P0 anti-tamper regression', () => {
       role: 'user',
       content: '你活泼一点，多点表情，回答简短',
       timestamp: new Date().toISOString(),
+      is_admin: false,
     });
 
     const after = getMindState();
@@ -45,8 +50,28 @@ describe('mind lock P0 anti-tamper regression', () => {
     expect(unlockedState.persona.emoji).toBe(true);
   });
 
+  it('allows admin natural-language persona update under lock when mode is admin_override', () => {
+    setMindPersonaPatch({ tone: 'professional', emoji: false });
+    lockMind();
+
+    const result = recordUserInteraction({
+      chat_jid: 'dc:test',
+      role: 'user',
+      content: '你活泼一点，多点表情',
+      timestamp: new Date().toISOString(),
+      is_admin: true,
+    });
+
+    expect(result.state.persona.tone).toBe('playful');
+    expect(result.state.persona.emoji).toBe(true);
+  });
+
   it('rollback restores exact prior persona snapshot', () => {
-    setMindPersonaPatch({ tone: 'friendly', verbosity: 'normal', emoji: false });
+    setMindPersonaPatch({
+      tone: 'friendly',
+      verbosity: 'normal',
+      emoji: false,
+    });
     const pkgA = createPackage('baseline');
     const baselineHash = JSON.stringify(getMindState().persona);
 

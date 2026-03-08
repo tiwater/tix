@@ -11,6 +11,8 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'TC_CODING_CLI',
+  'MIND_ADMIN_USERS',
+  'MIND_LOCK_MODE',
 ]);
 
 export const ASSISTANT_NAME =
@@ -20,6 +22,21 @@ export const ASSISTANT_HAS_OWN_NUMBER =
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 export const TC_CODING_CLI =
   process.env.TC_CODING_CLI || envConfig.TC_CODING_CLI || 'gemini';
+
+// Comma-separated sender IDs that can perform privileged mind operations.
+// Example: MIND_ADMIN_USERS="ou_xxx,dc:user:12345"
+export const MIND_ADMIN_USERS = (
+  process.env.MIND_ADMIN_USERS || envConfig.MIND_ADMIN_USERS || ''
+)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// strict: locked mind rejects all natural persona edits
+// admin_override: locked mind allows natural persona edits from admin users
+export const MIND_LOCK_MODE =
+  process.env.MIND_LOCK_MODE || envConfig.MIND_LOCK_MODE || 'admin_override';
+
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 

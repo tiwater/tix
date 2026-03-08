@@ -6,6 +6,7 @@ import {
   storeInteractionEvent,
   updateMindState,
 } from './db.js';
+import { MIND_LOCK_MODE } from './config.js';
 import type {
   InteractionEvent,
   InteractionIntent,
@@ -64,8 +65,13 @@ export function recordUserInteraction(
   storeInteractionEvent(fullEvent);
 
   let state = getMindState();
+  const isAdmin = !!event.is_admin;
+
   if (state.lifecycle === 'locked') {
-    return { intent, state };
+    const allowAdminOverride = MIND_LOCK_MODE === 'admin_override' && isAdmin;
+    if (!allowAdminOverride) {
+      return { intent, state };
+    }
   }
 
   if (intent === 'persona' || intent === 'mixed') {
@@ -83,7 +89,9 @@ export function unlockMind(): MindState {
   return updateMindState({ lifecycle: 'draft' });
 }
 
-export function setMindPersonaPatch(patch: Partial<MindState['persona']>): MindState {
+export function setMindPersonaPatch(
+  patch: Partial<MindState['persona']>,
+): MindState {
   const state = getMindState();
   if (state.lifecycle === 'locked') return state;
   return updateMindState({
@@ -94,14 +102,20 @@ export function setMindPersonaPatch(patch: Partial<MindState['persona']>): MindS
   });
 }
 
-export function diffMindVersions(fromVersion: number, toVersion: number): string {
+export function diffMindVersions(
+  fromVersion: number,
+  toVersion: number,
+): string {
   const pkgs = listMindPackages(200);
   const from = pkgs.find((p) => p.version === fromVersion);
   const to = pkgs.find((p) => p.version === toVersion);
   if (!from || !to) return 'version not found';
 
   const changes: string[] = [];
-  const keys = new Set([...Object.keys(from.persona || {}), ...Object.keys(to.persona || {})]);
+  const keys = new Set([
+    ...Object.keys(from.persona || {}),
+    ...Object.keys(to.persona || {}),
+  ]);
   for (const key of keys) {
     const a = (from.persona as any)?.[key];
     const b = (to.persona as any)?.[key];
