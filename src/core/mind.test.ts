@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { _initTestDatabase, getMindState } from './db.js';
 import {
   createPackage,
+  diffMindVersions,
   listPackages,
   lockMind,
   recordUserInteraction,
   rollbackPackage,
+  setMindPersonaPatch,
   unlockMind,
 } from './mind.js';
 
@@ -59,5 +61,16 @@ describe('mind core', () => {
 
     const rolled = rollbackPackage(p1.version);
     expect(rolled?.version).toBe(p1.version);
+  });
+
+  it('supports slash-like persona patch and version diff', () => {
+    setMindPersonaPatch({ tone: 'playful', emoji: true });
+    const p1 = createPackage('playful');
+
+    setMindPersonaPatch({ tone: 'professional', emoji: false });
+    const p2 = createPackage('professional');
+
+    const diff = diffMindVersions(p1.version, p2.version);
+    expect(diff).toContain('tone');
   });
 });

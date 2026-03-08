@@ -83,6 +83,40 @@ export function unlockMind(): MindState {
   return updateMindState({ lifecycle: 'draft' });
 }
 
+export function setMindPersonaPatch(patch: Partial<MindState['persona']>): MindState {
+  const state = getMindState();
+  if (state.lifecycle === 'locked') return state;
+  return updateMindState({
+    persona: {
+      ...state.persona,
+      ...patch,
+    },
+  });
+}
+
+export function diffMindVersions(fromVersion: number, toVersion: number): string {
+  const pkgs = listMindPackages(200);
+  const from = pkgs.find((p) => p.version === fromVersion);
+  const to = pkgs.find((p) => p.version === toVersion);
+  if (!from || !to) return 'version not found';
+
+  const changes: string[] = [];
+  const keys = new Set([...Object.keys(from.persona || {}), ...Object.keys(to.persona || {})]);
+  for (const key of keys) {
+    const a = (from.persona as any)?.[key];
+    const b = (to.persona as any)?.[key];
+    if (JSON.stringify(a) !== JSON.stringify(b)) {
+      changes.push(`${key}: ${JSON.stringify(a)} -> ${JSON.stringify(b)}`);
+    }
+  }
+
+  if (from.memory_summary !== to.memory_summary) {
+    changes.push('memory_summary changed');
+  }
+
+  return changes.length ? changes.join('\n') : 'no diff';
+}
+
 export function mindStatus(): MindState {
   return getMindState();
 }

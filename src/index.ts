@@ -33,11 +33,13 @@ import {
 } from './core/db.js';
 import {
   createPackage,
+  diffMindVersions,
   listPackages,
   lockMind,
   mindStatus,
   recordUserInteraction,
   rollbackPackage,
+  setMindPersonaPatch,
   unlockMind,
 } from './core/mind.js';
 import { logger } from './core/logger.js';
@@ -186,6 +188,28 @@ async function processMessages(chatJid: string): Promise<boolean> {
         return true;
       }
 
+      if (cmd === 'set') {
+        const field = parts[2];
+        const value = parts.slice(3).join(' ').trim();
+        if (!field || !value) {
+          await sendFn(chatJid, 'Usage: /mind set <tone|verbosity|emoji> <value>');
+          return true;
+        }
+
+        const patch: any = {};
+        if (field === 'tone') patch.tone = value;
+        else if (field === 'verbosity') patch.verbosity = value;
+        else if (field === 'emoji') patch.emoji = value === 'true' || value === 'on' || value === '1';
+        else {
+          await sendFn(chatJid, `Unsupported field: ${field}`);
+          return true;
+        }
+
+        const state = setMindPersonaPatch(patch);
+        await sendFn(chatJid, `✅ Mind persona updated: ${JSON.stringify(state.persona)}`);
+        return true;
+      }
+
       if (cmd === 'package') {
         const sub = parts[2] || 'create';
         if (sub === 'create') {
@@ -207,6 +231,18 @@ async function processMessages(chatJid: string): Promise<boolean> {
           );
           return true;
         }
+      }
+
+      if (cmd === 'diff') {
+        const from = Number(parts[2]);
+        const to = Number(parts[3]);
+        if (!Number.isFinite(from) || !Number.isFinite(to)) {
+          await sendFn(chatJid, 'Usage: /mind diff <fromVersion> <toVersion>');
+          return true;
+        }
+        const diff = diffMindVersions(from, to);
+        await sendFn(chatJid, `🧾 Mind diff ${from} -> ${to}\n${diff}`);
+        return true;
       }
 
       if (cmd === 'rollback') {
