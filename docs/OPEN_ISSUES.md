@@ -30,10 +30,12 @@ Items discussed but deferred for later implementation. Report as GitHub issues w
 
 **Context:** Full consistency: `registered_groups` → `registered_agents`, `group_folder` → `agent_folder`.
 
-**TODO:**
+**Done:** Supabase schema uses `registered_agents` and `agent_folder` (migration never executed, updated in place).
+
+**TODO (local SQLite):**
 - Migration: `ALTER TABLE registered_groups RENAME TO registered_agents`
 - Migration: add `agent_folder` column, backfill, drop `group_folder` (or use SQLite 3.35+ `RENAME COLUMN`)
-- Update all code references
+- Update all code references (db.ts, task-scheduler, cli, etc.)
 
 ---
 

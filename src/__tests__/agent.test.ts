@@ -37,7 +37,9 @@ vi.mock('../tools/workspace.js', () => ({
 
 vi.mock('../tools/executor.js', () => ({
   buildSessionTools: vi.fn().mockReturnValue({
-    captureSessionTool: { execute: vi.fn().mockResolvedValue('Capture called') },
+    captureSessionTool: {
+      execute: vi.fn().mockResolvedValue('Capture called'),
+    },
     sendToSessionTool: { execute: vi.fn().mockResolvedValue('Send called') },
   }),
 }));

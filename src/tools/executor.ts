@@ -117,7 +117,9 @@ export const buildSessionTools = (
     inputSchema: z.object({
       text: z
         .string()
-        .describe('Natural language prompt for the coding CLI (e.g. "What was the last commit?")'),
+        .describe(
+          'Natural language prompt for the coding CLI (e.g. "What was the last commit?")',
+        ),
     }),
     execute: async ({ text }) => {
       logger.info(

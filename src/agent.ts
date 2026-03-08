@@ -15,7 +15,10 @@ let openrouterInstance: ReturnType<typeof createOpenRouter> | null = null;
 function createProxyFetch(proxyUrl: string): typeof fetch {
   const dispatcher = new ProxyAgent(proxyUrl);
   return (async (input: unknown, init?: unknown) =>
-    undiciFetch(input as URL, { ...(init as object), dispatcher })) as typeof fetch;
+    undiciFetch(input as URL, {
+      ...(init as object),
+      dispatcher,
+    })) as typeof fetch;
 }
 
 function getOpenRouter(): ReturnType<typeof createOpenRouter> {

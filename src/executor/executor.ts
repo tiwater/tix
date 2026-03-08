@@ -81,8 +81,12 @@ export class Executor {
       clearInterval(progressTimer);
 
       if (result.exitCode !== 0 && result.exitCode !== 42) {
-        const errMsg = result.stderr || result.stdout || `Exit code ${result.exitCode}`;
-        logger.warn({ exitCode: result.exitCode, stderr: result.stderr }, 'Workspace CLI exited with error');
+        const errMsg =
+          result.stderr || result.stdout || `Exit code ${result.exitCode}`;
+        logger.warn(
+          { exitCode: result.exitCode, stderr: result.stderr },
+          'Workspace CLI exited with error',
+        );
         onIdle(`Error (exit ${result.exitCode}): ${errMsg.slice(0, 500)}`);
         return;
       }

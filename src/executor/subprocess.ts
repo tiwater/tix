@@ -81,7 +81,10 @@ export async function runPrompt(
   const { cmd, args } = resolveHeadlessArgs(codingCli, prompt);
   const env = buildEnv();
 
-  logger.info({ cmd, cwd, promptLen: prompt.length }, 'Running workspace CLI (headless)');
+  logger.info(
+    { cmd, cwd, promptLen: prompt.length },
+    'Running workspace CLI (headless)',
+  );
 
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, {

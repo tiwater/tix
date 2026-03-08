@@ -90,14 +90,22 @@ export class FeishuChannel implements Channel {
           content = `@${ASSISTANT_NAME} ${content}`;
         }
 
-        this.opts.onChatMetadata(chatJid, timestamp, undefined, 'feishu', isGroup);
+        this.opts.onChatMetadata(
+          chatJid,
+          timestamp,
+          undefined,
+          'feishu',
+          isGroup,
+        );
 
         let group = this.opts.registeredProjects()[chatJid];
         if (!group) {
           logger.info({ chatJid }, 'Auto-registering Feishu chat on message');
           const newGroup: RegisteredProject = {
             name: isGroup ? `feishu-${chatId}` : senderName,
-            folder: isGroup ? toGroupFolder(chatId, 'fs-') : toGroupFolder(senderId, 'fs-dm-'),
+            folder: isGroup
+              ? toGroupFolder(chatId, 'fs-')
+              : toGroupFolder(senderId, 'fs-dm-'),
             trigger: `@${ASSISTANT_NAME}`,
             added_at: new Date().toISOString(),
             requiresTrigger: false,
@@ -119,7 +127,10 @@ export class FeishuChannel implements Channel {
           is_from_me: false,
         });
 
-        logger.info({ chatJid, sender: senderName, content: content.slice(0, 50) }, 'Feishu message received');
+        logger.info(
+          { chatJid, sender: senderName, content: content.slice(0, 50) },
+          'Feishu message received',
+        );
       },
     });
 
@@ -166,7 +177,11 @@ export class FeishuChannel implements Channel {
     }
   }
 
-  async sendFile(jid: string, _filePath: string, _caption?: string): Promise<void> {
+  async sendFile(
+    jid: string,
+    _filePath: string,
+    _caption?: string,
+  ): Promise<void> {
     logger.warn({ jid }, 'Feishu sendFile not implemented');
   }
 
@@ -204,10 +219,13 @@ function createFeishuChannel(opts: ChannelOpts): FeishuChannel | null {
   if (!enabled) return null;
 
   const appId = process.env.TC_FEISHU_APP_ID || config.TC_FEISHU_APP_ID;
-  const appSecret = process.env.TC_FEISHU_APP_SECRET || config.TC_FEISHU_APP_SECRET;
+  const appSecret =
+    process.env.TC_FEISHU_APP_SECRET || config.TC_FEISHU_APP_SECRET;
 
   if (!appId || !appSecret) {
-    logger.debug('Feishu channel skipped: TC_FEISHU_APP_ID or TC_FEISHU_APP_SECRET not set');
+    logger.debug(
+      'Feishu channel skipped: TC_FEISHU_APP_ID or TC_FEISHU_APP_SECRET not set',
+    );
     return null;
   }
 

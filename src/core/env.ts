@@ -126,7 +126,12 @@ export function readEnvFile(keys: string[]): Record<string, string> {
 export { TICLAW_CONFIG_PATH };
 
 /** Channels that can be enabled via config. */
-const CONFIGURABLE_CHANNELS = ['discord', 'feishu', 'telegram', 'slack'] as const;
+const CONFIGURABLE_CHANNELS = [
+  'discord',
+  'feishu',
+  'telegram',
+  'slack',
+] as const;
 
 /**
  * Returns channel names enabled in config.yaml.

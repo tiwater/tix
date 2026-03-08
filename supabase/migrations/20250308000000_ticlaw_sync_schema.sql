@@ -21,11 +21,11 @@ CREATE TABLE IF NOT EXISTS mind_packages (
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-  group_folder TEXT PRIMARY KEY,
+  agent_folder TEXT PRIMARY KEY,
   session_id TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS registered_groups (
+CREATE TABLE IF NOT EXISTS registered_agents (
   jid TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   folder TEXT NOT NULL UNIQUE,

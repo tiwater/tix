@@ -152,7 +152,9 @@ export function createPackage(
 ): MindPackage {
   const state = getMindState();
   const next = updateMindState({ version: state.version + 1 });
-  const pkg = createMindPackage(changelog || `Package from mind v${next.version}`);
+  const pkg = createMindPackage(
+    changelog || `Package from mind v${next.version}`,
+  );
   scheduleSupabasePush();
   return pkg;
 }

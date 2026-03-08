@@ -27,7 +27,9 @@ export const TC_CODING_CLI =
 // Comma-separated sender IDs that can perform privileged mind operations.
 // Example: MIND_ADMIN_USERS="ou_xxx,dc:user:12345"
 export const MIND_ADMIN_USERS = (
-  process.env.MIND_ADMIN_USERS || envConfig.MIND_ADMIN_USERS || ''
+  process.env.MIND_ADMIN_USERS ||
+  envConfig.MIND_ADMIN_USERS ||
+  ''
 )
   .split(',')
   .map((s) => s.trim())
@@ -72,7 +74,12 @@ export const DATA_DIR = path.join(TICLAW_HOME, 'data');
 export const GROUPS_DIR = AGENTS_DIR;
 
 /** OpenClaw-compatible mind files (boot-md order). Evolved through conversation. */
-export const AGENT_MIND_FILES = ['SOUL.md', 'IDENTITY.md', 'USER.md', 'MEMORY.md'] as const;
+export const AGENT_MIND_FILES = [
+  'SOUL.md',
+  'IDENTITY.md',
+  'USER.md',
+  'MEMORY.md',
+] as const;
 
 /** Legacy: single memory file (pre–OpenClaw split). Kept for migration. */
 export const AGENT_MEMORY_FILENAME = 'MEMORY.md';

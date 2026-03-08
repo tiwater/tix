@@ -9,7 +9,11 @@ import path from 'path';
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-import { AGENTS_DIR, AGENT_MEMORY_FILENAME, AGENT_MIND_FILES } from '../core/config.js';
+import {
+  AGENTS_DIR,
+  AGENT_MEMORY_FILENAME,
+  AGENT_MIND_FILES,
+} from '../core/config.js';
 import {
   getAllRegisteredProjects,
   getAllRouterState,
@@ -25,7 +29,11 @@ import {
 import { syncMindStateToFiles } from '../core/mind-files.js';
 import { readEnvFile } from '../core/env.js';
 import { logger } from '../core/logger.js';
-import type { MindPackage, MindState, RegisteredProject } from '../core/types.js';
+import type {
+  MindPackage,
+  MindState,
+  RegisteredProject,
+} from '../core/types.js';
 
 const STORAGE_BUCKET = 'ticlaw';
 const STORAGE_AGENTS_PREFIX = 'agents';
@@ -72,7 +80,10 @@ export function scheduleSupabasePush(): void {
 export function startPeriodicSupabasePush(): void {
   if (!isSupabaseConfigured()) return;
   if (_periodicTimer) return;
-  _periodicTimer = setInterval(() => void pushToSupabase(), PERIODIC_PUSH_INTERVAL_MS);
+  _periodicTimer = setInterval(
+    () => void pushToSupabase(),
+    PERIODIC_PUSH_INTERVAL_MS,
+  );
   logger.debug('Supabase periodic push started');
 }
 
@@ -115,12 +126,16 @@ export async function pushToSupabase(): Promise<void> {
 
     // 3. Sessions
     const sessions = getAllSessions();
-    const sessionRows = Object.entries(sessions).map(([group_folder, session_id]) => ({
-      group_folder,
-      session_id,
-    }));
+    const sessionRows = Object.entries(sessions).map(
+      ([agent_folder, session_id]) => ({
+        agent_folder,
+        session_id,
+      }),
+    );
     if (sessionRows.length > 0) {
-      await supabase.from('sessions').upsert(sessionRows, { onConflict: 'group_folder' });
+      await supabase
+        .from('sessions')
+        .upsert(sessionRows, { onConflict: 'agent_folder' });
     }
 
     // 4. Registered groups
@@ -131,18 +146,26 @@ export async function pushToSupabase(): Promise<void> {
       folder: g.folder,
       trigger_pattern: g.trigger,
       added_at: g.added_at,
-      requires_trigger: g.requiresTrigger === undefined ? 1 : g.requiresTrigger ? 1 : 0,
+      requires_trigger:
+        g.requiresTrigger === undefined ? 1 : g.requiresTrigger ? 1 : 0,
       is_main: g.isMain ? 1 : 0,
     }));
     if (groupRows.length > 0) {
-      await supabase.from('registered_groups').upsert(groupRows, { onConflict: 'jid' });
+      await supabase
+        .from('registered_agents')
+        .upsert(groupRows, { onConflict: 'jid' });
     }
 
     // 5. Router state
     const routerState = getAllRouterState();
-    const routerRows = Object.entries(routerState).map(([key, value]) => ({ key, value }));
+    const routerRows = Object.entries(routerState).map(([key, value]) => ({
+      key,
+      value,
+    }));
     if (routerRows.length > 0) {
-      await supabase.from('router_state').upsert(routerRows, { onConflict: 'key' });
+      await supabase
+        .from('router_state')
+        .upsert(routerRows, { onConflict: 'key' });
     }
 
     // 6. Agent mind files (SOUL, MEMORY, etc. — OpenClaw-compatible)
@@ -178,7 +201,8 @@ async function pushAgentFiles(supabase: SupabaseClient): Promise<void> {
   // Global: all OpenClaw mind files
   for (const filename of AGENT_MIND_FILES) {
     const content = readAgentMindFile(AGENTS_DIR, filename);
-    if (content) await uploadFile(`${STORAGE_AGENTS_PREFIX}/${filename}`, content);
+    if (content)
+      await uploadFile(`${STORAGE_AGENTS_PREFIX}/${filename}`, content);
   }
 
   // Per-agent: all OpenClaw mind files
@@ -188,7 +212,11 @@ async function pushAgentFiles(supabase: SupabaseClient): Promise<void> {
     const agentDir = path.join(AGENTS_DIR, ent.name);
     for (const filename of AGENT_MIND_FILES) {
       const content = readAgentMindFile(agentDir, filename);
-      if (content) await uploadFile(`${STORAGE_AGENTS_PREFIX}/${ent.name}/${filename}`, content);
+      if (content)
+        await uploadFile(
+          `${STORAGE_AGENTS_PREFIX}/${ent.name}/${filename}`,
+          content,
+        );
     }
   }
 }
@@ -213,7 +241,11 @@ export async function pullFromSupabase(): Promise<void> {
     }
 
     // 2. Mind packages
-    const { data: pkgRows } = await supabase.from('mind_packages').select('*').order('version', { ascending: false }).limit(100);
+    const { data: pkgRows } = await supabase
+      .from('mind_packages')
+      .select('*')
+      .order('version', { ascending: false })
+      .limit(100);
     if (pkgRows && pkgRows.length > 0) {
       for (const row of pkgRows) {
         const pkg: MindPackage = {
@@ -233,12 +265,14 @@ export async function pullFromSupabase(): Promise<void> {
     const { data: sessionRows } = await supabase.from('sessions').select('*');
     if (sessionRows) {
       for (const row of sessionRows) {
-        setSession(row.group_folder, row.session_id);
+        setSession(row.agent_folder, row.session_id);
       }
     }
 
-    // 4. Registered groups
-    const { data: groupRows } = await supabase.from('registered_groups').select('*');
+    // 4. Registered agents
+    const { data: groupRows } = await supabase
+      .from('registered_agents')
+      .select('*');
     if (groupRows) {
       for (const row of groupRows) {
         const group: RegisteredProject = {
@@ -252,13 +286,18 @@ export async function pullFromSupabase(): Promise<void> {
         try {
           setRegisteredProject(row.jid, group);
         } catch (err) {
-          logger.warn({ jid: row.jid, err }, 'Skipping invalid registered group on pull');
+          logger.warn(
+            { jid: row.jid, err },
+            'Skipping invalid registered group on pull',
+          );
         }
       }
     }
 
     // 5. Router state
-    const { data: routerRows } = await supabase.from('router_state').select('*');
+    const { data: routerRows } = await supabase
+      .from('router_state')
+      .select('*');
     if (routerRows) {
       for (const row of routerRows) {
         setRouterState(row.key, row.value);
@@ -270,7 +309,10 @@ export async function pullFromSupabase(): Promise<void> {
 
     logger.info('Supabase pull completed');
   } catch (err) {
-    logger.warn({ err }, 'Supabase pull failed (robot continues from local copy)');
+    logger.warn(
+      { err },
+      'Supabase pull failed (robot continues from local copy)',
+    );
   }
 }
 
@@ -279,7 +321,9 @@ async function pullAgentFile(
   storageKey: string,
   outPath: string,
 ): Promise<boolean> {
-  const { data } = await supabase.storage.from(STORAGE_BUCKET).download(storageKey);
+  const { data } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .download(storageKey);
   if (!data) return false;
   const content = await data.text();
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
@@ -304,7 +348,7 @@ async function pullAgentFiles(supabase: SupabaseClient): Promise<void> {
     const ok2 = await pullAgentFile(supabase, groupsKey, outPath);
     if (ok2) return;
     if (filename === AGENT_MEMORY_FILENAME) {
-      await pullAgentFile(supabase, `${agentsPrefix}/CLAUDE.md`, outPath) ||
+      (await pullAgentFile(supabase, `${agentsPrefix}/CLAUDE.md`, outPath)) ||
         (await pullAgentFile(supabase, `${groupsPrefix}/CLAUDE.md`, outPath));
     }
   };
@@ -316,11 +360,27 @@ async function pullAgentFiles(supabase: SupabaseClient): Promise<void> {
   for (const filename of AGENT_MIND_FILES) {
     const outPath = path.join(AGENTS_DIR, filename);
     const ok =
-      (await pullAgentFile(supabase, `${STORAGE_AGENTS_PREFIX}/${filename}`, outPath)) ||
-      (await pullAgentFile(supabase, `${STORAGE_GROUPS_PREFIX}/${filename}`, outPath));
+      (await pullAgentFile(
+        supabase,
+        `${STORAGE_AGENTS_PREFIX}/${filename}`,
+        outPath,
+      )) ||
+      (await pullAgentFile(
+        supabase,
+        `${STORAGE_GROUPS_PREFIX}/${filename}`,
+        outPath,
+      ));
     if (!ok && filename === AGENT_MEMORY_FILENAME) {
-      await pullAgentFile(supabase, `${STORAGE_AGENTS_PREFIX}/CLAUDE.md`, outPath) ||
-        (await pullAgentFile(supabase, `${STORAGE_GROUPS_PREFIX}/CLAUDE.md`, outPath));
+      (await pullAgentFile(
+        supabase,
+        `${STORAGE_AGENTS_PREFIX}/CLAUDE.md`,
+        outPath,
+      )) ||
+        (await pullAgentFile(
+          supabase,
+          `${STORAGE_GROUPS_PREFIX}/CLAUDE.md`,
+          outPath,
+        ));
     }
   }
 

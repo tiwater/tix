@@ -13,11 +13,19 @@ import type { MindPersona } from './types.js';
 
 /** Convert persona to SOUL.md markdown (OpenClaw-compatible). */
 function personaToSoul(persona: MindPersona): string {
-  const lines: string[] = ['# SOUL', '', 'Personality and behavioral core (evolved through conversation).', ''];
+  const lines: string[] = [
+    '# SOUL',
+    '',
+    'Personality and behavioral core (evolved through conversation).',
+    '',
+  ];
   if (persona.tone) lines.push(`- **Tone:** ${persona.tone}`);
   if (persona.verbosity) lines.push(`- **Verbosity:** ${persona.verbosity}`);
-  if (typeof persona.emoji === 'boolean') lines.push(`- **Emoji:** ${persona.emoji}`);
-  const rest = Object.entries(persona).filter(([k]) => !['tone', 'verbosity', 'emoji'].includes(k));
+  if (typeof persona.emoji === 'boolean')
+    lines.push(`- **Emoji:** ${persona.emoji}`);
+  const rest = Object.entries(persona).filter(
+    ([k]) => !['tone', 'verbosity', 'emoji'].includes(k),
+  );
   for (const [k, v] of rest) {
     if (v != null) lines.push(`- **${k}:** ${String(v)}`);
   }
@@ -63,7 +71,10 @@ export function loadGroupMindContext(groupFolder?: string): string {
   if (parts.length === 0) {
     // Fallback: synthesize from SQLite if no files yet
     const state = getMindState();
-    if (Object.keys(state.persona || {}).length > 0 || state.memory_summary?.trim()) {
+    if (
+      Object.keys(state.persona || {}).length > 0 ||
+      state.memory_summary?.trim()
+    ) {
       parts.push(personaToSoul(state.persona));
       if (state.memory_summary?.trim()) {
         parts.push(`# MEMORY\n\n${state.memory_summary.trim()}\n`);
@@ -71,5 +82,7 @@ export function loadGroupMindContext(groupFolder?: string): string {
     }
   }
 
-  return parts.length ? `\n## Mind context\n\n${parts.join('\n\n---\n\n')}\n` : '';
+  return parts.length
+    ? `\n## Mind context\n\n${parts.join('\n\n---\n\n')}\n`
+    : '';
 }

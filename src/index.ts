@@ -61,10 +61,7 @@ import {
 
 import { runAgentOrchestrator, getModelName } from './agent.js';
 import type { ContainerOutput } from './core/types.js';
-import {
-  getEnabledChannelsFromConfig,
-  readEnvFile,
-} from './core/env.js';
+import { getEnabledChannelsFromConfig, readEnvFile } from './core/env.js';
 import {
   isSupabaseConfigured,
   pullFromSupabase,
@@ -715,9 +712,10 @@ async function main(): Promise<void> {
   const CHANNEL_CONNECT_TIMEOUT = 15_000;
   const enabledFromConfig = getEnabledChannelsFromConfig();
   const registeredChannelNames = getRegisteredChannelNames();
-  const toConnect = enabledFromConfig.length > 0
-    ? registeredChannelNames.filter((n) => enabledFromConfig.includes(n))
-    : registeredChannelNames;
+  const toConnect =
+    enabledFromConfig.length > 0
+      ? registeredChannelNames.filter((n) => enabledFromConfig.includes(n))
+      : registeredChannelNames;
   for (const name of toConnect) {
     const factory = getChannelFactory(name);
     if (factory) {
