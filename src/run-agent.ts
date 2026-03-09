@@ -11,6 +11,8 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import { createRequire } from 'module';
+import path from 'path';
 import { loadGroupMindContext } from './core/mind-files.js';
 import { logger } from './core/logger.js';
 import {
@@ -41,6 +43,12 @@ const LLM_ENV: Record<string, string | undefined> = MINIMAX_API_KEY
     : ANTHROPIC_API_KEY
       ? { ANTHROPIC_API_KEY }
       : {};
+
+// Explicitly resolve the CLI path to avoid PNPM workspace symlink issues 
+// where the internal `import.meta.url` resolution inside the SDK throws an ENOENT.
+const require = createRequire(import.meta.url);
+const sdkIndex = require.resolve('@anthropic-ai/claude-agent-sdk');
+const CLI_PATH = path.join(path.dirname(sdkIndex), 'cli.js');
 
 export interface RunAgentOpts {
   chatJid: string;
@@ -114,6 +122,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       options: {
         systemPrompt,
         cwd: workspacePath,
+        pathToClaudeCodeExecutable: CLI_PATH,
         allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
         permissionMode: 'acceptEdits',
         model: DEFAULT_LLM_MODEL || 'claude-3-5-sonnet-20241022',
