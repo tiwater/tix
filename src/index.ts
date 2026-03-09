@@ -59,7 +59,7 @@ import {
   RegisteredProject,
 } from './core/types.js';
 
-import { runAgentOrchestrator, getModelName } from './agent.js';
+import { runAgentOrchestrator } from './agent.js';
 import type { ContainerOutput } from './core/types.js';
 import { getEnabledChannelsFromConfig, readEnvFile } from './core/env.js';
 import {
@@ -124,27 +124,25 @@ async function processMessages(chatJid: string): Promise<boolean> {
   // Mind evolution: natural conversation updates persona and memory (non-blocking)
   const latestMsg = messages[messages.length - 1];
   if (latestMsg?.content && !latestMsg.content.trim().startsWith('/mind')) {
-    try {
-      const isAdminUser = latestMsg.sender
-        ? MIND_ADMIN_USERS.includes(latestMsg.sender)
-        : false;
-      recordUserInteraction({
-        chat_jid: chatJid,
-        channel: chatJid.startsWith('dc:')
-          ? 'discord'
-          : chatJid.startsWith('tg:')
-            ? 'telegram'
-            : undefined,
-        role: 'user',
-        content: latestMsg.content,
-        timestamp: latestMsg.timestamp,
-        sender: latestMsg.sender,
-        sender_name: latestMsg.sender_name,
-        is_admin: isAdminUser,
-      });
-    } catch (err) {
+    const isAdminUser = latestMsg.sender
+      ? MIND_ADMIN_USERS.includes(latestMsg.sender)
+      : false;
+    recordUserInteraction({
+      chat_jid: chatJid,
+      channel: chatJid.startsWith('dc:')
+        ? 'discord'
+        : chatJid.startsWith('tg:')
+          ? 'telegram'
+          : undefined,
+      role: 'user',
+      content: latestMsg.content,
+      timestamp: latestMsg.timestamp,
+      sender: latestMsg.sender,
+      sender_name: latestMsg.sender_name,
+      is_admin: isAdminUser,
+    }).catch(err => {
       logger.warn({ err }, 'mind updater failed (ignored)');
-    }
+    });
   }
 
   const recentMessages = getRecentMessages(chatJid, 10);
@@ -399,7 +397,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
           const scheduleEdit = () => {
             if (streamBuf.timer) clearTimeout(streamBuf.timer);
             streamBuf.timer = setTimeout(() => {
-              flushEdit().catch(() => {});
+              flushEdit().catch(() => { });
             }, EDIT_DEBOUNCE_MS);
           };
 
@@ -815,7 +813,7 @@ async function main(): Promise<void> {
 const isDirectRun =
   process.argv[1] &&
   new URL(import.meta.url).pathname ===
-    new URL(`file://${process.argv[1]}`).pathname;
+  new URL(`file://${process.argv[1]}`).pathname;
 
 if (isDirectRun) {
   main().catch((err) => {

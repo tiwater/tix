@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { _initTestDatabase, getMindState } from './db.js';
 import {
   createPackage,
@@ -10,14 +10,29 @@ import {
   setMindPersonaPatch,
   unlockMind,
 } from './mind.js';
+import { generateObject } from 'ai';
+
+vi.mock('ai', () => ({
+  generateObject: vi.fn(),
+}));
 
 describe('mind core', () => {
   beforeEach(() => {
     _initTestDatabase();
+    vi.mocked(generateObject).mockReset();
   });
 
-  it('updates persona on natural persona instruction', () => {
-    const result = recordUserInteraction({
+  it('updates persona on natural persona instruction', async () => {
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: {
+        intent: 'persona',
+        confidence: 0.85,
+        persona_patch: { tone: 'playful', verbosity: 'short' },
+        reason: 'test',
+      }
+    } as any);
+
+    const result = await recordUserInteraction({
       chat_jid: 'dc:test',
       role: 'user',
       content: '你活泼一点，回答简短',
@@ -30,9 +45,41 @@ describe('mind core', () => {
     expect(state.persona.verbosity).toBe('short');
   });
 
-  it('does not update persona when locked', () => {
+  it('rejects update on low confidence', async () => {
+    setMindPersonaPatch({ tone: 'neutral', verbosity: 'normal' });
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: {
+        intent: 'persona',
+        confidence: 0.4,
+        persona_patch: { tone: 'playful' },
+        reason: 'test',
+      }
+    } as any);
+
+    const result = await recordUserInteraction({
+      chat_jid: 'dc:test',
+      role: 'user',
+      content: '你活泼一点',
+      timestamp: new Date().toISOString(),
+    });
+
+    expect(result.intent).toBe('persona');
+    const state = getMindState();
+    expect(state.persona.tone).toBe('neutral'); // Should not have updated
+  });
+
+  it('does not update persona when locked', async () => {
     lockMind();
-    recordUserInteraction({
+    vi.mocked(generateObject).mockResolvedValue({
+      object: {
+        intent: 'persona',
+        confidence: 0.9,
+        persona_patch: { tone: 'playful' },
+        reason: 'test reasoning',
+      }
+    } as any);
+
+    await recordUserInteraction({
       chat_jid: 'dc:test',
       role: 'user',
       content: '你活泼一点',
@@ -44,7 +91,7 @@ describe('mind core', () => {
     expect(state.persona.tone).not.toBe('playful');
 
     unlockMind();
-    recordUserInteraction({
+    await recordUserInteraction({
       chat_jid: 'dc:test',
       role: 'user',
       content: '你活泼一点',

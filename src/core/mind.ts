@@ -16,55 +16,52 @@ import type {
   MindState,
 } from './types.js';
 
-function classifyIntent(content: string): InteractionIntent {
-  const t = content.toLowerCase();
-  const personaHints = [
-    '活泼',
-    '严肃',
-    '简短',
-    '详细',
-    '少点表情',
-    '多点表情',
-    'tone',
-    'style',
-    'personality',
-  ];
-  if (personaHints.some((h) => t.includes(h))) return 'persona';
-  if (t.includes('记住') || t.includes('remember')) return 'memory';
-  if (t.includes('并且') || t.includes('同时')) return 'mixed';
-  return 'task';
-}
+import { z } from 'zod';
+import { generateObject } from 'ai';
+import { getModelName, getOpenRouter } from './llm.js';
+import { logger } from './logger.js';
 
-function applyPersonaHints(state: MindState, content: string): MindState {
-  const nextPersona = { ...state.persona };
-  if (content.includes('活泼')) nextPersona.tone = 'playful';
-  if (content.includes('专业') || content.includes('严肃'))
-    nextPersona.tone = 'professional';
-  if (content.includes('简短')) nextPersona.verbosity = 'short';
-  if (content.includes('详细')) nextPersona.verbosity = 'detailed';
-  if (content.includes('少点表情')) nextPersona.emoji = false;
-  if (content.includes('多点表情')) nextPersona.emoji = true;
+const IntentSchema = z.object({
+  intent: z.enum(['task', 'persona', 'memory', 'mixed', 'unknown']),
+  confidence: z.number().min(0).max(1),
+  persona_patch: z.object({
+    tone: z.enum(['neutral', 'friendly', 'playful', 'professional']).optional(),
+    verbosity: z.enum(['short', 'normal', 'detailed']).optional(),
+    emoji: z.boolean().optional(),
+  }).optional(),
+  reason: z.string()
+});
 
-  const next = updateMindState({
-    persona: nextPersona,
-    memory_summary: state.memory_summary,
-  });
-  syncMindStateToFiles();
-  scheduleSupabasePush();
-  return next;
-}
-
-export function recordUserInteraction(
+export async function recordUserInteraction(
   event: Omit<InteractionEvent, 'id' | 'intent'>,
-): {
+): Promise<{
   intent: InteractionIntent;
   state: MindState;
-} {
-  const intent = classifyIntent(event.content);
+}> {
+  const openrouter = getOpenRouter();
+  const model = getModelName();
+
+  let intentResult: z.infer<typeof IntentSchema>;
+
+  try {
+    const { object } = await generateObject({
+      model: openrouter(model),
+      schema: IntentSchema,
+      prompt: `Analyze the following user utterance and determine the intent for configuring the robot mind.\n\nUtterance: "${event.content}"\n\n- "persona": if the user is asking to change the robot's tone, verbosity, or emoji usage.\n- "memory": if they are telling the robot to remember something.\n- "mixed": if they are mixing multiple configuration instructions.\n- "task": if it's a general question, command, or execution task.\n- "unknown": if unclear.\nDetermine confidence from 0.0 to 1.0. If the intent is persona or mixed, supply the persona_patch.`
+    });
+    intentResult = object;
+  } catch (err) {
+    logger.error({ err }, 'Failed to classify intent structurally');
+    intentResult = { intent: 'unknown', confidence: 0, reason: 'LLM error' };
+  }
+
+  const generatedIntent = intentResult.intent as InteractionIntent;
+  logger.info({ intentResult, eventContent: event.content }, 'Intent parsed');
+
   const fullEvent: InteractionEvent = {
     ...event,
     id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    intent,
+    intent: generatedIntent,
   };
 
   storeInteractionEvent(fullEvent);
@@ -75,15 +72,21 @@ export function recordUserInteraction(
   if (state.lifecycle === 'locked') {
     const allowAdminOverride = MIND_LOCK_MODE === 'admin_override' && isAdmin;
     if (!allowAdminOverride) {
-      return { intent, state };
+      return { intent: generatedIntent, state };
     }
   }
 
-  if (intent === 'persona' || intent === 'mixed') {
-    state = applyPersonaHints(state, event.content);
+  if ((generatedIntent === 'persona' || generatedIntent === 'mixed') && intentResult.confidence >= 0.7 && intentResult.persona_patch) {
+    const nextPersona = { ...state.persona, ...intentResult.persona_patch };
+    state = updateMindState({
+      persona: nextPersona,
+      memory_summary: state.memory_summary,
+    });
+    syncMindStateToFiles();
+    scheduleSupabasePush();
   }
 
-  return { intent, state };
+  return { intent: generatedIntent, state };
 }
 
 export function lockMind(): MindState {

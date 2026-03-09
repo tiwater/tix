@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { _initTestDatabase, getMindState } from './db.js';
 import {
   createPackage,
@@ -8,13 +8,19 @@ import {
   setMindPersonaPatch,
   unlockMind,
 } from './mind.js';
+import { generateObject } from 'ai';
+
+vi.mock('ai', () => ({
+  generateObject: vi.fn(),
+}));
 
 describe('mind lock P0 anti-tamper regression', () => {
   beforeEach(() => {
     _initTestDatabase();
+    vi.mocked(generateObject).mockReset();
   });
 
-  it('blocks natural-language persona mutation when mind is locked', () => {
+  it('blocks natural-language persona mutation when mind is locked', async () => {
     setMindPersonaPatch({
       tone: 'professional',
       verbosity: 'normal',
@@ -23,7 +29,16 @@ describe('mind lock P0 anti-tamper regression', () => {
     const before = getMindState();
 
     lockMind();
-    recordUserInteraction({
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: {
+        intent: 'persona',
+        confidence: 0.9,
+        persona_patch: { tone: 'playful', verbosity: 'short', emoji: true },
+        reason: 'test',
+      }
+    } as any);
+
+    await recordUserInteraction({
       chat_jid: 'dc:test',
       role: 'user',
       content: '你活泼一点，多点表情，回答简短',
@@ -50,11 +65,20 @@ describe('mind lock P0 anti-tamper regression', () => {
     expect(unlockedState.persona.emoji).toBe(true);
   });
 
-  it('allows admin natural-language persona update under lock when mode is admin_override', () => {
+  it('allows admin natural-language persona update under lock when mode is admin_override', async () => {
     setMindPersonaPatch({ tone: 'professional', emoji: false });
     lockMind();
 
-    const result = recordUserInteraction({
+    vi.mocked(generateObject).mockResolvedValueOnce({
+      object: {
+        intent: 'persona',
+        confidence: 0.9,
+        persona_patch: { tone: 'playful', emoji: true },
+        reason: 'test',
+      }
+    } as any);
+
+    const result = await recordUserInteraction({
       chat_jid: 'dc:test',
       role: 'user',
       content: '你活泼一点，多点表情',
@@ -66,7 +90,7 @@ describe('mind lock P0 anti-tamper regression', () => {
     expect(result.state.persona.emoji).toBe(true);
   });
 
-  it('rollback restores exact prior persona snapshot', () => {
+  it('rollback restores exact prior prior persona snapshot', () => {
     setMindPersonaPatch({
       tone: 'friendly',
       verbosity: 'normal',
