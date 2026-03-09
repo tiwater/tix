@@ -4,7 +4,6 @@ import path from 'path';
 
 import {
   ASSISTANT_NAME,
-  TC_CODING_CLI,
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './core/config.js';
@@ -15,10 +14,10 @@ import {
   updateTask,
   updateTaskAfterRun,
 } from './core/db.js';
-import { resolveGroupFolderPath } from './executor/group-folder.js';
+import { resolveGroupFolderPath } from './core/utils.js';
 import { logger } from './core/logger.js';
 import { RegisteredProject, ScheduledTask } from './core/types.js';
-import { runAgentOrchestrator } from './agent.js';
+import { runAgent } from './run-agent.js';
 
 export interface SchedulerDependencies {
   registeredProjects: () => Record<string, RegisteredProject>;
@@ -94,31 +93,14 @@ async function runTask(
       },
     ];
 
-    await runAgentOrchestrator({
+    await runAgent({
       chatJid: task.chat_jid,
       group,
       workspacePath: groupDir,
-      isMain: !!group.isMain,
-      codingCli: TC_CODING_CLI,
-      sessionId: `cron_${task.id.replace(/[^a-zA-Z0-9]/g, '_')}`,
       messages: aiMessages,
-      // Minimal mocked functions for the orchestrator, since we're just running a background job
-      sendFn: deps.sendMessage,
-      createChannelFn: async () => null,
-      registerProjectFn: () => {},
-      isChannelAliveFn: async () => true,
-      registeredProjects: groups,
       onReply: async (text) => {
+        result = text;
         await deps.sendMessage(task.chat_jid, text);
-      },
-      onOutput: async (output) => {
-        if (output.result) {
-          result = output.result;
-          await deps.sendMessage(task.chat_jid, output.result);
-        }
-        if (output.status === 'error') {
-          error = output.error || 'Unknown error';
-        }
       },
     });
 

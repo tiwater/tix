@@ -1,3 +1,11 @@
+/**
+ * TiClaw mind system — persona & memory state management.
+ *
+ * Intent classification has been removed; the Claude Agent SDK executor
+ * handles persona/memory evolution directly through conversation.
+ * This module is now purely about SQLite state + file sync.
+ */
+
 import {
   createMindPackage,
   getMindState,
@@ -15,101 +23,32 @@ import type {
   MindPackage,
   MindState,
 } from './types.js';
-
-import { z } from 'zod';
-import { generateObject } from 'ai';
-import { getModelName, getOpenRouter } from './llm.js';
 import { logger } from './logger.js';
 
-const IntentSchema = z.object({
-  intent: z.enum(['task', 'persona', 'memory', 'mixed', 'unknown']),
-  confidence: z.number().min(0).max(1),
-  persona_patch: z
-    .object({
-      tone: z
-        .enum(['neutral', 'friendly', 'playful', 'professional'])
-        .nullable()
-        .describe('New tone setting, or null if not changing'),
-      verbosity: z
-        .enum(['short', 'normal', 'detailed'])
-        .nullable()
-        .describe('New verbosity setting, or null if not changing'),
-      emoji: z
-        .boolean()
-        .nullable()
-        .describe('New emoji setting, or null if not changing'),
-    })
-    .describe('Persona fields to update; set each to null if not relevant'),
-  reason: z.string(),
-});
-
+/**
+ * Record an inbound interaction event.
+ * Intent is now always 'task' (classification removed — the Claude agent handles
+ * persona/memory evolation naturally through conversation).
+ */
 export async function recordUserInteraction(
   event: Omit<InteractionEvent, 'id' | 'intent'>,
 ): Promise<{
   intent: InteractionIntent;
   state: MindState;
 }> {
-  const openrouter = getOpenRouter();
-  const model = getModelName();
-
-  let intentResult: z.infer<typeof IntentSchema>;
-
-  try {
-    const { object } = await generateObject({
-      model: openrouter(model),
-      schema: IntentSchema,
-      prompt: `Analyze the following user utterance and determine the intent for configuring the robot mind.\n\nUtterance: "${event.content}"\n\n- "persona": if the user is asking to change the robot's tone, verbosity, or emoji usage.\n- "memory": if they are telling the robot to remember something.\n- "mixed": if they are mixing multiple configuration instructions.\n- "task": if it's a general question, command, or execution task.\n- "unknown": if unclear.\nDetermine confidence from 0.0 to 1.0. If the intent is persona or mixed, supply the persona_patch.`,
-    });
-    intentResult = object;
-  } catch (err) {
-    logger.error({ err }, 'Failed to classify intent structurally');
-    intentResult = { intent: 'unknown', confidence: 0, reason: 'LLM error' };
-  }
-
-  const generatedIntent = intentResult.intent as InteractionIntent;
-  logger.info({ intentResult, eventContent: event.content }, 'Intent parsed');
+  const intent: InteractionIntent = 'task';
 
   const fullEvent: InteractionEvent = {
     ...event,
     id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    intent: generatedIntent,
+    intent,
   };
 
   storeInteractionEvent(fullEvent);
+  logger.debug({ eventContent: event.content?.slice(0, 80) }, 'Interaction recorded');
 
-  let state = getMindState();
-  const isAdmin = !!event.is_admin;
-
-  if (state.lifecycle === 'locked') {
-    const allowAdminOverride = MIND_LOCK_MODE === 'admin_override' && isAdmin;
-    if (!allowAdminOverride) {
-      return { intent: generatedIntent, state };
-    }
-  }
-
-  if (
-    (generatedIntent === 'persona' || generatedIntent === 'mixed') &&
-    intentResult.confidence >= 0.7
-  ) {
-    // Filter out null values — schema uses nullable() instead of optional() for strict mode compat
-    const patch = intentResult.persona_patch;
-    const filteredPatch: Record<string, unknown> = {};
-    if (patch.tone != null) filteredPatch.tone = patch.tone;
-    if (patch.verbosity != null) filteredPatch.verbosity = patch.verbosity;
-    if (patch.emoji != null) filteredPatch.emoji = patch.emoji;
-
-    if (Object.keys(filteredPatch).length > 0) {
-      const nextPersona = { ...state.persona, ...filteredPatch };
-      state = updateMindState({
-        persona: nextPersona,
-        memory_summary: state.memory_summary,
-      });
-      syncMindStateToFiles();
-      scheduleSupabasePush();
-    }
-  }
-
-  return { intent: generatedIntent, state };
+  const state = getMindState();
+  return { intent, state };
 }
 
 export function lockMind(): MindState {

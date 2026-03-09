@@ -15,6 +15,9 @@ const envConfig = readEnvFile([
   'MIND_LOCK_MODE',
   'HTTP_PORT',
   'HTTP_ENABLED',
+  'ANTHROPIC_API_KEY',
+  'MINIMAX_API_KEY',
+  'MINIMAX_BASE_URL',
 ]);
 
 export const ASSISTANT_NAME =
