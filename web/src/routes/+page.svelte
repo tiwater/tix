@@ -42,7 +42,7 @@
       eventSource = null;
     }
 
-    const url = `${API_BASE}/api/stream?chat_jid=${encodeURIComponent(chatJid)}`;
+    const url = `${API_BASE}/runs/${encodeURIComponent(chatJid)}/stream`;
     eventSource = new EventSource(url);
 
     eventSource.onopen = () => {
@@ -60,7 +60,9 @@
         if (data.type === 'message' && data.text) {
           pushBotMessage(data.text);
         }
-      } catch { /* ignore malformed */ }
+      } catch {
+        /* ignore malformed */
+      }
     };
 
     eventSource.onerror = () => {
@@ -82,12 +84,15 @@
   }
 
   function pushBotMessage(text: string) {
-    messages = [...messages, {
-      id: `bot-${Date.now()}`,
-      role: 'bot',
-      text,
-      time: new Date().toLocaleTimeString(),
-    }];
+    messages = [
+      ...messages,
+      {
+        id: `bot-${Date.now()}`,
+        role: 'bot',
+        text,
+        time: new Date().toLocaleTimeString(),
+      },
+    ];
     scrollToBottom();
   }
 
@@ -101,27 +106,50 @@
     const content = inputText.trim();
     if (!content || sending) return;
 
-    messages = [...messages, {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      text: content,
-      time: new Date().toLocaleTimeString(),
-    }];
+    messages = [
+      ...messages,
+      {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        text: content,
+        time: new Date().toLocaleTimeString(),
+      },
+    ];
     inputText = '';
     scrollToBottom();
     sending = true;
 
     try {
-      const res = await fetch(`${API_BASE}/api/messages`, {
+      const res = await fetch(`${API_BASE}/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_jid: chatJid, sender: 'web-user', content }),
+        body: JSON.stringify({
+          chat_jid: chatJid,
+          sender: 'web-user',
+          content,
+        }),
       });
       if (!res.ok) {
-        messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ POST failed: ${res.status}`, time: '' }];
+        messages = [
+          ...messages,
+          {
+            id: `err-${Date.now()}`,
+            role: 'system',
+            text: `⚠️ POST failed: ${res.status}`,
+            time: '',
+          },
+        ];
       }
     } catch (e: any) {
-      messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ ${e.message}`, time: '' }];
+      messages = [
+        ...messages,
+        {
+          id: `err-${Date.now()}`,
+          role: 'system',
+          text: `⚠️ ${e.message}`,
+          time: '',
+        },
+      ];
     } finally {
       sending = false;
       await tick();
@@ -141,11 +169,21 @@
     try {
       const res = await fetch(`${API_BASE}/api/mind`);
       mindState = await res.json();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   function reconnect() {
-    messages = [...messages, { id: `sys-${Date.now()}`, role: 'system', text: `Reconnecting to ${chatJid}…`, time: '' }];
+    messages = [
+      ...messages,
+      {
+        id: `sys-${Date.now()}`,
+        role: 'system',
+        text: `Reconnecting to ${chatJid}…`,
+        time: '',
+      },
+    ];
     connectSSE();
   }
 
@@ -153,7 +191,14 @@
   onMount(() => {
     fetchMind();
     connectSSE();
-    messages = [{ id: 'welcome', role: 'system', text: '🧠 TiClaw Web Client — type a message to start', time: '' }];
+    messages = [
+      {
+        id: 'welcome',
+        role: 'system',
+        text: '🧠 TiClaw Web Client — type a message to start',
+        time: '',
+      },
+    ];
   });
 
   onDestroy(() => {
@@ -169,7 +214,11 @@
       TiClaw DevUI
     </div>
     <span class="header-sep" />
-    <div class="status-dot" class:offline={!sseConnected} title={sseConnected ? 'SSE connected' : 'SSE offline'} />
+    <div
+      class="status-dot"
+      class:offline={!sseConnected}
+      title={sseConnected ? 'SSE connected' : 'SSE offline'}
+    />
   </header>
 
   <!-- Sidebar -->
@@ -192,32 +241,38 @@
         <div class="mind-card">
           <div class="mind-row">
             <span class="mind-label">lifecycle</span>
-            <span class="badge {mindState.lifecycle}">{mindState.lifecycle}</span>
+            <span class="badge {mindState.lifecycle}"
+              >{mindState.lifecycle}</span
+            >
           </div>
           <div class="mind-row">
             <span class="mind-label">version</span>
             <span style="font-size:12px">v{mindState.version}</span>
           </div>
           {#if mindState.persona.tone}
-          <div class="mind-row">
-            <span class="mind-label">tone</span>
-            <span style="font-size:12px">{mindState.persona.tone}</span>
-          </div>
+            <div class="mind-row">
+              <span class="mind-label">tone</span>
+              <span style="font-size:12px">{mindState.persona.tone}</span>
+            </div>
           {/if}
           {#if mindState.persona.verbosity}
-          <div class="mind-row">
-            <span class="mind-label">verbosity</span>
-            <span style="font-size:12px">{mindState.persona.verbosity}</span>
-          </div>
+            <div class="mind-row">
+              <span class="mind-label">verbosity</span>
+              <span style="font-size:12px">{mindState.persona.verbosity}</span>
+            </div>
           {/if}
           <div class="mind-row">
             <span class="mind-label">emoji</span>
-            <span style="font-size:12px">{mindState.persona.emoji ? '✅' : '❌'}</span>
+            <span style="font-size:12px"
+              >{mindState.persona.emoji ? '✅' : '❌'}</span
+            >
           </div>
           <button class="mind-refresh" onclick={fetchMind}>↻ refresh</button>
         </div>
       {:else}
-        <div class="mind-card" style="color:var(--text-muted);font-size:12px">Loading…</div>
+        <div class="mind-card" style="color:var(--text-muted);font-size:12px">
+          Loading…
+        </div>
       {/if}
     </div>
 
@@ -247,7 +302,9 @@
               {msg.role === 'user' ? '👤' : '🤖'}
             </div>
             <div>
-              <div class="bubble" class:streaming-cursor={msg.streaming}>{msg.text}</div>
+              <div class="bubble" class:streaming-cursor={msg.streaming}>
+                {msg.text}
+              </div>
               {#if msg.time}
                 <div class="bubble-meta">{msg.time}</div>
               {/if}
@@ -267,7 +324,12 @@
         rows="1"
         disabled={sending}
       ></textarea>
-      <button class="send-btn" onclick={send} disabled={sending || !inputText.trim()} title="Send">
+      <button
+        class="send-btn"
+        onclick={send}
+        disabled={sending || !inputText.trim()}
+        title="Send"
+      >
         {sending ? '⏳' : '➤'}
       </button>
     </div>

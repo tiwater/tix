@@ -29,9 +29,9 @@ import type { RegisteredProject } from './core/types.js';
  */
 const LLM_ENV: Record<string, string | undefined> = MINIMAX_API_KEY
   ? {
-    ANTHROPIC_API_KEY: MINIMAX_API_KEY,
-    ANTHROPIC_BASE_URL: MINIMAX_BASE_URL,
-  }
+      ANTHROPIC_API_KEY: MINIMAX_API_KEY,
+      ANTHROPIC_BASE_URL: MINIMAX_BASE_URL,
+    }
   : ANTHROPIC_API_KEY
     ? { ANTHROPIC_API_KEY }
     : {};
@@ -89,7 +89,12 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
   const systemPrompt = buildSystemPrompt(group);
 
   logger.info(
-    { chatJid, folder: group.folder, promptLen: prompt.length, model: DEFAULT_LLM_MODEL ?? 'default' },
+    {
+      chatJid,
+      folder: group.folder,
+      promptLen: prompt.length,
+      model: DEFAULT_LLM_MODEL ?? 'default',
+    },
     'runAgent: start',
   );
 
