@@ -16,7 +16,7 @@ async function test() {
   const group = {
     name: 'tiwater/ticos',
     folder: 'tiwater-ticos',
-    trigger: '@Shaw',
+    trigger: '@Andy',
     added_at: new Date().toISOString(),
     requiresTrigger: false,
     isMain: false,
@@ -57,7 +57,7 @@ async function test() {
       group,
       workspacePath,
       isMain: false,
-      messages: [{ role: 'user', content: '@Shaw what was the last commit?' }],
+      messages: [{ role: 'user', content: '@Andy what was the last commit?' }],
       sendFn: async (_jid, _text) => {},
       createChannelFn: async () => null,
       registerProjectFn: () => {},

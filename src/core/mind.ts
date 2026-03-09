@@ -24,20 +24,22 @@ import { logger } from './logger.js';
 const IntentSchema = z.object({
   intent: z.enum(['task', 'persona', 'memory', 'mixed', 'unknown']),
   confidence: z.number().min(0).max(1),
-  persona_patch: z.object({
-    tone: z
-      .enum(['neutral', 'friendly', 'playful', 'professional'])
-      .nullable()
-      .describe('New tone setting, or null if not changing'),
-    verbosity: z
-      .enum(['short', 'normal', 'detailed'])
-      .nullable()
-      .describe('New verbosity setting, or null if not changing'),
-    emoji: z
-      .boolean()
-      .nullable()
-      .describe('New emoji setting, or null if not changing'),
-  }).describe('Persona fields to update; set each to null if not relevant'),
+  persona_patch: z
+    .object({
+      tone: z
+        .enum(['neutral', 'friendly', 'playful', 'professional'])
+        .nullable()
+        .describe('New tone setting, or null if not changing'),
+      verbosity: z
+        .enum(['short', 'normal', 'detailed'])
+        .nullable()
+        .describe('New verbosity setting, or null if not changing'),
+      emoji: z
+        .boolean()
+        .nullable()
+        .describe('New emoji setting, or null if not changing'),
+    })
+    .describe('Persona fields to update; set each to null if not relevant'),
   reason: z.string(),
 });
 

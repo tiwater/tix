@@ -89,7 +89,10 @@ export class HttpChannel implements Channel {
     console.log(`\n  HTTP SSE: http://localhost:${HTTP_PORT}/api/stream\n`);
   }
 
-  private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+  private handleRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): void {
     const url = new URL(req.url ?? '/', `http://localhost:${HTTP_PORT}`);
     const pathname = url.pathname;
 
@@ -138,7 +141,9 @@ export class HttpChannel implements Channel {
       });
 
       // Initial connected event
-      res.write(`data: ${JSON.stringify({ type: 'connected', chat_jid: chatJid })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: 'connected', chat_jid: chatJid })}\n\n`,
+      );
 
       addClient(chatJid, res);
       logger.info({ chatJid }, 'SSE client connected');
@@ -198,7 +203,13 @@ export class HttpChannel implements Channel {
             this.opts.onGroupRegistered(chatJid, group);
           }
 
-          this.opts.onChatMetadata(chatJid, timestamp, undefined, 'http', false);
+          this.opts.onChatMetadata(
+            chatJid,
+            timestamp,
+            undefined,
+            'http',
+            false,
+          );
 
           const msg: NewMessage = {
             id: `web-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -215,7 +226,10 @@ export class HttpChannel implements Channel {
           res.writeHead(202, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, chat_jid: chatJid, id: msg.id }));
 
-          logger.info({ chatJid, sender: senderId, content: content.slice(0, 80) }, 'HTTP message received');
+          logger.info(
+            { chatJid, sender: senderId, content: content.slice(0, 80) },
+            'HTTP message received',
+          );
         } catch (err) {
           logger.error({ err }, 'Failed to parse HTTP message body');
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -236,11 +250,20 @@ export class HttpChannel implements Channel {
     options?: { embeds?: any[] },
   ): Promise<void> {
     if (!text.trim()) return;
-    broadcastToChat(jid, { type: 'message', chat_jid: jid, text, embeds: options?.embeds });
+    broadcastToChat(jid, {
+      type: 'message',
+      chat_jid: jid,
+      text,
+      embeds: options?.embeds,
+    });
     logger.info({ jid, length: text.length }, 'HTTP SSE message broadcast');
   }
 
-  async sendFile(jid: string, _filePath: string, _caption?: string): Promise<void> {
+  async sendFile(
+    jid: string,
+    _filePath: string,
+    _caption?: string,
+  ): Promise<void> {
     logger.warn({ jid }, 'HttpChannel.sendFile not implemented');
   }
 
@@ -261,7 +284,11 @@ export class HttpChannel implements Channel {
     // Close all SSE streams
     for (const clients of sseClients.values()) {
       for (const res of clients) {
-        try { res.end(); } catch { /* ignore */ }
+        try {
+          res.end();
+        } catch {
+          /* ignore */
+        }
       }
     }
     sseClients.clear();

@@ -35,7 +35,7 @@ describe('mind lock P0 anti-tamper regression', () => {
         confidence: 0.9,
         persona_patch: { tone: 'playful', verbosity: 'short', emoji: true },
         reason: 'test',
-      }
+      },
     } as any);
 
     await recordUserInteraction({
@@ -75,7 +75,7 @@ describe('mind lock P0 anti-tamper regression', () => {
         confidence: 0.9,
         persona_patch: { tone: 'playful', emoji: true },
         reason: 'test',
-      }
+      },
     } as any);
 
     const result = await recordUserInteraction({

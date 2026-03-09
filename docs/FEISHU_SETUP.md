@@ -32,7 +32,7 @@ TC_FEISHU_APP_SECRET=xxxxxxxx
 
 ## 3. 机器人名称（可选）
 
-触发词由 `assistant_name` 决定（如 `@Shaw`）。在 config.yaml 中配置：
+触发词由 `assistant_name` 决定（如 `@Andy`）。在 config.yaml 中配置：
 
 ```yaml
 assistant_name: YourBot

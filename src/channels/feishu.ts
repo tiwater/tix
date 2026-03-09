@@ -183,7 +183,10 @@ export class FeishuChannel implements Channel {
           msg_type: 'interactive',
         },
       });
-      logger.info({ jid, length: text.length }, 'Feishu message sent (markdown)');
+      logger.info(
+        { jid, length: text.length },
+        'Feishu message sent (markdown)',
+      );
     } catch (err) {
       logger.error({ jid, err }, 'Failed to send Feishu message');
     }

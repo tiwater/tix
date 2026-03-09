@@ -29,7 +29,7 @@ describe('mind core', () => {
         confidence: 0.85,
         persona_patch: { tone: 'playful', verbosity: 'short' },
         reason: 'test',
-      }
+      },
     } as any);
 
     const result = await recordUserInteraction({
@@ -53,7 +53,7 @@ describe('mind core', () => {
         confidence: 0.4,
         persona_patch: { tone: 'playful' },
         reason: 'test',
-      }
+      },
     } as any);
 
     const result = await recordUserInteraction({
@@ -76,7 +76,7 @@ describe('mind core', () => {
         confidence: 0.9,
         persona_patch: { tone: 'playful' },
         reason: 'test reasoning',
-      }
+      },
     } as any);
 
     await recordUserInteraction({

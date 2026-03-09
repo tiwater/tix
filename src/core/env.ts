@@ -157,7 +157,8 @@ export function getEnabledChannelsFromConfig(): string[] {
     if (name === 'http') {
       // HTTP SSE channel: enabled by default unless explicitly disabled in config
       const block = channels[name];
-      if (block && (block.enabled === false || block.enabled === 'false')) continue;
+      if (block && (block.enabled === false || block.enabled === 'false'))
+        continue;
       enabled.push(name);
       continue;
     }

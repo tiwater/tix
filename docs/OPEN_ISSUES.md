@@ -4,7 +4,20 @@ Items discussed but deferred for later implementation. Report as GitHub issues w
 
 ---
 
-## 1. Curated Skills List
+## 1. Built-in Robot Skills
+
+**Context:** TiClaw is a robot mind builder; it should control physical robots when configured. Ticos defines: `terminal_motion`, `text_to_speech`, `navigate_to`, `pick_up_object`.
+
+**TODO:**
+- MCP client bridge: connect to robot MCP server, expose tools to agent
+- Config: `robot.enabled`, `robot.mcp_url` in config.yaml
+- Merge robot tools into agent when configured; graceful fallback when not
+
+**Ref:** [docs/ROBOT_SKILLS.md](ROBOT_SKILLS.md)
+
+---
+
+## 2. Curated Skills List
 
 **Context:** No ClawHub; skills come from a curated list only (REQUIREMENTS.md).
 
@@ -15,7 +28,7 @@ Items discussed but deferred for later implementation. Report as GitHub issues w
 
 ---
 
-## 2. Sub-Agents for Complex Tasks
+## 3. Sub-Agents for Complex Tasks
 
 **Context:** Each agent can have sub-agents for complex tasks (OpenClaw supports this).
 
@@ -26,7 +39,7 @@ Items discussed but deferred for later implementation. Report as GitHub issues w
 
 ---
 
-## 3. DB Schema Rename (group → agent)
+## 4. DB Schema Rename (group → agent)
 
 **Context:** Full consistency: `registered_groups` → `registered_agents`, `group_folder` → `agent_folder`.
 

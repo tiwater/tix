@@ -140,7 +140,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
       sender: latestMsg.sender,
       sender_name: latestMsg.sender_name,
       is_admin: isAdminUser,
-    }).catch(err => {
+    }).catch((err) => {
       logger.warn({ err }, 'mind updater failed (ignored)');
     });
   }
@@ -397,7 +397,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
           const scheduleEdit = () => {
             if (streamBuf.timer) clearTimeout(streamBuf.timer);
             streamBuf.timer = setTimeout(() => {
-              flushEdit().catch(() => { });
+              flushEdit().catch(() => {});
             }, EDIT_DEBOUNCE_MS);
           };
 
@@ -813,7 +813,7 @@ async function main(): Promise<void> {
 const isDirectRun =
   process.argv[1] &&
   new URL(import.meta.url).pathname ===
-  new URL(`file://${process.argv[1]}`).pathname;
+    new URL(`file://${process.argv[1]}`).pathname;
 
 if (isDirectRun) {
   main().catch((err) => {

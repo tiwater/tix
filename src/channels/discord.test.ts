@@ -1,6 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { DiscordChannel } from './discord.js';
 import * as discordJs from 'discord.js';
+
+vi.mock('../core/config.js', () => ({
+  ASSISTANT_NAME: 'Andy',
+  TRIGGER_PATTERN: /^@Andy\b/i,
+}));
+
+import { DiscordChannel } from './discord.js';
 
 vi.mock('discord.js', async () => {
   const actual = await vi.importActual<any>('discord.js');
@@ -173,7 +179,7 @@ describe('DiscordChannel Integration/Adapter', () => {
         chat_jid: 'dc:channel-000',
         sender: 'user-456',
         sender_name: 'test-user',
-        content: '@Shaw help me', // Assuming ASSISTANT_NAME is 'Shaw' in tests
+        content: '@Andy help me', // Assuming ASSISTANT_NAME is 'Andy' in tests
         timestamp: '2026-03-04T12:00:00.000Z',
         is_from_me: false,
       });
