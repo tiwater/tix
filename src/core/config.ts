@@ -13,6 +13,8 @@ const envConfig = readEnvFile([
   'TC_CODING_CLI',
   'MIND_ADMIN_USERS',
   'MIND_LOCK_MODE',
+  'HTTP_PORT',
+  'HTTP_ENABLED',
 ]);
 
 export const ASSISTANT_NAME =
@@ -119,3 +121,11 @@ export const TRIGGER_PATTERN = new RegExp(
 // Uses system timezone by default
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// HTTP SSE channel
+export const HTTP_PORT = parseInt(
+  process.env.HTTP_PORT || envConfig.HTTP_PORT || '3280',
+  10,
+);
+export const HTTP_ENABLED =
+  (process.env.HTTP_ENABLED ?? envConfig.HTTP_ENABLED ?? 'true') !== 'false';

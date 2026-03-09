@@ -8,6 +8,9 @@ import './discord.js';
 // feishu (飞书)
 import './feishu.js';
 
+// http / SSE (web UI)
+import './http.js';
+
 // gmail
 
 // slack

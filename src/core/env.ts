@@ -129,6 +129,7 @@ export { TICLAW_CONFIG_PATH };
 const CONFIGURABLE_CHANNELS = [
   'discord',
   'feishu',
+  'http',
   'telegram',
   'slack',
 ] as const;
@@ -153,6 +154,13 @@ export function getEnabledChannelsFromConfig(): string[] {
 
   const enabled: string[] = [];
   for (const name of CONFIGURABLE_CHANNELS) {
+    if (name === 'http') {
+      // HTTP SSE channel: enabled by default unless explicitly disabled in config
+      const block = channels[name];
+      if (block && (block.enabled === false || block.enabled === 'false')) continue;
+      enabled.push(name);
+      continue;
+    }
     const block = channels[name];
     if (!block || typeof block !== 'object') continue;
     if (block.enabled === false || block.enabled === 'false') continue;
