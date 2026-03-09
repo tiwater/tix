@@ -670,7 +670,7 @@ async function main(): Promise<void> {
 const isDirectRun =
   process.argv[1] &&
   new URL(import.meta.url).pathname ===
-  new URL(`file://${process.argv[1]}`).pathname;
+    new URL(`file://${process.argv[1]}`).pathname;
 
 if (isDirectRun) {
   main().catch((err) => {

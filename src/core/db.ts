@@ -798,15 +798,15 @@ export function getRegisteredProject(
     .prepare('SELECT * FROM registered_groups WHERE jid = ?')
     .get(jid) as
     | {
-      jid: string;
-      name: string;
-      folder: string;
-      trigger_pattern: string;
-      added_at: string;
+        jid: string;
+        name: string;
+        folder: string;
+        trigger_pattern: string;
+        added_at: string;
 
-      requires_trigger: number | null;
-      is_main: number | null;
-    }
+        requires_trigger: number | null;
+        is_main: number | null;
+      }
     | undefined;
   if (!row) return undefined;
   if (!isValidGroupFolder(row.folder)) {

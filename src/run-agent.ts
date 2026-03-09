@@ -13,8 +13,28 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { loadGroupMindContext } from './core/mind-files.js';
 import { logger } from './core/logger.js';
-import { ASSISTANT_NAME } from './core/config.js';
+import {
+  ASSISTANT_NAME,
+  ANTHROPIC_API_KEY,
+  MINIMAX_API_KEY,
+  MINIMAX_BASE_URL,
+  DEFAULT_LLM_MODEL,
+} from './core/config.js';
 import type { RegisteredProject } from './core/types.js';
+
+/**
+ * Env vars to inject into the claude-code subprocess.
+ * When MINIMAX_API_KEY is set, redirect the subprocess's Anthropic calls
+ * to MiniMax's Anthropic-compatible endpoint instead.
+ */
+const LLM_ENV: Record<string, string | undefined> = MINIMAX_API_KEY
+  ? {
+    ANTHROPIC_API_KEY: MINIMAX_API_KEY,
+    ANTHROPIC_BASE_URL: MINIMAX_BASE_URL,
+  }
+  : ANTHROPIC_API_KEY
+    ? { ANTHROPIC_API_KEY }
+    : {};
 
 export interface RunAgentOpts {
   chatJid: string;
@@ -57,7 +77,10 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
   // Include recent history above the latest message as context
   const historyLines = messages
     .slice(0, -1)
-    .map((m) => `${m.role === 'assistant' ? ASSISTANT_NAME : 'User'}: ${m.content}`)
+    .map(
+      (m) =>
+        `${m.role === 'assistant' ? ASSISTANT_NAME : 'User'}: ${m.content}`,
+    )
     .join('\n');
   const prompt = historyLines
     ? `[Recent conversation]\n${historyLines}\n\n[Latest message]\n${lastUser.content}`
@@ -65,7 +88,10 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
 
   const systemPrompt = buildSystemPrompt(group);
 
-  logger.info({ chatJid, folder: group.folder, promptLen: prompt.length }, 'runAgent: start');
+  logger.info(
+    { chatJid, folder: group.folder, promptLen: prompt.length, model: DEFAULT_LLM_MODEL ?? 'default' },
+    'runAgent: start',
+  );
 
   const textParts: string[] = [];
   let lastProgressAt = 0;
@@ -79,6 +105,8 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
         cwd: workspacePath,
         allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
         permissionMode: 'acceptEdits',
+        model: DEFAULT_LLM_MODEL,
+        env: { ...process.env, ...LLM_ENV } as Record<string, string>,
       },
     })) {
       const elapsed = Date.now() - start;
@@ -89,7 +117,10 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
         for (const block of blocks) {
           if (block.type === 'text' && block.text) {
             textParts.push(block.text);
-            if (onProgress && elapsed - lastProgressAt >= PROGRESS_INTERVAL_MS) {
+            if (
+              onProgress &&
+              elapsed - lastProgressAt >= PROGRESS_INTERVAL_MS
+            ) {
               lastProgressAt = elapsed;
               await onProgress(block.text, elapsed);
             }
@@ -103,7 +134,10 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
           (resultMsg as any).result?.trim() ||
           textParts.join('\n').trim() ||
           '(done)';
-        logger.info({ chatJid, elapsed, subtype: (resultMsg as any).subtype }, 'runAgent: done');
+        logger.info(
+          { chatJid, elapsed, subtype: (resultMsg as any).subtype },
+          'runAgent: done',
+        );
         await onReply(finalText);
         return;
       }

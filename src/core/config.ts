@@ -132,3 +132,16 @@ export const HTTP_PORT = parseInt(
 );
 export const HTTP_ENABLED =
   (process.env.HTTP_ENABLED ?? envConfig.HTTP_ENABLED ?? 'true') !== 'false';
+
+// LLM API keys — prefer MiniMax if configured, fall back to Anthropic
+export const ANTHROPIC_API_KEY =
+  process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
+export const MINIMAX_API_KEY =
+  process.env.MINIMAX_API_KEY || envConfig.MINIMAX_API_KEY || '';
+export const MINIMAX_BASE_URL =
+  process.env.MINIMAX_BASE_URL ||
+  envConfig.MINIMAX_BASE_URL ||
+  'https://api.minimax.io/anthropic';
+
+/** Default model name. Uses MiniMax-M2.5 when MINIMAX_API_KEY is set, else undefined (claude-code default). */
+export const DEFAULT_LLM_MODEL = MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined;

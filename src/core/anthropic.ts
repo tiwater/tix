@@ -10,10 +10,15 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 
-const envConfig = readEnvFile(['ANTHROPIC_API_KEY', 'HTTPS_PROXY', 'HTTP_PROXY']);
+const envConfig = readEnvFile([
+  'ANTHROPIC_API_KEY',
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+]);
 
 export function getApiKey(): string {
-  const key = process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
+  const key =
+    process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
   if (!key) {
     throw new Error(
       'ANTHROPIC_API_KEY is not set. Add it to ~/ticlaw/config.yaml or the environment.',
@@ -45,7 +50,9 @@ export function getAnthropicClient(): Anthropic {
         fetchOptions: { dispatcher: new ProxyAgent(proxy) },
       });
     } catch {
-      logger.warn('undici not available for proxy; falling back to direct connection');
+      logger.warn(
+        'undici not available for proxy; falling back to direct connection',
+      );
       _client = new Anthropic({ apiKey });
     }
   } else {

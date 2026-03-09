@@ -45,7 +45,10 @@ export async function recordUserInteraction(
   };
 
   storeInteractionEvent(fullEvent);
-  logger.debug({ eventContent: event.content?.slice(0, 80) }, 'Interaction recorded');
+  logger.debug(
+    { eventContent: event.content?.slice(0, 80) },
+    'Interaction recorded',
+  );
 
   const state = getMindState();
   return { intent, state };

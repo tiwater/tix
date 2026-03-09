@@ -16,11 +16,19 @@ describe('mind lock P0 anti-tamper regression', () => {
   });
 
   it('blocks slash-like persona patch while locked', () => {
-    setMindPersonaPatch({ tone: 'professional', verbosity: 'normal', emoji: false });
+    setMindPersonaPatch({
+      tone: 'professional',
+      verbosity: 'normal',
+      emoji: false,
+    });
     const before = getMindState();
 
     lockMind();
-    const after = setMindPersonaPatch({ tone: 'playful', verbosity: 'short', emoji: true });
+    const after = setMindPersonaPatch({
+      tone: 'playful',
+      verbosity: 'short',
+      emoji: true,
+    });
 
     expect(after.lifecycle).toBe('locked');
     expect(after.persona).toEqual(before.persona);
@@ -40,7 +48,11 @@ describe('mind lock P0 anti-tamper regression', () => {
   });
 
   it('rollback restores exact prior persona snapshot', () => {
-    setMindPersonaPatch({ tone: 'friendly', verbosity: 'normal', emoji: false });
+    setMindPersonaPatch({
+      tone: 'friendly',
+      verbosity: 'normal',
+      emoji: false,
+    });
     const pkgA = createPackage('baseline');
     const baselineHash = JSON.stringify(getMindState().persona);
 
