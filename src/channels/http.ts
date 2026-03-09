@@ -87,7 +87,9 @@ export class HttpChannel implements Channel {
 
     this._connected = true;
     logger.info({ port: HTTP_PORT }, 'HTTP SSE channel listening');
-    console.log(`\n  HTTP SSE: http://localhost:${HTTP_PORT}/runs/{id}/stream\n`);
+    console.log(
+      `\n  HTTP SSE: http://localhost:${HTTP_PORT}/runs/{id}/stream\n`,
+    );
   }
 
   private handleRequest(
@@ -130,20 +132,27 @@ export class HttpChannel implements Channel {
     // ACP Manifest
     if (pathname === '/agents' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        name: "TiClaw",
-        description: "TiClaw AI Agent",
-        version: "1.0.0"
-      }));
+      res.end(
+        JSON.stringify({
+          name: 'TiClaw',
+          description: 'TiClaw AI Agent',
+          version: '1.0.0',
+        }),
+      );
       return;
     }
 
     // SSE stream (ACP: /runs/:id/stream)
-    if (pathname.startsWith('/runs/') && pathname.endsWith('/stream') && req.method === 'GET') {
+    if (
+      pathname.startsWith('/runs/') &&
+      pathname.endsWith('/stream') &&
+      req.method === 'GET'
+    ) {
       const parts = pathname.split('/');
       const runId = parts[2]; // /runs/123/stream
 
-      const chatJidParam = runId || url.searchParams.get('chat_jid') || 'default';
+      const chatJidParam =
+        runId || url.searchParams.get('chat_jid') || 'default';
       const chatJid = chatJidParam.startsWith(WEB_JID_PREFIX)
         ? chatJidParam
         : `${WEB_JID_PREFIX}${chatJidParam}`;

@@ -16,6 +16,7 @@ import { logger } from './core/logger.js';
 import {
   ASSISTANT_NAME,
   ANTHROPIC_API_KEY,
+  OPENROUTER_API_KEY,
   MINIMAX_API_KEY,
   MINIMAX_BASE_URL,
   DEFAULT_LLM_MODEL,
@@ -29,12 +30,17 @@ import type { RegisteredProject } from './core/types.js';
  */
 const LLM_ENV: Record<string, string | undefined> = MINIMAX_API_KEY
   ? {
-      ANTHROPIC_API_KEY: MINIMAX_API_KEY,
-      ANTHROPIC_BASE_URL: MINIMAX_BASE_URL,
+    ANTHROPIC_API_KEY: MINIMAX_API_KEY,
+    ANTHROPIC_BASE_URL: MINIMAX_BASE_URL,
+  }
+  : OPENROUTER_API_KEY
+    ? {
+      ANTHROPIC_API_KEY: OPENROUTER_API_KEY,
+      ANTHROPIC_BASE_URL: 'https://openrouter.ai/api/v1',
     }
-  : ANTHROPIC_API_KEY
-    ? { ANTHROPIC_API_KEY }
-    : {};
+    : ANTHROPIC_API_KEY
+      ? { ANTHROPIC_API_KEY }
+      : {};
 
 export interface RunAgentOpts {
   chatJid: string;
@@ -110,7 +116,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
         cwd: workspacePath,
         allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
         permissionMode: 'acceptEdits',
-        model: DEFAULT_LLM_MODEL,
+        model: DEFAULT_LLM_MODEL || 'claude-3-5-sonnet-20241022',
         env: { ...process.env, ...LLM_ENV } as Record<string, string>,
       },
     })) {
