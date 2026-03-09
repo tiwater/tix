@@ -1,6 +1,6 @@
 # TiClaw Specification
 
-A robot mind builder with multi-channel support, personality & memory evolution, physical workspace isolation, and multi-CLI agent execution. Supports Gemini CLI (default), Claude Code, and Codex.
+A robot mind builder with multi-channel support, personality & memory evolution, and physical workspace isolation. Driven by the `@anthropic-ai/claude-agent-sdk`.
 
 ---
 
@@ -9,9 +9,9 @@ A robot mind builder with multi-channel support, personality & memory evolution,
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | Runtime | Node.js 20+ | Host process for routing and scheduling |
-| Agent | Multi-CLI (Gemini CLI default, Claude Code, Codex) | Run AI agent with tools and MCP servers |
+| Agent | Claude Agent SDK | Run AI agent with tools and MCP servers |
 | Workspace | Physical directories (`~/ticlaw/factory/`) | Isolated per-task work environments |
-| Workspace | Subprocess (headless) | Fresh process per prompt |
+| Workspace | LLM Generator (`run-agent.ts`) | Single persistent event loop per prompt |
 | Observability | Gemini 2.0 Flash + Playwright | Delta feed summaries and UI verification |
 | Channel | Channel registry (`src/channels/registry.ts`) | Channels self-register at startup |
 | Storage | SQLite (better-sqlite3) | Messages, groups, sessions, tasks |
@@ -21,10 +21,7 @@ A robot mind builder with multi-channel support, personality & memory evolution,
 
 ## Architecture Overview
 
-TiClaw operates in two execution modes selected at runtime:
-
-1. **Physical Mode** (default) — Agent runs directly on the host. Workspace skill uses headless subprocess within a physical workspace (`~/ticlaw/factory/{id}/`). Provides native toolchain access.
-2. **Container Mode** (fallback) — Agent runs inside a Linux container. Used when container runtime is available and desired for stronger isolation.
+TiClaw executes strictly inside the host Node.js environment invoking the `claude-agent-sdk`.
 
 ### System Diagram
 
@@ -54,13 +51,9 @@ TiClaw operates in two execution modes selected at runtime:
    │  ┌────────▼────────────┐  │
    │  │  runAgent()         │  │
    │  │  ┌───────────────┐  │  │
-   │  │  │ Physical Mode │  │  │
-   │  │  │ TcWorkspace   │◄─┼──┼── workspace delegation, /mind
-   │  │  │ + Subprocess  │  │  │
-   │  │  └───────────────┘  │  │
-   │  │  ┌───────────────┐  │  │
-   │  │  │ Container Mode│  │  │
-   │  │  │ (fallback)    │  │  │
+   │  │  │ Claude SDK    │  │  │
+   │  │  │ Native Tools  │◄─┼──┼── workspace delegation, /mind
+   │  │  │ (Bash/Read)   │  │  │
    │  │  └───────────────┘  │  │
    │  └─────────────────────┘  │
    │                           │
@@ -137,17 +130,16 @@ ticlaw/                              # Project root (source code)
 │   ├── group-queue.ts                 # Concurrency-controlled message queue
 │   ├── router.ts                      # Outbound message routing
 │   ├── task-scheduler.ts              # Cron/interval/one-time task scheduler
-│   ├── container-runner.ts            # Container mode agent execution
-│   ├── container-runtime.ts           # Container lifecycle management
-│   ├── mount-security.ts             # Mount validation for container mode
-│   ├── ipc.ts                         # IPC for container ↔ host communication
+│   ├── container-runner.ts            # Legacy agent runner (deprecated)
+│   ├── container-runtime.ts           # Legacy agent runtime (deprecated)
+│   ├── mount-security.ts             # Mount validation (deprecated)
+│   ├── ipc.ts                         # Legacy IPC communication (deprecated)
 │   ├── channels/
 │   │   ├── index.ts                   # Auto-imports installed channels
 │   │   ├── registry.ts               # Channel factory registry
 │   │   └── discord.ts                # Discord channel (reference implementation)
 │   └── executor/
 │       ├── workspace.ts               # TcWorkspace — physical workspace manager
-│       ├── tmux-bridge.ts             # TmuxBridge — persistent agent sessions
 │       ├── diff-summarizer.ts         # Gemini-powered git diff summaries
 │       └── playwright-verifier.ts     # Playwright UI verification
 │
@@ -203,20 +195,22 @@ ticlaw/                              # Project root (source code)
 
 ---
 
-## Physical Mode (TcWorkspace + TmuxBridge)
+---
 
-Physical mode is the primary execution model. Each task gets an isolated workspace on the host filesystem.
+## Native Execution Environment
+
+Physical mode executes the agent directly in the host OS. Each task gets an isolated workspace on the host filesystem.
 
 ### Workspace Lifecycle
 
-1. **Creation** — `TcWorkspace` creates `~/ticlaw/factory/{id}/` with subdirectories (`screenshots/`, `logs/`, `ipc/`)
+1. **Creation** — `TcWorkspace` creates `~/ticlaw/factory/{id}/` with subdirectories (`screenshots/`, `logs/`)
 2. **Bootstrap** (if GitHub URL provided):
    - `git clone` → branch checkout
    - Environment seeding from `~/ticlaw/config/environments/`
    - Auto-detect and run setup scripts (`setup.sh`, `bootstrap.sh`, `init.sh`)
    - Auto-detect package manager (`pnpm install` or `npm install`)
 3. **File Watching** — `chokidar` monitors the workspace, excluding `node_modules/`, `.git/`, `dist/`, `logs/`
-4. **Agent Execution** — `TmuxBridge` creates a persistent tmux session running the `agent-runner`
+4. **Agent Execution** — Runs `@anthropic-ai/claude-agent-sdk` directly.
 5. **Teardown** — `workspace.stop()` closes watcher and Playwright browser
 
 ### Environment Seeding
@@ -255,22 +249,18 @@ The `/push` command triggers `workspace.push()`:
 
 ---
 
-## Agent CLI Authentication
+## Agent Architecture Authentication
 
-Configure authentication in a `.env` file in the project root. The default CLI is Gemini (set via `TC_CODING_CLI`).
+Configure authentication in a `.env` file in the project root. The agent execution relies on OpenRouter API connections or Anthropic native configurations.
 
-**Gemini CLI** (default — uses Google One AI Premium subscription):
+**OpenRouter (Default)**:
 ```bash
-# Login once with: gemini login
-# No API key needed — uses your Google account
-TC_CODING_CLI=gemini
+OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
-**Claude Code** (requires Anthropic API key or subscription):
+**Claude Native**:
 ```bash
-TC_CODING_CLI=claude
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
-# Or: ANTHROPIC_API_KEY=sk-ant-api03-...
+ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
 ### Changing the Assistant Name
@@ -345,19 +335,11 @@ In physical mode, tmux sessions provide additional persistence — the agent sur
    └── Build prompt with full conversation context
    │
    ▼
-6. runAgent() dispatches to:
-   ├── Physical mode: TcWorkspace + TmuxBridge
-   │   ├── Create/reuse workspace in ~/ticlaw/factory/{id}/
-   │   ├── Spawn tmux session running agent-runner
-   │   ├── Stream output via tmux capture-pane polling
-   │   └── Parse TICLAW_OUTPUT markers for structured results
-   │
-   └── Container mode (fallback): container-runner.ts
-       ├── Spawn Linux container with volume mounts
-       ├── Pipe prompt via stdin
-       └── Stream output via stdout/stderr
-   │
-   ▼
+6. runAgent() dispatches to the Claude Agent SDK loop:
+   ├── Yields tokens back to the Message Router stream
+   ├── Built-in bash/edit/inspect tools execute within the factory cwd
+   └── Outputs and context sync automatically
+
 7. Agent processes message:
    ├── Reads project instruction files for context
    └── Uses tools as needed (search, email, etc.)
@@ -456,11 +438,12 @@ SQLite database at `~/ticlaw/store/messages.db`:
 
 ### Authentication Variables (filtered to agent)
 
-| Variable | CLI | Purpose |
-|----------|-----|---------|
-| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code | OAuth token for Claude subscription |
-| `ANTHROPIC_API_KEY` | Claude Code | API key for pay-per-use Claude |
-| `GEMINI_API_KEY` | Gemini CLI | API key (if not using Google account auth) |
+| Variable | Purpose |
+|----------|---------|
+| `OPENROUTER_API_KEY` | Authenticate OpenRouter models |
+| `ANTHROPIC_API_KEY` | API key for Anthropic native endpoints |
+| `MINIMAX_API_KEY` | API key for MiniMax compatibility layer |
+| `GEMINI_API_KEY` | API key for Delta Feed summaries |
 
 ---
 

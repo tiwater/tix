@@ -20,14 +20,14 @@ TiClaw is a platform for building robot minds: personality and memory that evolv
 TiClaw is a **robot mind builder**. It focuses on:
 - **Mind System:** Persona and memory evolve through daily conversation; lock for production, rollback when needed.
 - **Multi-Channel:** Discord, Feishu (飞书), and more. One mind, many touchpoints.
-- **Physical Factory:** Isolated workspaces for coding tasks when the robot needs to build or fix things.
-- **💻 Workspace skill:** Optional coding CLI (Gemini, Codex, Claude) — used only when the agent needs to run code or access a repo.
+- **Physical Factory:** Isolated workspaces for tasks when the robot needs to build or fix things.
+- **💻 Workspace Agent:** Built on the `@anthropic-ai/claude-agent-sdk`, capable of native bash, glob, and edit tools inside the factory.
 
 ## 🛠 Core Capabilities
 
 - **🧠 Mind System:** Persona and memory evolve through daily conversation. Lock for production, rollback when needed. `/mind` for status, lock, unlock, package, diff, rollback.
-- **🦀 Workspace skill:** The agent handles most tasks directly. When it needs to run code or access a repo, it can use the optional workspace skill (Gemini/Codex/Claude CLI). Physical `~/ticlaw/factory/{folder}` isolation.
-- **📺 Live Monitoring:** Workspace skill output delivered to the channel when done.
+- **🦀 Workspace skill:** The agent handles most tasks directly. When it needs to run code or access a repo, it utilizes the native Claude Agent SDK. Physical `~/ticlaw/factory/{folder}` isolation.
+- **📺 Live Monitoring:** Agent stdout and tools stream delivered to the channel in real-time.
 - **📸 Vision-Backed Audit:** Automated macOS screenshots for UI changes and Gemini-powered "Delta Feeds" for code summaries.
 - **🚀 PR Pipeline:** Seamless transition from "Issue Solved" to "PR Created" with automated context-aware descriptions (when configured).
 
@@ -57,7 +57,6 @@ TiClaw extends [NanoClaw](https://github.com/qwibitai/nanoclaw) with a **mind sy
 
 - macOS (optimized for Mac Mini) or Linux
 - Node.js 20+
-- [Gemini CLI](https://github.com/google/gemini) (for workspace skill, headless mode) or [Claude Code](https://claude.ai/download)
 - At least one channel: [Discord](https://discord.com/developers/applications), [Feishu](docs/FEISHU_SETUP.md), etc.
 
 ## Architecture
@@ -65,8 +64,8 @@ TiClaw extends [NanoClaw](https://github.com/qwibitai/nanoclaw) with a **mind sy
 TiClaw operates on a **Command -> Factory -> Relay** loop:
 
 1.  **Command:** Your channel (Discord, Feishu, etc.) receives messages; TiClaw processes them.
-2.  **Factory:** A dedicated workspace is created. Coding CLI runs in headless mode when needed.
-3.  **Relay:** Logs, screenshots, and diffs are streamed back to the channel.
+2.  **Factory:** A dedicated workspace is created. The Claude Agent SDK assumes control.
+3.  **Relay:** Context stream, logs, screenshots, and diffs are sent back to the channel.
 4.  **Verification:** Playwright runs automated UI tests.
 5.  **Delivery:** PR is submitted to GitHub.
 
@@ -74,17 +73,13 @@ For a complete guide on how to operate the system, see the [User Guide](docs/USE
 
 ## FAQ
 
-**Why headless mode for the workspace skill?**
+**Why native Agent SDK over subprocess CLIs?**
 
-The workspace skill runs the coding CLI (Gemini, Codex, Claude) in headless mode — no persistent terminal. Each prompt is a fresh subprocess. This keeps the system simple and not terminal-focused.
+The workspace skill runs the `@anthropic-ai/claude-agent-sdk` purely in the Node.js runtime. This removes the fragility of screen scraping `tmux` or forcing JSON outputs from the Gemini CLI, allowing smooth tool use natively.
 
 **Is this secure?**
 
 TiClaw uses physical isolation and port-locking. However, it is designed for controlled environments. Always review the code changes and use dedicated machines (like a Mac Mini).
-
-**Can I switch between Gemini and Claude?**
-
-Yes! Set `TC_CODING_CLI="claude"` or `TC_CODING_CLI="gemini"` in your `.env`.
 
 **Can I use third-party LLM providers?**
 

@@ -25,16 +25,11 @@ The physical engine that manages workspaces.
     2. Manage independent `.envrc` and workspace-specific settings.
     3. Monitor directory for changes (using `chokidar` or similar).
 
-### C. The Multi-CLI Driver Pattern
-To ensure flexibility and resilience against account-level issues, TiClaw abstracts the actual coding agent logic into a **Driver** pattern.
-*   **Gemini Driver (Default):** Spawns the `gemini` CLI in non-interactive YOLO mode. It utilizes `--resume latest` to maintain state across turns and `stream-json` for real-time feedback.
-*   **Claude Driver:** Utilizes the `@anthropic-ai/claude-agent-sdk` for deep integration with the AI coding CLI.
-*   **Codex Driver:** A specialized driver for Codex-based workflows.
-*   **Switching:** Controlled via the `TC_CODING_CLI` environment variable.
-
-### D. Workspace Skill (Headless)
-Runs the coding CLI (Gemini, Codex, Claude) in headless mode — no persistent terminal.
-*   **Subprocess:** Each prompt spawns a fresh process. Output is captured and delivered to the channel when done.
+### C. Native Agent SDK Loop
+To ensure robust multi-turn task execution without fragile regex parsing or complex tmux session management, TiClaw utilizes the official `@anthropic-ai/claude-agent-sdk`.
+*   **The SDK Core (`run-agent.ts`):** Instead of a multi-CLI driver pattern (Gemini CLI, Codex, etc.), TiClaw wraps the `query()` generator from the Claude SDK. This grants the LLM built-in access to its native toolchain (Bash, Edit, Read).
+*   **Physical Execution:** The SDK executes safely on the host inside the restricted `~/ticlaw/factory/` directories without requiring headless subprocess polling or Docker container layers.
+*   **OpenRouter Routing:** By overriding `ANTHROPIC_BASE_URL` with standard OpenRouter credentials (`OPENROUTER_API_KEY`), the agent naturally executes models like MiniMax-M2.5 or Claude 3.5 Sonnet directly from the Node runtime.
 
 ### D. The Delta Feed (Gemini Powered Audit)
 *   **Function:** Periodically (or upon file save/command completion) calculates the `git diff`.
@@ -49,19 +44,19 @@ Runs the coding CLI (Gemini, Codex, Claude) in headless mode — no persistent t
 ```
 [User (Discord/Feishu/etc)] --> [Message Router]
                                         |
-                    [Mind Update] <-- natural conversation
+                    [Mind Update] <-- natural conversation (via Agent Context)
                                         |
                     [/mind commands] --> status, lock, unlock, package, diff, rollback
                                         |
-                    [Workspace delegation] --> [Mind Builder Agent]
+                    [Workspace delegation] --> [runAgent()] (Claude Agent SDK)
                                                         |
                                                 [TcWorkspace Factory]
                                                         |
                                                 (mkdir + git clone)
                                                         |
-                                                [Subprocess (Gemini/Claude headless)] <--- (--prompt)
+                                                [Built-in Tools (Bash/Edit/Read)]
                                                         |                           |
-                                                (Streaming Logs) -------------- [User Debugging]
+                                                (Streaming LLM Tokens) -------- [User Debugging]
                                                         |
                                                 [Delta Feed/Screenshots]
                                                         |
