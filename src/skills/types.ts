@@ -1,4 +1,5 @@
 export type SkillCompatibilitySource = 'openclaw';
+export type SkillInstallSourceType = 'local' | 'git' | 'npm';
 export type SkillPermissionLevel = 1 | 2 | 3;
 export type SkillPermissionMode =
   | 'read-only'
@@ -10,7 +11,16 @@ export type SkillEntrypointType =
   | 'package-main'
   | 'module'
   | 'script';
-export type SkillAuditAction = 'install' | 'enable' | 'disable';
+export type SkillAuditAction =
+  | 'install'
+  | 'upgrade'
+  | 'enable'
+  | 'disable'
+  | 'remove';
+export type SkillApiCompatibilityStatus =
+  | 'compatible'
+  | 'incompatible'
+  | 'unspecified';
 
 export interface SkillDiagnostic {
   severity: SkillDiagnosticSeverity;
@@ -26,6 +36,7 @@ export interface OpenClawSkillMetadata {
   install: string[];
   permissions: string[];
   entry?: string;
+  skillApiVersion?: string;
   source?: string;
 }
 
@@ -59,6 +70,21 @@ export interface SkillLayout {
   hasTestsDir: boolean;
 }
 
+export interface SkillApiCompatibility {
+  current: string;
+  declared?: string;
+  status: SkillApiCompatibilityStatus;
+  reason: string;
+}
+
+export interface SkillSourceReference {
+  type: SkillInstallSourceType;
+  spec: string;
+  canonical: string;
+  managed: boolean;
+  trusted: boolean;
+}
+
 export interface DiscoveredSkill {
   name: string;
   description: string;
@@ -68,6 +94,8 @@ export interface DiscoveredSkill {
   parsed: ParsedOpenClawSkill;
   entrypoint?: SkillEntrypoint;
   layout: SkillLayout;
+  sourceRef: SkillSourceReference;
+  apiCompatibility: SkillApiCompatibility;
   diagnostics: SkillDiagnostic[];
   source: SkillCompatibilitySource;
 }
@@ -90,6 +118,8 @@ export interface AdaptedSkill {
   directory: string;
   entrypoint?: SkillEntrypoint;
   permission: SkillPermissionProfile;
+  sourceRef: SkillSourceReference;
+  apiCompatibility: SkillApiCompatibility;
   requires: string[];
   install: string[];
   commands: string[];
@@ -110,6 +140,7 @@ export interface InstalledSkillRecord {
   version: string;
   source: SkillCompatibilitySource;
   directory: string;
+  sourceRef: SkillSourceReference;
   description: string;
   enabled: boolean;
   permissionLevel: SkillPermissionLevel;
@@ -120,12 +151,23 @@ export interface InstalledSkillRecord {
   entrypoint?: string;
   requires: string[];
   install: string[];
+  contentHash?: string;
+  skillApiVersion?: string;
+  apiCompatibility: SkillApiCompatibility;
   diagnostics: SkillDiagnostic[];
 }
 
+export interface TrustedSkillSourceRecord {
+  type: SkillInstallSourceType;
+  canonical: string;
+  addedAt: string;
+  addedBy: string;
+}
+
 export interface SkillsRegistryState {
-  version: 1;
+  version: 2;
   installed: Record<string, InstalledSkillRecord>;
+  trustedSources: Record<string, TrustedSkillSourceRecord>;
 }
 
 export interface RegistryActionContext {
@@ -142,16 +184,38 @@ export interface SkillAuditEvent {
   skill: string;
   version: string;
   permissionLevel: SkillPermissionLevel;
+  sourceType: SkillInstallSourceType;
+  sourceCanonical: string;
+  managed: boolean;
+  contentHash?: string;
   timestamp: string;
 }
 
 export interface ListedSkill {
   skill: AdaptedSkill;
   installed?: InstalledSkillRecord;
+  discovered: boolean;
 }
 
 export interface SkillsCommandResult {
   ok: boolean;
   exitCode: number;
   message: string;
+}
+
+export interface SkillInstallOptions {
+  expectedHash?: string;
+  trustSource?: boolean;
+}
+
+export interface ManagedSkillManifest {
+  sourceRef: SkillSourceReference;
+  contentHash: string;
+  installedAt: string;
+}
+
+export interface FailedSkillLoad {
+  directory: string;
+  error: string;
+  manifest?: ManagedSkillManifest;
 }

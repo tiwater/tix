@@ -6,6 +6,7 @@ describe('parseOpenClawSkillMarkdown', () => {
     const parsed = parseOpenClawSkillMarkdown(`---
 name: robot-status
 description: Reads robot state
+skill_api_version: 1.0.0
 requires:
   - robot-mcp
 install:
@@ -27,6 +28,7 @@ pnpm build
 
     expect(parsed.metadata.name).toBe('robot-status');
     expect(parsed.metadata.description).toBe('Reads robot state');
+    expect(parsed.metadata.skillApiVersion).toBe('1.0.0');
     expect(parsed.metadata.requires).toContain('robot-mcp');
     expect(parsed.metadata.install).toContain('pnpm install');
     expect(parsed.metadata.install).toContain('pnpm build');

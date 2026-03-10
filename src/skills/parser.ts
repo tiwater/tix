@@ -16,9 +16,7 @@ function slugifyHeading(value: string): string {
 
 function normalizeListValue(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map((item) => String(item).trim())
-      .filter(Boolean);
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
   if (typeof value === 'string') {
     return value
@@ -50,7 +48,8 @@ function extractFrontmatter(raw: string): {
     diagnostics.push({
       severity: 'warning',
       code: 'frontmatter_unterminated',
-      message: 'SKILL.md starts with frontmatter but does not close it cleanly.',
+      message:
+        'SKILL.md starts with frontmatter but does not close it cleanly.',
     });
     return { frontmatter: {}, body: raw, diagnostics };
   }
@@ -139,7 +138,7 @@ function extractKeyValueLines(body: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const line of body.split(/\r?\n/)) {
     const match = line.match(
-      /^(name|description|version|entry|entrypoint|requires|install|permissions?)\s*:\s*(.+)$/i,
+      /^(name|description|version|entry|entrypoint|requires|install|permissions?|skill_api_version|skillapiversion)\s*:\s*(.+)$/i,
     );
     if (!match) continue;
     values[match[1].toLowerCase()] = match[2].trim();
@@ -229,7 +228,15 @@ function buildMetadata(
       title,
     description: description?.trim() || 'OpenClaw-compatible skill',
     version:
-      normalizeStringValue(frontmatter.version) || keyValues.version || undefined,
+      normalizeStringValue(frontmatter.version) ||
+      keyValues.version ||
+      undefined,
+    skillApiVersion:
+      normalizeStringValue(frontmatter.skill_api_version) ||
+      normalizeStringValue(frontmatter.skillApiVersion) ||
+      keyValues.skill_api_version ||
+      keyValues.skillapiversion ||
+      undefined,
     requires: [
       ...normalizeListValue(frontmatter.requires),
       ...normalizeListValue(keyValues.requires),
