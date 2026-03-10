@@ -11,6 +11,10 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'TC_CODING_CLI',
+  'TICLAW_RUNTIME_ID',
+  'TICLAW_RUNTIME_CONCURRENCY',
+  'TICLAW_AGENT_CONCURRENCY',
+  'TICLAW_SESSION_CONCURRENCY',
   'MIND_ADMIN_USERS',
   'MIND_LOCK_MODE',
   'HTTP_PORT',
@@ -160,3 +164,31 @@ export const CONTROL_PLANE_RUNTIME_ID =
   process.env.CONTROL_PLANE_RUNTIME_ID ||
   envConfig.CONTROL_PLANE_RUNTIME_ID ||
   '';
+
+export const DEFAULT_RUNTIME_ID =
+  process.env.TICLAW_RUNTIME_ID ||
+  envConfig.TICLAW_RUNTIME_ID ||
+  CONTROL_PLANE_RUNTIME_ID ||
+  'ticlaw-runtime';
+
+function parseConcurrencyLimit(value: string | undefined, fallback: number): number {
+  const parsed = parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export const RUNTIME_CONCURRENCY_LIMIT = parseConcurrencyLimit(
+  process.env.TICLAW_RUNTIME_CONCURRENCY ||
+    envConfig.TICLAW_RUNTIME_CONCURRENCY,
+  10,
+);
+
+export const AGENT_CONCURRENCY_LIMIT = parseConcurrencyLimit(
+  process.env.TICLAW_AGENT_CONCURRENCY || envConfig.TICLAW_AGENT_CONCURRENCY,
+  5,
+);
+
+export const SESSION_CONCURRENCY_LIMIT = parseConcurrencyLimit(
+  process.env.TICLAW_SESSION_CONCURRENCY ||
+    envConfig.TICLAW_SESSION_CONCURRENCY,
+  2,
+);

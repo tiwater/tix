@@ -4,8 +4,10 @@ import {
   _initTestDatabase,
   createTask,
   deleteTask,
+  ensureSession,
   getAllChats,
   getAllRegisteredProjects,
+  getAllSessions,
   getMessagesSince,
   getNewMessages,
   getTaskById,
@@ -37,6 +39,23 @@ function store(overrides: {
     content: overrides.content,
     timestamp: overrides.timestamp,
     is_from_me: overrides.is_from_me ?? false,
+  });
+}
+
+function createSession(overrides?: {
+  runtime_id?: string;
+  agent_id?: string;
+  session_id?: string;
+  chat_jid?: string;
+}) {
+  return ensureSession({
+    runtime_id: overrides?.runtime_id || 'runtime-1',
+    agent_id: overrides?.agent_id || 'agent-1',
+    session_id: overrides?.session_id || 'session-1',
+    chat_jid: overrides?.chat_jid || 'group@g.us',
+    channel: 'test',
+    agent_name: 'Agent 1',
+    agent_folder: 'agent_1',
   });
 }
 
@@ -335,9 +354,12 @@ describe('storeChatMetadata', () => {
 
 describe('task CRUD', () => {
   it('creates and retrieves a task', () => {
+    createSession();
     createTask({
       id: 'task-1',
-      group_folder: 'main',
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-1',
       chat_jid: 'group@g.us',
       prompt: 'do something',
       schedule_type: 'once',
@@ -355,9 +377,12 @@ describe('task CRUD', () => {
   });
 
   it('updates task status', () => {
+    createSession();
     createTask({
       id: 'task-2',
-      group_folder: 'main',
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-1',
       chat_jid: 'group@g.us',
       prompt: 'test',
       schedule_type: 'once',
@@ -373,9 +398,12 @@ describe('task CRUD', () => {
   });
 
   it('deletes a task and its run logs', () => {
+    createSession();
     createTask({
       id: 'task-3',
-      group_folder: 'main',
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-1',
       chat_jid: 'group@g.us',
       prompt: 'delete me',
       schedule_type: 'once',
@@ -391,6 +419,27 @@ describe('task CRUD', () => {
   });
 });
 
+describe('session topology', () => {
+  it('creates isolated session records for one agent on one runtime', () => {
+    const sessionA = createSession({
+      session_id: 'session-a',
+      chat_jid: 'chat-a',
+    });
+    const sessionB = createSession({
+      session_id: 'session-b',
+      chat_jid: 'chat-b',
+    });
+
+    expect(sessionA.runtime_id).toBe('runtime-1');
+    expect(sessionA.agent_id).toBe('agent-1');
+    expect(sessionA.workspace_path).not.toBe(sessionB.workspace_path);
+    expect(sessionA.memory_path).not.toBe(sessionB.memory_path);
+
+    const sessions = getAllSessions();
+    expect(sessions).toHaveLength(2);
+  });
+});
+
 // --- RegisteredProject isMain round-trip ---
 
 describe('registered group isMain', () => {
@@ -398,6 +447,8 @@ describe('registered group isMain', () => {
     setRegisteredProject('main@s.whatsapp.net', {
       name: 'Main Chat',
       folder: 'whatsapp_main',
+      runtime_id: 'runtime-main',
+      agent_id: 'agent-main',
       trigger: '@Andy',
       added_at: '2024-01-01T00:00:00.000Z',
       isMain: true,
@@ -408,12 +459,16 @@ describe('registered group isMain', () => {
     expect(group).toBeDefined();
     expect(group.isMain).toBe(true);
     expect(group.folder).toBe('whatsapp_main');
+    expect(group.runtime_id).toBe('runtime-main');
+    expect(group.agent_id).toBe('agent-main');
   });
 
   it('omits isMain for non-main groups', () => {
     setRegisteredProject('group@g.us', {
       name: 'Family Chat',
       folder: 'whatsapp_family-chat',
+      runtime_id: 'runtime-family',
+      agent_id: 'agent-family',
       trigger: '@Andy',
       added_at: '2024-01-01T00:00:00.000Z',
     });
@@ -422,5 +477,7 @@ describe('registered group isMain', () => {
     const group = groups['group@g.us'];
     expect(group).toBeDefined();
     expect(group.isMain).toBeUndefined();
+    expect(group.runtime_id).toBe('runtime-family');
+    expect(group.agent_id).toBe('agent-family');
   });
 });

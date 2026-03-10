@@ -5,6 +5,7 @@ import path from 'path';
 import {
   TC_CODING_CLI,
   ASSISTANT_NAME,
+  DEFAULT_RUNTIME_ID,
   TICLAW_HOME,
   IDLE_TIMEOUT,
   MIND_ADMIN_USERS,
@@ -21,14 +22,14 @@ import {
   getAllChats,
   getAllRegisteredProjects,
   getAllSessions,
-  getAllTasks,
+  ensureSession,
   getMessagesSince,
   getNewMessages,
+  getSessionByChatJid,
   getRouterState,
   initDatabase,
   setRegisteredProject,
   setRouterState,
-  setSession,
   storeChatMetadata,
   storeMessage,
   getRecentMessages,
@@ -89,7 +90,6 @@ export interface ChannelOpts {
 
 // Global state
 let registeredProjects: Record<string, RegisteredProject> = {};
-const sessions: Record<string, string> = {}; // folder -> sessionId
 const lastAgentTimestamp: Record<string, string> = {}; // chatJid -> iso
 const channels: Channel[] = [];
 
@@ -108,9 +108,42 @@ let messageLoopRunning = false;
 // Simple mutex per channel to prevent overlapping agent runs
 const activeAgentLocks = new Map<string, Promise<any>>();
 
+function normalizeRegisteredProject(group: RegisteredProject): RegisteredProject {
+  return {
+    ...group,
+    runtime_id: group.runtime_id || DEFAULT_RUNTIME_ID,
+    agent_id: group.agent_id || group.folder,
+  };
+}
+
+function inferChannelName(chatJid: string): string | undefined {
+  if (chatJid.startsWith('dc:')) return 'discord';
+  if (chatJid.startsWith('tg:')) return 'telegram';
+  if (chatJid.startsWith('web:')) return 'http';
+  if (chatJid.startsWith('fs:')) return 'feishu';
+  return 'whatsapp';
+}
+
+function resolveSessionForChat(chatJid: string, group: RegisteredProject) {
+  const normalizedGroup = normalizeRegisteredProject(group);
+  const existing = getSessionByChatJid(chatJid);
+  if (existing) return existing;
+
+  return ensureSession({
+    runtime_id: normalizedGroup.runtime_id,
+    agent_id: normalizedGroup.agent_id!,
+    session_id: chatJid,
+    chat_jid: chatJid,
+    channel: inferChannelName(chatJid),
+    agent_name: normalizedGroup.name,
+    agent_folder: normalizedGroup.folder,
+  });
+}
+
 async function processMessages(chatJid: string): Promise<boolean> {
   let group = registeredProjects[chatJid];
   if (!group) return false;
+  group = normalizeRegisteredProject(group);
 
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
   const messages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
@@ -124,9 +157,21 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
   // Extract raw text from messages for agent thinking
   const rawText = messages.map((m) => m.content).join('\n');
+  const latestMsg = messages[messages.length - 1];
+  const session = resolveSessionForChat(chatJid, group);
+  const jobId =
+    latestMsg?.job_id ||
+    latestMsg?.id ||
+    `${session.session_id}-${newest}`;
+  const scopedLogger = logger.child({
+    runtime_id: session.runtime_id,
+    agent_id: session.agent_id,
+    session_id: session.session_id,
+    job_id: jobId,
+    chat_jid: chatJid,
+  });
 
   // Mind evolution: natural conversation updates persona and memory (non-blocking)
-  const latestMsg = messages[messages.length - 1];
   if (latestMsg?.content && !latestMsg.content.trim().startsWith('/mind')) {
     const isAdminUser = latestMsg.sender
       ? MIND_ADMIN_USERS.includes(latestMsg.sender)
@@ -162,8 +207,8 @@ async function processMessages(chatJid: string): Promise<boolean> {
     contextText = `[Conversation History]\n${historyText}\n\n[Latest Message]\n${rawText}`;
   }
 
-  logger.info(
-    { chatJid, messageCount: messages.length, rawText: rawText.slice(0, 200) },
+  scopedLogger.info(
+    { messageCount: messages.length, rawText: rawText.slice(0, 200) },
     'processMessages: starting',
   );
 
@@ -364,10 +409,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
     }
 
     // Check if we have a valid workspace for this group
-    const workspace = getFactoryPath(group);
+    const workspace = session.workspace_path;
     const hasWorkspace = fs.existsSync(workspace);
-    logger.info(
-      { chatJid, workspace, hasWorkspace },
+    scopedLogger.info(
+      { workspace, hasWorkspace },
       'processMessages: workspace check',
     );
 
@@ -379,25 +424,12 @@ async function processMessages(chatJid: string): Promise<boolean> {
     }));
 
     try {
-      if (!registeredProjects[chatJid] && !hasWorkspace) {
-        logger.info(
-          { chatJid },
-          'Creating temporary context for unregistered chat',
-        );
-        group = {
-          name: 'unknown',
-          folder: 'unknown',
-          trigger: `@${ASSISTANT_NAME}`,
-          added_at: new Date().toISOString(),
-          requiresTrigger: true,
-          isMain: false,
-        };
-      }
-
       await runAgent({
-        chatJid,
         group,
-        workspacePath: workspace,
+        session: {
+          ...session,
+          job_id: jobId,
+        },
         messages: aiMessages,
         onProgress: async (text, elapsed) => {
           const secs = Math.round(elapsed / 1000);
@@ -409,7 +441,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
       });
       return true;
     } catch (err: any) {
-      logger.error({ err }, 'Agent failed');
+      scopedLogger.error({ err }, 'Agent failed');
       await sendFn(
         chatJid,
         `❌ **Agent Error**\n\`\`\`\n${err.message}\n\`\`\``,
@@ -417,16 +449,21 @@ async function processMessages(chatJid: string): Promise<boolean> {
       return false;
     }
   } catch (err: any) {
-    logger.error({ err, chatJid }, 'processMessages: unexpected error');
+    logger.error(
+      {
+        runtime_id: session.runtime_id,
+        agent_id: session.agent_id,
+        session_id: session.session_id,
+        job_id: jobId,
+        chat_jid: chatJid,
+        err,
+      },
+      'processMessages: unexpected error',
+    );
     return false;
   } finally {
     routeSetTyping(channels, chatJid, false);
   }
-}
-
-/** Resolve the workspace directory for a group. */
-function getFactoryPath(group: RegisteredProject): string {
-  return path.join(TICLAW_HOME, 'factory', group.folder);
 }
 
 export function getAvailableProjects(): AvailableProject[] {
@@ -443,17 +480,31 @@ export function getAvailableProjects(): AvailableProject[] {
 export function _setRegisteredProjects(
   groups: Record<string, RegisteredProject>,
 ): void {
-  registeredProjects = groups;
+  registeredProjects = Object.fromEntries(
+    Object.entries(groups).map(([jid, group]) => [
+      jid,
+      normalizeRegisteredProject(group),
+    ]),
+  );
 }
 
 function registerProject(jid: string, group: RegisteredProject): void {
+  const normalizedGroup = normalizeRegisteredProject(group);
   // Ensure a chats row exists for this JID before registering,
   // so that subsequent message storage doesn't fail with FK constraint.
-  storeChatMetadata(jid, new Date().toISOString(), group.name);
-  setRegisteredProject(jid, group);
-  registeredProjects[jid] = group;
+  storeChatMetadata(jid, new Date().toISOString(), normalizedGroup.name);
+  setRegisteredProject(jid, normalizedGroup);
+  registeredProjects[jid] = normalizedGroup;
   scheduleSupabasePush();
-  logger.info({ jid, folder: group.folder }, 'Group registered');
+  logger.info(
+    {
+      jid,
+      runtime_id: normalizedGroup.runtime_id,
+      agent_id: normalizedGroup.agent_id,
+      folder: normalizedGroup.folder,
+    },
+    'Group registered',
+  );
 }
 
 async function startMessageLoop(): Promise<void> {
@@ -528,7 +579,7 @@ async function startMessageLoop(): Promise<void> {
 function loadState(): void {
   const groups = getAllRegisteredProjects();
   for (const [jid, group] of Object.entries(groups)) {
-    registeredProjects[jid] = group;
+    registeredProjects[jid] = normalizeRegisteredProject(group);
   }
   logger.info(
     { count: Object.keys(registeredProjects).length },
@@ -536,10 +587,7 @@ function loadState(): void {
   );
 
   const dbSessions = getAllSessions();
-  for (const [folder, sessionId] of Object.entries(dbSessions)) {
-    sessions[folder] = sessionId;
-  }
-  logger.info({ count: Object.keys(sessions).length }, 'Sessions loaded');
+  logger.info({ count: dbSessions.length }, 'Sessions loaded');
 
   for (const jid of Object.keys(registeredProjects)) {
     const timestamp = getRouterState(jid);

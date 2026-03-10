@@ -15,12 +15,14 @@
  */
 
 import http from 'http';
+import { randomUUID } from 'crypto';
 import { URL } from 'url';
 
 import {
   HTTP_PORT,
   HTTP_ENABLED,
   CONTROL_PLANE_RUNTIME_ID,
+  DEFAULT_RUNTIME_ID,
 } from '../core/config.js';
 import {
   createEnrollmentToken,
@@ -28,7 +30,7 @@ import {
   setTrustState,
   verifyEnrollmentToken,
 } from '../core/enrollment.js';
-import { getMindState } from '../core/db.js';
+import { ensureSession, getMindState, getSessionByChatJid } from '../core/db.js';
 import { logger } from '../core/logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import type { Channel, NewMessage, RegisteredProject } from '../core/types.js';
@@ -39,6 +41,27 @@ const WEB_JID_PREFIX = 'web:';
 
 /** All active SSE response streams, keyed by chatJid. */
 const sseClients = new Map<string, Set<http.ServerResponse>>();
+const activeHttpJobs = new Map<
+  string,
+  {
+    runtime_id: string;
+    agent_id: string;
+    session_id: string;
+    job_id: string;
+  }
+>();
+
+function safeAgentFolder(agentId: string): string {
+  return agentId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'agent';
+}
+
+function buildHttpChatJid(
+  runtimeId: string,
+  agentId: string,
+  sessionId: string,
+): string {
+  return `${WEB_JID_PREFIX}${encodeURIComponent(runtimeId)}:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
+}
 
 function addClient(chatJid: string, res: http.ServerResponse): void {
   if (!sseClients.has(chatJid)) sseClients.set(chatJid, new Set());
@@ -290,13 +313,25 @@ export class HttpChannel implements Channel {
       req.method === 'GET'
     ) {
       const parts = pathname.split('/');
-      const runId = parts[2]; // /runs/123/stream
+      const runId = parts[2];
+      const runtimeId =
+        url.searchParams.get('runtime_id') ||
+        CONTROL_PLANE_RUNTIME_ID ||
+        DEFAULT_RUNTIME_ID;
+      const agentId = url.searchParams.get('agent_id');
+      const sessionId = url.searchParams.get('session_id');
 
-      const chatJidParam =
-        runId || url.searchParams.get('chat_jid') || 'default';
-      const chatJid = chatJidParam.startsWith(WEB_JID_PREFIX)
-        ? chatJidParam
-        : `${WEB_JID_PREFIX}${chatJidParam}`;
+      if (!agentId || !sessionId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'runtime_id, agent_id, and session_id are required',
+          }),
+        );
+        return;
+      }
+
+      const chatJid = buildHttpChatJid(runtimeId, agentId, sessionId);
 
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -307,11 +342,27 @@ export class HttpChannel implements Channel {
 
       // Initial connected event
       res.write(
-        `data: ${JSON.stringify({ type: 'connected', chat_jid: chatJid })}\n\n`,
+        `data: ${JSON.stringify({
+          type: 'connected',
+          chat_jid: chatJid,
+          runtime_id: runtimeId,
+          agent_id: agentId,
+          session_id: sessionId,
+          job_id: runId,
+        })}\n\n`,
       );
 
       addClient(chatJid, res);
-      logger.info({ chatJid }, 'SSE client connected');
+      logger.info(
+        {
+          runtime_id: runtimeId,
+          agent_id: agentId,
+          session_id: sessionId,
+          job_id: runId,
+          chat_jid: chatJid,
+        },
+        'SSE client connected',
+      );
 
       // Heartbeat to prevent proxy timeout (every 20s)
       const heartbeat = setInterval(() => {
@@ -325,7 +376,16 @@ export class HttpChannel implements Channel {
       req.on('close', () => {
         clearInterval(heartbeat);
         removeClient(chatJid, res);
-        logger.info({ chatJid }, 'SSE client disconnected');
+        logger.info(
+          {
+            runtime_id: runtimeId,
+            agent_id: agentId,
+            session_id: sessionId,
+            job_id: runId,
+            chat_jid: chatJid,
+          },
+          'SSE client disconnected',
+        );
       });
       return;
     }
@@ -337,18 +397,47 @@ export class HttpChannel implements Channel {
       req.on('end', () => {
         try {
           const parsed = JSON.parse(body);
-          const { chat_jid: rawJid, sender, sender_name, content } = parsed;
+          const {
+            runtime_id: rawRuntimeId,
+            agent_id: rawAgentId,
+            session_id: rawSessionId,
+            job_id: rawJobId,
+            sender,
+            sender_name,
+            content,
+          } = parsed;
           if (!content || typeof content !== 'string') {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'content is required' }));
             return;
           }
 
-          const chatJid = rawJid
-            ? rawJid.startsWith(WEB_JID_PREFIX)
-              ? rawJid
-              : `${WEB_JID_PREFIX}${rawJid}`
-            : `${WEB_JID_PREFIX}default`;
+          const runtimeId =
+            rawRuntimeId || CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
+          const agentId =
+            typeof rawAgentId === 'string' && rawAgentId.trim()
+              ? rawAgentId.trim()
+              : null;
+          const sessionId =
+            typeof rawSessionId === 'string' && rawSessionId.trim()
+              ? rawSessionId.trim()
+              : null;
+          const jobId =
+            typeof rawJobId === 'string' && rawJobId.trim()
+              ? rawJobId.trim()
+              : randomUUID();
+
+          if (!agentId || !sessionId) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                error: 'runtime_id, agent_id, and session_id are required',
+              }),
+            );
+            return;
+          }
+
+          const chatJid = buildHttpChatJid(runtimeId, agentId, sessionId);
 
           const senderId = sender || 'web-user';
           const senderName = sender_name || sender || 'Web User';
@@ -373,8 +462,10 @@ export class HttpChannel implements Channel {
           const projects = this.opts.registeredProjects();
           if (!projects[chatJid] && this.opts.onGroupRegistered) {
             const group: RegisteredProject = {
-              name: chatJid,
-              folder: `web-${chatJid.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 50)}`,
+              name: agentId,
+              folder: safeAgentFolder(agentId),
+              runtime_id: runtimeId,
+              agent_id: agentId,
               trigger: '',
               added_at: timestamp,
               requiresTrigger: false,
@@ -382,6 +473,24 @@ export class HttpChannel implements Channel {
             };
             this.opts.onGroupRegistered(chatJid, group);
           }
+
+          const group = this.opts.registeredProjects()[chatJid];
+          const agentFolder = group?.folder || safeAgentFolder(agentId);
+          ensureSession({
+            runtime_id: runtimeId,
+            agent_id: agentId,
+            session_id: sessionId,
+            chat_jid: chatJid,
+            channel: 'http',
+            agent_name: group?.name || agentId,
+            agent_folder: agentFolder,
+          });
+          activeHttpJobs.set(chatJid, {
+            runtime_id: runtimeId,
+            agent_id: agentId,
+            session_id: sessionId,
+            job_id: jobId,
+          });
 
           this.opts.onChatMetadata(
             chatJid,
@@ -399,15 +508,37 @@ export class HttpChannel implements Channel {
             content,
             timestamp,
             is_from_me: false,
+            runtime_id: runtimeId,
+            agent_id: agentId,
+            session_id: sessionId,
+            job_id: jobId,
           };
 
           this.opts.onMessage(chatJid, msg);
 
           res.writeHead(202, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, chat_jid: chatJid, id: msg.id }));
+          res.end(
+            JSON.stringify({
+              ok: true,
+              runtime_id: runtimeId,
+              agent_id: agentId,
+              session_id: sessionId,
+              job_id: jobId,
+              chat_jid: chatJid,
+              id: msg.id,
+            }),
+          );
 
           logger.info(
-            { chatJid, sender: senderId, content: content.slice(0, 80) },
+            {
+              runtime_id: runtimeId,
+              agent_id: agentId,
+              session_id: sessionId,
+              job_id: jobId,
+              chat_jid: chatJid,
+              sender: senderId,
+              content: content.slice(0, 80),
+            },
             'HTTP message received',
           );
         } catch (err) {
@@ -430,13 +561,29 @@ export class HttpChannel implements Channel {
     options?: { embeds?: any[] },
   ): Promise<void> {
     if (!text.trim()) return;
+    const session = getSessionByChatJid(jid);
+    const activeJob = activeHttpJobs.get(jid);
     broadcastToChat(jid, {
       type: 'message',
       chat_jid: jid,
+      runtime_id: activeJob?.runtime_id || session?.runtime_id,
+      agent_id: activeJob?.agent_id || session?.agent_id,
+      session_id: activeJob?.session_id || session?.session_id,
+      job_id: activeJob?.job_id,
       text,
       embeds: options?.embeds,
     });
-    logger.info({ jid, length: text.length }, 'HTTP SSE message broadcast');
+    logger.info(
+      {
+        runtime_id: activeJob?.runtime_id || session?.runtime_id,
+        agent_id: activeJob?.agent_id || session?.agent_id,
+        session_id: activeJob?.session_id || session?.session_id,
+        job_id: activeJob?.job_id,
+        chat_jid: jid,
+        length: text.length,
+      },
+      'HTTP SSE message broadcast',
+    );
   }
 
   async sendFile(
@@ -472,6 +619,7 @@ export class HttpChannel implements Channel {
       }
     }
     sseClients.clear();
+    activeHttpJobs.clear();
     logger.info('HTTP SSE channel disconnected');
   }
 }

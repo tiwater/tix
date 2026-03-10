@@ -33,9 +33,44 @@ export interface RegisteredProject {
   folder: string; // Agent folder (e.g. main, family-chat)
   trigger: string;
   added_at: string;
+  runtime_id?: string;
+  agent_id?: string;
 
   requiresTrigger?: boolean; // Default: true for rooms, false for solo chats
   isMain?: boolean; // True for the main agent (no trigger, elevated privileges)
+}
+
+export interface RuntimeRecord {
+  runtime_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentRecord {
+  runtime_id: string;
+  agent_id: string;
+  name: string;
+  folder: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionRecord {
+  runtime_id: string;
+  agent_id: string;
+  session_id: string;
+  chat_jid: string;
+  channel?: string;
+  workspace_path: string;
+  memory_path: string;
+  logs_path: string;
+  status: 'active' | 'terminated';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionContext extends SessionRecord {
+  job_id: string;
 }
 
 export interface NewMessage {
@@ -47,11 +82,17 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
+  runtime_id?: string;
+  agent_id?: string;
+  session_id?: string;
+  job_id?: string;
 }
 
 export interface ScheduledTask {
   id: string;
-  group_folder: string;
+  runtime_id: string;
+  agent_id: string;
+  session_id: string;
   chat_jid: string;
   prompt: string;
   schedule_type: 'cron' | 'interval' | 'once';
@@ -65,6 +106,10 @@ export interface ScheduledTask {
 }
 
 export interface TaskRunLog {
+  runtime_id: string;
+  agent_id: string;
+  session_id: string;
+  job_id: string;
   task_id: string;
   run_at: string;
   duration_ms: number;
