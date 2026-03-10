@@ -138,16 +138,22 @@ export class HttpChannel implements Channel {
         const chatJid = chatJidParam.startsWith(WEB_JID_PREFIX)
           ? chatJidParam
           : `${WEB_JID_PREFIX}${chatJidParam}`;
-        
+
         // Use getRecentMessages directly since it's now imported
         const dbMessages = getRecentMessages(chatJid, 50);
-        
+
         // Map DB message format to the Web UI's Message format
         const messages = dbMessages.map((m: any) => ({
           id: m.id,
-          role: (m.is_bot_message || m.is_from_me || m.sender_name === 'Assistant' || m.sender_name === 'TiClaw') ? 'bot' : 'user', // Accurate mapping
+          role:
+            m.is_bot_message ||
+            m.is_from_me ||
+            m.sender_name === 'Assistant' ||
+            m.sender_name === 'TiClaw'
+              ? 'bot'
+              : 'user', // Accurate mapping
           text: m.content,
-          time: new Date(m.timestamp).toLocaleTimeString()
+          time: new Date(m.timestamp).toLocaleTimeString(),
         }));
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -170,7 +176,7 @@ export class HttpChannel implements Channel {
 
         const projects = this.opts.registeredProjects();
         const group = projects[chatJid];
-        
+
         if (!group) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Group not found' }));
@@ -180,8 +186,8 @@ export class HttpChannel implements Channel {
         // We know TICLAW_HOME from env.ts
         // For simplicity, factory/group-folder
         const workspacePath = path.join(TICLAW_HOME, 'factory', group.folder);
-        
-        const files: Record<string, { content: string, mtimeMs: number }> = {};
+
+        const files: Record<string, { content: string; mtimeMs: number }> = {};
         if (fs.existsSync(workspacePath)) {
           const items = fs.readdirSync(workspacePath);
           for (const item of items) {
@@ -190,7 +196,7 @@ export class HttpChannel implements Channel {
               const stat = fs.statSync(filePath);
               files[item] = {
                 content: fs.readFileSync(filePath, 'utf-8'),
-                mtimeMs: stat.mtimeMs
+                mtimeMs: stat.mtimeMs,
               };
             }
           }
