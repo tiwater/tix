@@ -10,6 +10,7 @@ import {
   MIND_ADMIN_USERS,
   POLL_INTERVAL,
   TRIGGER_PATTERN,
+  CONTROL_PLANE_RUNTIME_ID,
 } from './core/config.js';
 import './channels/index.js';
 import {
@@ -44,6 +45,10 @@ import {
   unlockMind,
 } from './core/mind.js';
 import { logger } from './core/logger.js';
+import {
+  readEnrollmentState,
+  verifyEnrollmentToken,
+} from './core/enrollment.js';
 import {
   routeOutbound,
   routeOutboundFile,
@@ -179,6 +184,45 @@ async function processMessages(chatJid: string): Promise<boolean> {
           `🧠 Mind status\n- version: ${state.version}\n- lifecycle: ${state.lifecycle}\n- persona: ${JSON.stringify(state.persona)}`,
         );
         return true;
+      }
+
+      if (cmd === 'enroll') {
+        const sub = parts[2] || 'status';
+        if (sub === 'status') {
+          const e = readEnrollmentState(CONTROL_PLANE_RUNTIME_ID || undefined);
+          await sendFn(
+            chatJid,
+            `🔐 Enrollment status\n- runtime_id: ${e.runtime_id}\n- fingerprint: ${e.runtime_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
+          );
+          return true;
+        }
+
+        if (sub === 'verify') {
+          const token = parts[3];
+          if (!token) {
+            await sendFn(chatJid, 'Usage: /mind enroll verify <token>');
+            return true;
+          }
+          const e = readEnrollmentState(CONTROL_PLANE_RUNTIME_ID || undefined);
+          const result = verifyEnrollmentToken({
+            token,
+            runtimeFingerprint: e.runtime_fingerprint,
+            runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          });
+
+          if (result.ok) {
+            await sendFn(
+              chatJid,
+              `✅ Enrollment verified. trust_state=${result.state.trust_state}`,
+            );
+          } else {
+            await sendFn(
+              chatJid,
+              `❌ Enrollment verification failed: ${result.code} (state=${result.state.trust_state})`,
+            );
+          }
+          return true;
+        }
       }
 
       const isMainGroup = !!group.isMain;

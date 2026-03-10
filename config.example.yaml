@@ -20,3 +20,9 @@ channels:
 # llm:
 #   api_key: "sk-or-..."        # OpenRouter API key
 #   model: "google/gemini-2.5-flash"
+
+# Generic control-plane enrollment (TOFU + out-of-band verification)
+# control_plane:
+#   url: "https://control-plane.example.com"
+#   enrollment_mode: "tofu_oob"
+#   runtime_id: "runtime-prod-01"
