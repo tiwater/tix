@@ -45,6 +45,7 @@ import {
   unlockMind,
 } from './core/mind.js';
 import { logger } from './core/logger.js';
+import { executeSkillsCommand } from './skills/commands.js';
 import {
   readEnrollmentState,
   verifyEnrollmentToken,
@@ -127,10 +128,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
   // Mind evolution: natural conversation updates persona and memory (non-blocking)
   const latestMsg = messages[messages.length - 1];
+  const isAdminUser = latestMsg?.sender
+    ? MIND_ADMIN_USERS.includes(latestMsg.sender)
+    : false;
   if (latestMsg?.content && !latestMsg.content.trim().startsWith('/mind')) {
-    const isAdminUser = latestMsg.sender
-      ? MIND_ADMIN_USERS.includes(latestMsg.sender)
-      : false;
     recordUserInteraction({
       chat_jid: chatJid,
       channel: chatJid.startsWith('dc:')
@@ -361,6 +362,16 @@ async function processMessages(chatJid: string): Promise<boolean> {
         );
         return true;
       }
+    }
+
+    if (latestText.startsWith('/skills')) {
+      const rawArgs = latestText.replace(/^\/skills\b/, '').trim();
+      const result = executeSkillsCommand(rawArgs, {
+        actor: latestMsg?.sender || chatJid,
+        isAdmin: isAdminUser,
+      });
+      await sendFn(chatJid, result.message);
+      return result.ok;
     }
 
     // Check if we have a valid workspace for this group

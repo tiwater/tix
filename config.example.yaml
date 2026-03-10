@@ -26,3 +26,12 @@ channels:
 #   url: "https://control-plane.example.com"
 #   enrollment_mode: "tofu_oob"
 #   runtime_id: "runtime-prod-01"
+
+# OpenClaw-compatible skills registry
+# skills:
+#   directories:
+#     - "~/ticlaw/skills"
+#     - "./skills"
+#   admin_only: true
+#   allow_level3: false
+#   auto_enable: false

@@ -11,6 +11,10 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'TC_CODING_CLI',
+  'SKILLS_DIRS',
+  'SKILLS_ADMIN_ONLY',
+  'SKILLS_ALLOW_LEVEL3',
+  'SKILLS_AUTO_ENABLE',
   'MIND_ADMIN_USERS',
   'MIND_LOCK_MODE',
   'HTTP_PORT',
@@ -61,6 +65,35 @@ if (!fs.existsSync(TICLAW_HOME)) {
   fs.mkdirSync(TICLAW_HOME, { recursive: true });
 }
 
+function parseBoolean(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  if (value == null || value === '') return fallback;
+  return value === 'true' || value === '1' || value === 'yes';
+}
+
+function expandHomePath(inputPath: string): string {
+  if (inputPath === '~') return HOME_DIR;
+  if (inputPath.startsWith('~/')) {
+    return path.join(HOME_DIR, inputPath.slice(2));
+  }
+  return path.resolve(inputPath);
+}
+
+function parsePathList(
+  value: string | undefined,
+  fallback: string[],
+): string[] {
+  const rawItems = value
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : fallback;
+  return Array.from(new Set(rawItems.map((item) => expandHomePath(item))));
+}
+
 export const MOUNT_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
@@ -78,6 +111,9 @@ export const AGENTS_DIR = (() => {
   return agents;
 })();
 export const DATA_DIR = path.join(TICLAW_HOME, 'data');
+export const SKILLS_HOME = path.join(TICLAW_HOME, 'skills');
+export const SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
+export const SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
 
 /** @deprecated Use AGENTS_DIR. Kept for migration. */
 export const GROUPS_DIR = AGENTS_DIR;
@@ -97,6 +133,41 @@ export const AGENT_MEMORY_FILENAME = 'MEMORY.md';
 export const GROUP_MIND_FILES = AGENT_MIND_FILES;
 /** @deprecated Use AGENT_MEMORY_FILENAME. */
 export const GROUP_MEMORY_FILENAME = AGENT_MEMORY_FILENAME;
+
+export interface SkillsRuntimeConfig {
+  directories: string[];
+  adminOnly: boolean;
+  allowLevel3: boolean;
+  autoEnableOnInstall: boolean;
+  statePath: string;
+  auditLogPath: string;
+}
+
+const defaultSkillDirectories = [
+  path.join(TICLAW_HOME, 'skills'),
+  path.join(process.cwd(), 'skills'),
+];
+
+export const SKILLS_CONFIG: SkillsRuntimeConfig = {
+  directories: parsePathList(
+    process.env.SKILLS_DIRS || envConfig.SKILLS_DIRS,
+    defaultSkillDirectories,
+  ),
+  adminOnly: parseBoolean(
+    process.env.SKILLS_ADMIN_ONLY || envConfig.SKILLS_ADMIN_ONLY,
+    true,
+  ),
+  allowLevel3: parseBoolean(
+    process.env.SKILLS_ALLOW_LEVEL3 || envConfig.SKILLS_ALLOW_LEVEL3,
+    false,
+  ),
+  autoEnableOnInstall: parseBoolean(
+    process.env.SKILLS_AUTO_ENABLE || envConfig.SKILLS_AUTO_ENABLE,
+    false,
+  ),
+  statePath: SKILLS_STATE_PATH,
+  auditLogPath: SKILLS_AUDIT_LOG_PATH,
+};
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'ticlaw-agent:latest';

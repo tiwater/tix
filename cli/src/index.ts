@@ -9,8 +9,9 @@
  *   tc stop                     Stop the TiClaw service
  *   tc status                   Show service state + detected CLIs
  *   tc skills list              List available skills
- *   tc skills add <name>        Apply a skill
- *   tc skills remove <name>     Uninstall a skill
+ *   tc skills install <name>    Install a skill
+ *   tc skills enable <name>     Enable a skill
+ *   tc skills disable <name>    Disable a skill
  */
 
 import { Command } from 'commander';
