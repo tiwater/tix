@@ -57,6 +57,7 @@ import {
   routeSendReturningId,
   routeEditMessage,
 } from './router.js';
+import { startJobExecutor, stopJobExecutor } from './job-executor.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import {
   AvailableProject,
@@ -108,7 +109,9 @@ let messageLoopRunning = false;
 // Simple mutex per channel to prevent overlapping agent runs
 const activeAgentLocks = new Map<string, Promise<any>>();
 
-function normalizeRegisteredProject(group: RegisteredProject): RegisteredProject {
+function normalizeRegisteredProject(
+  group: RegisteredProject,
+): RegisteredProject {
   return {
     ...group,
     runtime_id: group.runtime_id || DEFAULT_RUNTIME_ID,
@@ -160,9 +163,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
   const latestMsg = messages[messages.length - 1];
   const session = resolveSessionForChat(chatJid, group);
   const jobId =
-    latestMsg?.job_id ||
-    latestMsg?.id ||
-    `${session.session_id}-${newest}`;
+    latestMsg?.job_id || latestMsg?.id || `${session.session_id}-${newest}`;
   const scopedLogger = logger.child({
     runtime_id: session.runtime_id,
     agent_id: session.agent_id,
@@ -730,6 +731,11 @@ async function main(): Promise<void> {
   recoverPendingMessages();
   startMessageLoop();
 
+  startJobExecutor({
+    registeredProjects: () => registeredProjects,
+    sendMessage: sendFn,
+  });
+
   startSchedulerLoop({
     registeredProjects: () => registeredProjects,
     sendMessage: sendFn,
@@ -749,6 +755,7 @@ async function main(): Promise<void> {
         new Promise((r) => setTimeout(r, 10000)),
       ]);
     }
+    stopJobExecutor();
     await Promise.allSettled(channels.map((ch) => ch.disconnect()));
     messageLoopRunning = false;
     process.exit(0);

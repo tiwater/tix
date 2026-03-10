@@ -14,7 +14,13 @@ import { isValidGroupFolder } from './utils.js';
 import { logger } from './logger.js';
 import {
   AgentRecord,
+  AuditLogRecord,
+  CreateJobInput,
   InteractionEvent,
+  JobErrorInfo,
+  JobRecord,
+  JobResultInfo,
+  JobStatus,
   MindLifecycle,
   MindPackage,
   MindState,
@@ -30,9 +36,7 @@ let db: Database.Database;
 
 function tableExists(database: Database.Database, tableName: string): boolean {
   const row = database
-    .prepare(
-      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`,
-    )
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
     .get(tableName) as { name: string } | undefined;
   return !!row;
 }
@@ -103,7 +107,11 @@ function safePathSegment(value: string): string {
   const raw = value.trim() || 'default';
   const safe = raw.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 48) || 'default';
   if (safe === raw && safe.length <= 48) return safe;
-  const digest = crypto.createHash('sha1').update(raw).digest('hex').slice(0, 8);
+  const digest = crypto
+    .createHash('sha1')
+    .update(raw)
+    .digest('hex')
+    .slice(0, 8);
   return `${safe.slice(0, 39)}-${digest}`;
 }
 
@@ -153,6 +161,15 @@ function createSchema(database: Database.Database): void {
 
     CREATE TABLE IF NOT EXISTS runtimes (
       runtime_id TEXT PRIMARY KEY,
+      version TEXT,
+      hostname TEXT,
+      os TEXT,
+      capabilities_json TEXT,
+      capability_whitelist_json TEXT,
+      health TEXT,
+      busy_slots INTEGER DEFAULT 0,
+      total_slots INTEGER DEFAULT 0,
+      last_heartbeat_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -237,6 +254,63 @@ function createSchema(database: Database.Database): void {
       ON task_run_logs(task_id, run_at);
     CREATE INDEX IF NOT EXISTS idx_task_run_logs_scope
       ON task_run_logs(runtime_id, agent_id, session_id, run_at);
+
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      runtime_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      source TEXT NOT NULL,
+      source_ref TEXT,
+      prompt TEXT NOT NULL,
+      submitted_by TEXT NOT NULL,
+      submitter_type TEXT NOT NULL,
+      idempotency_key TEXT UNIQUE,
+      required_capabilities_json TEXT,
+      status TEXT NOT NULL,
+      timeout_ms INTEGER NOT NULL,
+      step_timeout_ms INTEGER,
+      max_retries INTEGER NOT NULL,
+      retry_backoff_ms INTEGER NOT NULL,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL,
+      last_activity_at TEXT,
+      cancel_requested_at TEXT,
+      canceled_by TEXT,
+      result_json TEXT,
+      error_json TEXT,
+      metadata_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      FOREIGN KEY (runtime_id, agent_id, session_id)
+        REFERENCES sessions(runtime_id, agent_id, session_id)
+        ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_jobs_status_next_attempt
+      ON jobs(status, next_attempt_at, runtime_id, agent_id, session_id);
+    CREATE INDEX IF NOT EXISTS idx_jobs_source_ref
+      ON jobs(source, source_ref, created_at);
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      job_id TEXT,
+      runtime_id TEXT,
+      agent_id TEXT,
+      session_id TEXT,
+      actor_type TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      result TEXT,
+      machine_hostname TEXT NOT NULL,
+      details_json TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_job_created
+      ON audit_logs(job_id, created_at);
 
     CREATE TABLE IF NOT EXISTS router_state (
       key TEXT PRIMARY KEY,
@@ -346,6 +420,25 @@ function createSchema(database: Database.Database): void {
     );
   } catch {
     /* columns already exist */
+  }
+
+  const runtimeColumnMigrations = [
+    `ALTER TABLE runtimes ADD COLUMN version TEXT`,
+    `ALTER TABLE runtimes ADD COLUMN hostname TEXT`,
+    `ALTER TABLE runtimes ADD COLUMN os TEXT`,
+    `ALTER TABLE runtimes ADD COLUMN capabilities_json TEXT`,
+    `ALTER TABLE runtimes ADD COLUMN capability_whitelist_json TEXT`,
+    `ALTER TABLE runtimes ADD COLUMN health TEXT`,
+    `ALTER TABLE runtimes ADD COLUMN busy_slots INTEGER DEFAULT 0`,
+    `ALTER TABLE runtimes ADD COLUMN total_slots INTEGER DEFAULT 0`,
+    `ALTER TABLE runtimes ADD COLUMN last_heartbeat_at TEXT`,
+  ];
+  for (const sql of runtimeColumnMigrations) {
+    try {
+      database.exec(sql);
+    } catch {
+      /* column already exists */
+    }
   }
 }
 
@@ -790,6 +883,87 @@ function mapSessionRow(row: any): SessionRecord {
   };
 }
 
+function parseOptionalJson<T>(value: string | null | undefined): T | undefined {
+  if (!value) return undefined;
+  return JSON.parse(value) as T;
+}
+
+function mapRuntimeRow(row: any): RuntimeRecord {
+  return {
+    runtime_id: row.runtime_id,
+    version: row.version || undefined,
+    hostname: row.hostname || undefined,
+    os: row.os || undefined,
+    capabilities: parseOptionalJson<string[]>(row.capabilities_json) || [],
+    capability_whitelist:
+      parseOptionalJson<string[]>(row.capability_whitelist_json) || [],
+    health: row.health || undefined,
+    busy_slots:
+      row.busy_slots === null || row.busy_slots === undefined
+        ? undefined
+        : Number(row.busy_slots),
+    total_slots:
+      row.total_slots === null || row.total_slots === undefined
+        ? undefined
+        : Number(row.total_slots),
+    last_heartbeat_at: row.last_heartbeat_at || undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function mapJobRow(row: any): JobRecord {
+  return {
+    id: row.id,
+    runtime_id: row.runtime_id,
+    agent_id: row.agent_id,
+    session_id: row.session_id,
+    chat_jid: row.chat_jid,
+    source: row.source,
+    source_ref: row.source_ref || undefined,
+    prompt: row.prompt,
+    submitted_by: row.submitted_by,
+    submitter_type: row.submitter_type,
+    idempotency_key: row.idempotency_key || undefined,
+    required_capabilities:
+      parseOptionalJson<string[]>(row.required_capabilities_json) || [],
+    status: row.status,
+    timeout_ms: row.timeout_ms,
+    step_timeout_ms: row.step_timeout_ms || undefined,
+    max_retries: row.max_retries,
+    retry_backoff_ms: row.retry_backoff_ms,
+    attempt_count: row.attempt_count,
+    next_attempt_at: row.next_attempt_at,
+    last_activity_at: row.last_activity_at || undefined,
+    cancel_requested_at: row.cancel_requested_at || undefined,
+    canceled_by: row.canceled_by || undefined,
+    result: parseOptionalJson<JobResultInfo>(row.result_json),
+    error: parseOptionalJson<JobErrorInfo>(row.error_json),
+    metadata: parseOptionalJson<Record<string, unknown>>(row.metadata_json),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    started_at: row.started_at || undefined,
+    finished_at: row.finished_at || undefined,
+  };
+}
+
+function mapAuditLogRow(row: any): AuditLogRecord {
+  return {
+    id: row.id,
+    job_id: row.job_id || undefined,
+    runtime_id: row.runtime_id || undefined,
+    agent_id: row.agent_id || undefined,
+    session_id: row.session_id || undefined,
+    actor_type: row.actor_type,
+    actor_id: row.actor_id,
+    action: row.action,
+    result: row.result || undefined,
+    machine_hostname: row.machine_hostname,
+    details: parseOptionalJson<Record<string, unknown>>(row.details_json),
+    created_at: row.created_at,
+  };
+}
+
 export function ensureRuntime(runtimeId = DEFAULT_RUNTIME_ID): RuntimeRecord {
   const now = new Date().toISOString();
   db.prepare(
@@ -800,9 +974,66 @@ export function ensureRuntime(runtimeId = DEFAULT_RUNTIME_ID): RuntimeRecord {
   `,
   ).run(runtimeId, now, now);
 
-  return db
+  const row = db
     .prepare('SELECT * FROM runtimes WHERE runtime_id = ?')
-    .get(runtimeId) as RuntimeRecord;
+    .get(runtimeId);
+  return mapRuntimeRow(row);
+}
+
+export function getRuntime(runtimeId: string): RuntimeRecord | undefined {
+  const row = db
+    .prepare('SELECT * FROM runtimes WHERE runtime_id = ?')
+    .get(runtimeId);
+  return row ? mapRuntimeRow(row) : undefined;
+}
+
+export function upsertRuntimeRegistration(input: {
+  runtime_id?: string;
+  version?: string;
+  hostname?: string;
+  os?: string;
+  capabilities?: string[];
+  capability_whitelist?: string[];
+  health?: string;
+  busy_slots?: number;
+  total_slots?: number;
+  last_heartbeat_at?: string;
+}): RuntimeRecord {
+  const runtimeId = input.runtime_id || DEFAULT_RUNTIME_ID;
+  const current = ensureRuntime(runtimeId);
+  const now = new Date().toISOString();
+  db.prepare(
+    `
+    UPDATE runtimes
+    SET
+      version = ?,
+      hostname = ?,
+      os = ?,
+      capabilities_json = ?,
+      capability_whitelist_json = ?,
+      health = ?,
+      busy_slots = ?,
+      total_slots = ?,
+      last_heartbeat_at = ?,
+      updated_at = ?
+    WHERE runtime_id = ?
+  `,
+  ).run(
+    input.version ?? current.version ?? null,
+    input.hostname ?? current.hostname ?? null,
+    input.os ?? current.os ?? null,
+    JSON.stringify(input.capabilities ?? current.capabilities ?? []),
+    JSON.stringify(
+      input.capability_whitelist ?? current.capability_whitelist ?? [],
+    ),
+    input.health ?? current.health ?? null,
+    input.busy_slots ?? current.busy_slots ?? 0,
+    input.total_slots ?? current.total_slots ?? 0,
+    input.last_heartbeat_at ?? current.last_heartbeat_at ?? now,
+    now,
+    runtimeId,
+  );
+  return getRuntime(runtimeId)!;
 }
 
 export function ensureAgent(input: {
@@ -931,7 +1162,9 @@ export function getSessionByScope(
   return row ? mapSessionRow(row) : undefined;
 }
 
-export function getSessionByChatJid(chatJid: string): SessionRecord | undefined {
+export function getSessionByChatJid(
+  chatJid: string,
+): SessionRecord | undefined {
   const row = db
     .prepare('SELECT * FROM sessions WHERE chat_jid = ?')
     .get(chatJid);
@@ -940,9 +1173,7 @@ export function getSessionByChatJid(chatJid: string): SessionRecord | undefined 
 
 export function getAllSessions(): SessionRecord[] {
   const rows = db
-    .prepare(
-      'SELECT * FROM sessions ORDER BY runtime_id, agent_id, session_id',
-    )
+    .prepare('SELECT * FROM sessions ORDER BY runtime_id, agent_id, session_id')
     .all();
   return rows.map(mapSessionRow);
 }
@@ -960,6 +1191,363 @@ export function updateSessionStatus(
     WHERE runtime_id = ? AND agent_id = ? AND session_id = ?
   `,
   ).run(status, new Date().toISOString(), runtimeId, agentId, sessionId);
+}
+
+function inferChannelFromChatJid(chatJid: string): string | undefined {
+  if (chatJid.startsWith('dc:')) return 'discord';
+  if (chatJid.startsWith('tg:')) return 'telegram';
+  if (chatJid.startsWith('web:')) return 'http';
+  if (chatJid.startsWith('fs:')) return 'feishu';
+  if (chatJid.includes('@')) return 'whatsapp';
+  return undefined;
+}
+
+const JOB_STATUS_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
+  queued: ['running', 'canceled'],
+  running: ['queued', 'succeeded', 'failed', 'canceled', 'timeout'],
+  succeeded: [],
+  failed: ['queued'],
+  canceled: ['queued'],
+  timeout: ['queued'],
+};
+
+export function appendAuditLog(input: {
+  job_id?: string;
+  runtime_id?: string;
+  agent_id?: string;
+  session_id?: string;
+  actor_type: string;
+  actor_id: string;
+  action: string;
+  result?: string;
+  machine_hostname: string;
+  details?: Record<string, unknown>;
+}): AuditLogRecord {
+  const record: AuditLogRecord = {
+    id: crypto.randomUUID(),
+    job_id: input.job_id,
+    runtime_id: input.runtime_id,
+    agent_id: input.agent_id,
+    session_id: input.session_id,
+    actor_type: input.actor_type,
+    actor_id: input.actor_id,
+    action: input.action,
+    result: input.result,
+    machine_hostname: input.machine_hostname,
+    details: input.details,
+    created_at: new Date().toISOString(),
+  };
+
+  db.prepare(
+    `
+    INSERT INTO audit_logs (
+      id,
+      job_id,
+      runtime_id,
+      agent_id,
+      session_id,
+      actor_type,
+      actor_id,
+      action,
+      result,
+      machine_hostname,
+      details_json,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    record.id,
+    record.job_id || null,
+    record.runtime_id || null,
+    record.agent_id || null,
+    record.session_id || null,
+    record.actor_type,
+    record.actor_id,
+    record.action,
+    record.result || null,
+    record.machine_hostname,
+    record.details ? JSON.stringify(record.details) : null,
+    record.created_at,
+  );
+
+  return record;
+}
+
+export function listAuditLogsForJob(jobId: string): AuditLogRecord[] {
+  const rows = db
+    .prepare(
+      'SELECT * FROM audit_logs WHERE job_id = ? ORDER BY created_at ASC',
+    )
+    .all(jobId);
+  return rows.map(mapAuditLogRow);
+}
+
+export function createJob(input: CreateJobInput): JobRecord {
+  if (input.idempotency_key) {
+    const existing = getJobByIdempotencyKey(input.idempotency_key);
+    if (existing) return existing;
+  }
+
+  const runtimeId = input.runtime_id || DEFAULT_RUNTIME_ID;
+  const existingSession = getSessionByScope(
+    runtimeId,
+    input.agent_id,
+    input.session_id,
+  );
+  if (!existingSession) {
+    ensureSession({
+      runtime_id: runtimeId,
+      agent_id: input.agent_id,
+      session_id: input.session_id,
+      chat_jid: input.chat_jid,
+      channel: inferChannelFromChatJid(input.chat_jid),
+      agent_name: input.agent_id,
+      agent_folder: safePathSegment(input.agent_id),
+    });
+  }
+
+  const now = new Date().toISOString();
+  const record: JobRecord = {
+    id: input.id || crypto.randomUUID(),
+    runtime_id: runtimeId,
+    agent_id: input.agent_id,
+    session_id: input.session_id,
+    chat_jid: input.chat_jid,
+    source: input.source,
+    source_ref: input.source_ref,
+    prompt: input.prompt,
+    submitted_by: input.submitted_by,
+    submitter_type: input.submitter_type,
+    idempotency_key: input.idempotency_key,
+    required_capabilities: input.required_capabilities || [],
+    status: 'queued',
+    timeout_ms: input.timeout_ms || 0,
+    step_timeout_ms: input.step_timeout_ms,
+    max_retries: input.max_retries || 0,
+    retry_backoff_ms: input.retry_backoff_ms || 0,
+    attempt_count: 0,
+    next_attempt_at: now,
+    metadata: input.metadata,
+    created_at: now,
+    updated_at: now,
+  };
+
+  db.prepare(
+    `
+    INSERT INTO jobs (
+      id,
+      runtime_id,
+      agent_id,
+      session_id,
+      chat_jid,
+      source,
+      source_ref,
+      prompt,
+      submitted_by,
+      submitter_type,
+      idempotency_key,
+      required_capabilities_json,
+      status,
+      timeout_ms,
+      step_timeout_ms,
+      max_retries,
+      retry_backoff_ms,
+      attempt_count,
+      next_attempt_at,
+      metadata_json,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  ).run(
+    record.id,
+    record.runtime_id,
+    record.agent_id,
+    record.session_id,
+    record.chat_jid,
+    record.source,
+    record.source_ref || null,
+    record.prompt,
+    record.submitted_by,
+    record.submitter_type,
+    record.idempotency_key || null,
+    JSON.stringify(record.required_capabilities),
+    record.status,
+    record.timeout_ms,
+    record.step_timeout_ms || null,
+    record.max_retries,
+    record.retry_backoff_ms,
+    record.attempt_count,
+    record.next_attempt_at,
+    record.metadata ? JSON.stringify(record.metadata) : null,
+    record.created_at,
+    record.updated_at,
+  );
+
+  return getJobById(record.id)!;
+}
+
+export function getJobById(id: string): JobRecord | undefined {
+  const row = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+  return row ? mapJobRow(row) : undefined;
+}
+
+export function getJobByIdempotencyKey(
+  idempotencyKey: string,
+): JobRecord | undefined {
+  const row = db
+    .prepare('SELECT * FROM jobs WHERE idempotency_key = ?')
+    .get(idempotencyKey);
+  return row ? mapJobRow(row) : undefined;
+}
+
+export function getRunnableJobs(limit = 50): JobRecord[] {
+  const now = new Date().toISOString();
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM jobs
+      WHERE status = 'queued'
+        AND next_attempt_at <= ?
+      ORDER BY created_at ASC
+      LIMIT ?
+    `,
+    )
+    .all(now, limit);
+  return rows.map(mapJobRow);
+}
+
+export function getRecoverableJobs(): JobRecord[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM jobs
+      WHERE status IN ('queued', 'running')
+      ORDER BY created_at ASC
+    `,
+    )
+    .all();
+  return rows.map(mapJobRow);
+}
+
+export function transitionJobStatus(
+  id: string,
+  nextStatus: JobStatus,
+  updates?: {
+    attempt_count?: number;
+    next_attempt_at?: string;
+    last_activity_at?: string | null;
+    cancel_requested_at?: string | null;
+    canceled_by?: string | null;
+    result?: JobResultInfo | null;
+    error?: JobErrorInfo | null;
+    metadata?: Record<string, unknown> | null;
+    started_at?: string | null;
+    finished_at?: string | null;
+  },
+): JobRecord {
+  const current = getJobById(id);
+  if (!current) throw new Error(`Job not found: ${id}`);
+
+  if (current.status !== nextStatus) {
+    const allowed = JOB_STATUS_TRANSITIONS[current.status] || [];
+    if (!allowed.includes(nextStatus)) {
+      throw new Error(
+        `Invalid job status transition: ${current.status} -> ${nextStatus}`,
+      );
+    }
+  }
+
+  const now = new Date().toISOString();
+  const fields = ['status = ?', 'updated_at = ?'];
+  const values: unknown[] = [nextStatus, now];
+
+  if (updates && 'attempt_count' in updates) {
+    fields.push('attempt_count = ?');
+    values.push(updates.attempt_count);
+  }
+  if (updates && 'next_attempt_at' in updates) {
+    fields.push('next_attempt_at = ?');
+    values.push(updates.next_attempt_at);
+  }
+  if (updates && 'last_activity_at' in updates) {
+    fields.push('last_activity_at = ?');
+    values.push(updates.last_activity_at);
+  }
+  if (updates && 'cancel_requested_at' in updates) {
+    fields.push('cancel_requested_at = ?');
+    values.push(updates.cancel_requested_at);
+  }
+  if (updates && 'canceled_by' in updates) {
+    fields.push('canceled_by = ?');
+    values.push(updates.canceled_by);
+  }
+  if (updates && 'result' in updates) {
+    fields.push('result_json = ?');
+    values.push(updates.result ? JSON.stringify(updates.result) : null);
+  }
+  if (updates && 'error' in updates) {
+    fields.push('error_json = ?');
+    values.push(updates.error ? JSON.stringify(updates.error) : null);
+  }
+  if (updates && 'metadata' in updates) {
+    fields.push('metadata_json = ?');
+    values.push(updates.metadata ? JSON.stringify(updates.metadata) : null);
+  }
+  if (updates && 'started_at' in updates) {
+    fields.push('started_at = ?');
+    values.push(updates.started_at);
+  }
+  if (updates && 'finished_at' in updates) {
+    fields.push('finished_at = ?');
+    values.push(updates.finished_at);
+  }
+
+  values.push(id);
+  db.prepare(`UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`).run(
+    ...values,
+  );
+  return getJobById(id)!;
+}
+
+export function updateJobFields(
+  id: string,
+  updates: {
+    last_activity_at?: string | null;
+    cancel_requested_at?: string | null;
+    canceled_by?: string | null;
+    metadata?: Record<string, unknown> | null;
+  },
+): JobRecord {
+  const fields: string[] = ['updated_at = ?'];
+  const values: unknown[] = [new Date().toISOString()];
+
+  if ('last_activity_at' in updates) {
+    fields.push('last_activity_at = ?');
+    values.push(updates.last_activity_at);
+  }
+  if ('cancel_requested_at' in updates) {
+    fields.push('cancel_requested_at = ?');
+    values.push(updates.cancel_requested_at);
+  }
+  if ('canceled_by' in updates) {
+    fields.push('canceled_by = ?');
+    values.push(updates.canceled_by);
+  }
+  if ('metadata' in updates) {
+    fields.push('metadata_json = ?');
+    values.push(updates.metadata ? JSON.stringify(updates.metadata) : null);
+  }
+
+  values.push(id);
+  db.prepare(`UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`).run(
+    ...values,
+  );
+  return getJobById(id)!;
 }
 
 export function createTask(
@@ -1080,16 +1668,11 @@ export function getDueTasks(): ScheduledTask[] {
   return db
     .prepare(
       `
-    SELECT t.*
-    FROM scheduled_tasks t
-    INNER JOIN sessions s
-      ON s.runtime_id = t.runtime_id
-     AND s.agent_id = t.agent_id
-     AND s.session_id = t.session_id
-    WHERE t.status = 'active'
-      AND t.next_run IS NOT NULL
-      AND t.next_run <= ?
-      AND s.status = 'active'
+    SELECT *
+    FROM scheduled_tasks
+    WHERE status = 'active'
+      AND next_run IS NOT NULL
+      AND next_run <= ?
     ORDER BY next_run
   `,
     )

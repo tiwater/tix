@@ -42,6 +42,15 @@ export interface RegisteredProject {
 
 export interface RuntimeRecord {
   runtime_id: string;
+  version?: string;
+  hostname?: string;
+  os?: string;
+  capabilities?: string[];
+  capability_whitelist?: string[];
+  health?: string;
+  busy_slots?: number;
+  total_slots?: number;
+  last_heartbeat_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +80,102 @@ export interface SessionRecord {
 
 export interface SessionContext extends SessionRecord {
   job_id: string;
+}
+
+export type JobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'canceled'
+  | 'timeout';
+
+export type JobFailureClassification =
+  | 'tool_error'
+  | 'input_error'
+  | 'env_error'
+  | 'permission_error'
+  | 'internal_error';
+
+export type JobSource = 'api' | 'scheduled_task' | 'http_run';
+
+export interface JobErrorInfo {
+  classification: JobFailureClassification;
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface JobResultInfo {
+  text?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface JobRecord {
+  id: string;
+  runtime_id: string;
+  agent_id: string;
+  session_id: string;
+  chat_jid: string;
+  source: JobSource;
+  source_ref?: string;
+  prompt: string;
+  submitted_by: string;
+  submitter_type: string;
+  idempotency_key?: string;
+  required_capabilities: string[];
+  status: JobStatus;
+  timeout_ms: number;
+  step_timeout_ms?: number;
+  max_retries: number;
+  retry_backoff_ms: number;
+  attempt_count: number;
+  next_attempt_at: string;
+  last_activity_at?: string;
+  cancel_requested_at?: string;
+  canceled_by?: string;
+  result?: JobResultInfo;
+  error?: JobErrorInfo;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  finished_at?: string;
+}
+
+export interface CreateJobInput {
+  id?: string;
+  runtime_id?: string;
+  agent_id: string;
+  session_id: string;
+  chat_jid: string;
+  prompt: string;
+  source: JobSource;
+  source_ref?: string;
+  submitted_by: string;
+  submitter_type: string;
+  idempotency_key?: string;
+  required_capabilities?: string[];
+  timeout_ms?: number;
+  step_timeout_ms?: number;
+  max_retries?: number;
+  retry_backoff_ms?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  job_id?: string;
+  runtime_id?: string;
+  agent_id?: string;
+  session_id?: string;
+  actor_type: string;
+  actor_id: string;
+  action: string;
+  result?: string;
+  machine_hostname: string;
+  details?: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface NewMessage {

@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { _initTestDatabase, createTask, getTaskById } from './core/db.js';
+import {
+  _initTestDatabase,
+  createTask,
+  ensureSession,
+  getTaskById,
+  updateSessionStatus,
+} from './core/db.js';
 import {
   _resetSchedulerLoopForTests,
   startSchedulerLoop,
@@ -18,6 +24,22 @@ describe('task scheduler', () => {
   });
 
   it('pauses due tasks whose session is missing', async () => {
+    ensureSession({
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-missing',
+      chat_jid: 'bad@g.us',
+      channel: 'test',
+      agent_name: 'Agent 1',
+      agent_folder: 'agent_1',
+    });
+    updateSessionStatus(
+      'runtime-1',
+      'agent-1',
+      'session-missing',
+      'terminated',
+    );
+
     createTask({
       id: 'task-missing-session',
       runtime_id: 'runtime-1',

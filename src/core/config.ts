@@ -25,6 +25,12 @@ const envConfig = readEnvFile([
   'CONTROL_PLANE_URL',
   'CONTROL_PLANE_ENROLLMENT_MODE',
   'CONTROL_PLANE_RUNTIME_ID',
+  'RUNTIME_API_KEY',
+  'RUNTIME_CAPABILITY_WHITELIST',
+  'JOB_DEFAULT_TIMEOUT_MS',
+  'JOB_DEFAULT_STEP_TIMEOUT_MS',
+  'JOB_DEFAULT_RETRY_COUNT',
+  'JOB_DEFAULT_RETRY_BACKOFF_MS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -165,13 +171,28 @@ export const CONTROL_PLANE_RUNTIME_ID =
   envConfig.CONTROL_PLANE_RUNTIME_ID ||
   '';
 
+export const RUNTIME_API_KEY =
+  process.env.RUNTIME_API_KEY || envConfig.RUNTIME_API_KEY || '';
+
+export const RUNTIME_CAPABILITY_WHITELIST = (
+  process.env.RUNTIME_CAPABILITY_WHITELIST ||
+  envConfig.RUNTIME_CAPABILITY_WHITELIST ||
+  ''
+)
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
 export const DEFAULT_RUNTIME_ID =
   process.env.TICLAW_RUNTIME_ID ||
   envConfig.TICLAW_RUNTIME_ID ||
   CONTROL_PLANE_RUNTIME_ID ||
   'ticlaw-runtime';
 
-function parseConcurrencyLimit(value: string | undefined, fallback: number): number {
+function parseConcurrencyLimit(
+  value: string | undefined,
+  fallback: number,
+): number {
   const parsed = parseInt(value || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
@@ -191,4 +212,31 @@ export const SESSION_CONCURRENCY_LIMIT = parseConcurrencyLimit(
   process.env.TICLAW_SESSION_CONCURRENCY ||
     envConfig.TICLAW_SESSION_CONCURRENCY,
   2,
+);
+
+export const JOB_DEFAULT_TIMEOUT_MS = parseConcurrencyLimit(
+  process.env.JOB_DEFAULT_TIMEOUT_MS || envConfig.JOB_DEFAULT_TIMEOUT_MS,
+  30 * 60 * 1000,
+);
+
+export const JOB_DEFAULT_STEP_TIMEOUT_MS = parseConcurrencyLimit(
+  process.env.JOB_DEFAULT_STEP_TIMEOUT_MS ||
+    envConfig.JOB_DEFAULT_STEP_TIMEOUT_MS,
+  5 * 60 * 1000,
+);
+
+export const JOB_DEFAULT_RETRY_COUNT = Math.max(
+  0,
+  parseInt(
+    process.env.JOB_DEFAULT_RETRY_COUNT ||
+      envConfig.JOB_DEFAULT_RETRY_COUNT ||
+      '1',
+    10,
+  ) || 0,
+);
+
+export const JOB_DEFAULT_RETRY_BACKOFF_MS = parseConcurrencyLimit(
+  process.env.JOB_DEFAULT_RETRY_BACKOFF_MS ||
+    envConfig.JOB_DEFAULT_RETRY_BACKOFF_MS,
+  5_000,
 );

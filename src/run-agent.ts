@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Query, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { loadGroupMindContext } from './core/mind-files.js';
 import { logger } from './core/logger.js';
 import {
@@ -42,21 +42,29 @@ export interface RunAgentOpts {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   onProgress?: (text: string, elapsedMs: number) => Promise<void> | void;
   onReply: (text: string) => Promise<void> | void;
+  onEvent?: (event: Record<string, unknown>) => Promise<void> | void;
+  signal?: AbortSignal;
 }
 
-function safeLogFileSegment(value: string): string {
+export function safeLogFileSegment(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'job';
 }
 
-function appendJobLog(
+export function getJobLogPath(
+  session: Pick<SessionContext, 'logs_path' | 'job_id'>,
+): string {
+  return path.join(
+    session.logs_path,
+    `${safeLogFileSegment(session.job_id)}.jsonl`,
+  );
+}
+
+export function appendJobLog(
   session: SessionContext,
   event: Record<string, unknown>,
 ): void {
   fs.mkdirSync(session.logs_path, { recursive: true });
-  const logPath = path.join(
-    session.logs_path,
-    `${safeLogFileSegment(session.job_id)}.jsonl`,
-  );
+  const logPath = getJobLogPath(session);
   fs.appendFileSync(
     logPath,
     `${JSON.stringify({
@@ -138,7 +146,8 @@ function buildSystemPrompt(
 }
 
 export async function runAgent(opts: RunAgentOpts): Promise<void> {
-  const { group, session, messages, onProgress, onReply } = opts;
+  const { group, session, messages, onProgress, onReply, onEvent, signal } =
+    opts;
   const log = logger.child({
     runtime_id: session.runtime_id,
     agent_id: session.agent_id,
@@ -151,6 +160,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
   const lastUser = messages.filter((message) => message.role === 'user').at(-1);
   if (!lastUser) {
     appendJobLog(session, { phase: 'done', result: '(no message)' });
+    await onEvent?.({ phase: 'done', result: '(no message)' });
     await onReply('(no message)');
     return;
   }
@@ -183,32 +193,58 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
     prompt_length: prompt.length,
     workspace_path: session.workspace_path,
   });
+  await onEvent?.({
+    phase: 'start',
+    prompt_length: prompt.length,
+    workspace_path: session.workspace_path,
+  });
 
   const textParts: string[] = [];
   let lastProgressAt = 0;
   const PROGRESS_INTERVAL_MS = 30_000;
+  const agentQuery = query({
+    prompt,
+    options: {
+      systemPrompt,
+      cwd: session.workspace_path,
+      allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
+      permissionMode: 'acceptEdits',
+      model: DEFAULT_LLM_MODEL,
+      env: {
+        ...process.env,
+        ...LLM_ENV,
+        TICLAW_RUNTIME_ID: session.runtime_id,
+        TICLAW_AGENT_ID: session.agent_id,
+        TICLAW_SESSION_ID: session.session_id,
+        TICLAW_JOB_ID: session.job_id,
+      } as Record<string, string>,
+    },
+  });
+
+  const abortQuery = () => {
+    try {
+      (agentQuery as Query).close();
+    } catch {
+      /* ignore */
+    }
+  };
+  signal?.addEventListener('abort', abortQuery, { once: true });
 
   try {
-    for await (const msg of query({
-      prompt,
-      options: {
-        systemPrompt,
-        cwd: session.workspace_path,
-        allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
-        permissionMode: 'acceptEdits',
-        model: DEFAULT_LLM_MODEL,
-        env: {
-          ...process.env,
-          ...LLM_ENV,
-          TICLAW_RUNTIME_ID: session.runtime_id,
-          TICLAW_AGENT_ID: session.agent_id,
-          TICLAW_SESSION_ID: session.session_id,
-          TICLAW_JOB_ID: session.job_id,
-        } as Record<string, string>,
-      },
-    })) {
+    for await (const msg of agentQuery) {
+      if (signal?.aborted) {
+        throw signal.reason instanceof Error
+          ? signal.reason
+          : new Error(String(signal.reason || 'Job aborted'));
+      }
+
       const elapsed = Date.now() - start;
       const msgType = (msg as any).type;
+      await onEvent?.({
+        phase: 'activity',
+        elapsed_ms: elapsed,
+        type: msgType,
+      });
 
       if (msgType === 'assistant') {
         const blocks = (msg as any).message?.content ?? [];
@@ -218,6 +254,11 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
           if (onProgress && elapsed - lastProgressAt >= PROGRESS_INTERVAL_MS) {
             lastProgressAt = elapsed;
             appendJobLog(session, {
+              phase: 'progress',
+              elapsed_ms: elapsed,
+              text: block.text,
+            });
+            await onEvent?.({
               phase: 'progress',
               elapsed_ms: elapsed,
               text: block.text,
@@ -239,7 +280,16 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
           subtype: (resultMsg as any).subtype,
           result: finalText,
         });
-        log.info({ elapsed, subtype: (resultMsg as any).subtype }, 'runAgent: done');
+        await onEvent?.({
+          phase: 'done',
+          elapsed_ms: elapsed,
+          subtype: (resultMsg as any).subtype,
+          result: finalText,
+        });
+        log.info(
+          { elapsed, subtype: (resultMsg as any).subtype },
+          'runAgent: done',
+        );
         await onReply(finalText);
         return;
       }
@@ -247,6 +297,11 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
 
     const finalText = textParts.join('\n').trim() || '(done)';
     appendJobLog(session, {
+      phase: 'done',
+      elapsed_ms: Date.now() - start,
+      result: finalText,
+    });
+    await onEvent?.({
       phase: 'done',
       elapsed_ms: Date.now() - start,
       result: finalText,
@@ -259,7 +314,14 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       elapsed_ms: Date.now() - start,
       error: message,
     });
+    await onEvent?.({
+      phase: 'error',
+      elapsed_ms: Date.now() - start,
+      error: message,
+    });
     log.error({ err: message }, 'runAgent: failed');
-    await onReply(`Error: ${message}`);
+    throw err;
+  } finally {
+    signal?.removeEventListener('abort', abortQuery);
   }
 }

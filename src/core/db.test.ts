@@ -2,18 +2,23 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
   _initTestDatabase,
+  createJob,
   createTask,
   deleteTask,
   ensureSession,
   getAllChats,
   getAllRegisteredProjects,
   getAllSessions,
+  getJobById,
+  getJobByIdempotencyKey,
   getMessagesSince,
+  getRuntime,
   getNewMessages,
   getTaskById,
   setRegisteredProject,
   storeChatMetadata,
   storeMessage,
+  upsertRuntimeRegistration,
   updateTask,
 } from './db.js';
 
@@ -437,6 +442,64 @@ describe('session topology', () => {
 
     const sessions = getAllSessions();
     expect(sessions).toHaveLength(2);
+  });
+});
+
+describe('job persistence', () => {
+  it('reuses the same job for a repeated idempotency key', () => {
+    createSession();
+
+    const created = createJob({
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-1',
+      chat_jid: 'group@g.us',
+      prompt: 'run this once',
+      source: 'api',
+      submitted_by: 'tester',
+      submitter_type: 'api_key',
+      idempotency_key: 'idem-1',
+    });
+    const repeated = createJob({
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-1',
+      chat_jid: 'group@g.us',
+      prompt: 'run this twice?',
+      source: 'api',
+      submitted_by: 'tester',
+      submitter_type: 'api_key',
+      idempotency_key: 'idem-1',
+    });
+
+    expect(repeated.id).toBe(created.id);
+    expect(getJobById(created.id)?.prompt).toBe('run this once');
+    expect(getJobByIdempotencyKey('idem-1')?.id).toBe(created.id);
+  });
+
+  it('persists runtime registration and heartbeat metadata', () => {
+    upsertRuntimeRegistration({
+      runtime_id: 'runtime-1',
+      version: '1.2.3',
+      hostname: 'ticlaw-host',
+      os: 'macos',
+      capabilities: ['office', 'filesystem'],
+      capability_whitelist: ['office'],
+      health: 'healthy',
+      busy_slots: 1,
+      total_slots: 4,
+      last_heartbeat_at: '2026-03-10T10:00:00.000Z',
+    });
+
+    const runtime = getRuntime('runtime-1');
+    expect(runtime).toBeDefined();
+    expect(runtime?.version).toBe('1.2.3');
+    expect(runtime?.hostname).toBe('ticlaw-host');
+    expect(runtime?.capabilities).toEqual(['office', 'filesystem']);
+    expect(runtime?.capability_whitelist).toEqual(['office']);
+    expect(runtime?.busy_slots).toBe(1);
+    expect(runtime?.total_slots).toBe(4);
+    expect(runtime?.health).toBe('healthy');
   });
 });
 

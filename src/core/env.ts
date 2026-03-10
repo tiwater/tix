@@ -45,6 +45,12 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   CONTROL_PLANE_URL: ['control_plane', 'url'],
   CONTROL_PLANE_ENROLLMENT_MODE: ['control_plane', 'enrollment_mode'],
   CONTROL_PLANE_RUNTIME_ID: ['control_plane', 'runtime_id'],
+  RUNTIME_API_KEY: ['control_plane', 'runtime_api_key'],
+  RUNTIME_CAPABILITY_WHITELIST: ['control_plane', 'capability_whitelist'],
+  JOB_DEFAULT_TIMEOUT_MS: ['jobs', 'default_timeout_ms'],
+  JOB_DEFAULT_STEP_TIMEOUT_MS: ['jobs', 'default_step_timeout_ms'],
+  JOB_DEFAULT_RETRY_COUNT: ['jobs', 'default_retry_count'],
+  JOB_DEFAULT_RETRY_BACKOFF_MS: ['jobs', 'default_retry_backoff_ms'],
 };
 
 /**
