@@ -310,24 +310,6 @@
             <span class="mind-label">version</span>
             <span style="font-size:12px">v{mindState.version}</span>
           </div>
-          {#if mindState.persona.tone}
-            <div class="mind-row">
-              <span class="mind-label">tone</span>
-              <span style="font-size:12px">{mindState.persona.tone}</span>
-            </div>
-          {/if}
-          {#if mindState.persona.verbosity}
-            <div class="mind-row">
-              <span class="mind-label">verbosity</span>
-              <span style="font-size:12px">{mindState.persona.verbosity}</span>
-            </div>
-          {/if}
-          <div class="mind-row">
-            <span class="mind-label">emoji</span>
-            <span style="font-size:12px"
-              >{mindState.persona.emoji ? '✅' : '❌'}</span
-            >
-          </div>
           <button class="mind-refresh" onclick={fetchMind}>↻ refresh</button>
         </div>
       {:else}

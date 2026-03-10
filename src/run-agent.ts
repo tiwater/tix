@@ -34,14 +34,14 @@ import type { RegisteredProject } from './core/types.js';
  */
 const LLM_ENV: Record<string, string | undefined> = MINIMAX_API_KEY
   ? {
-    ANTHROPIC_API_KEY: MINIMAX_API_KEY,
-    ANTHROPIC_BASE_URL: MINIMAX_BASE_URL,
-  }
+      ANTHROPIC_API_KEY: MINIMAX_API_KEY,
+      ANTHROPIC_BASE_URL: MINIMAX_BASE_URL,
+    }
   : OPENROUTER_API_KEY
     ? {
-      ANTHROPIC_API_KEY: OPENROUTER_API_KEY,
-      ANTHROPIC_BASE_URL: 'https://openrouter.ai/api/v1',
-    }
+        ANTHROPIC_API_KEY: OPENROUTER_API_KEY,
+        ANTHROPIC_BASE_URL: 'https://openrouter.ai/api/v1',
+      }
     : ANTHROPIC_API_KEY
       ? { ANTHROPIC_API_KEY }
       : {};
@@ -111,14 +111,14 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       promptLen: prompt.length,
       model: DEFAULT_LLM_MODEL ?? 'default',
       cliPath: CLI_PATH,
-      cliPathExists: fs.existsSync(CLI_PATH)
+      cliPathExists: fs.existsSync(CLI_PATH),
     },
     'runAgent: start',
   );
 
   const textParts: string[] = [];
   let lastProgressAt = 0;
-  const PROGRESS_INTERVAL_MS = 30_000;
+  const PROGRESS_INTERVAL_MS = 100;
 
   try {
     if (!fs.existsSync(workspacePath)) {
@@ -136,18 +136,17 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
         model: DEFAULT_LLM_MODEL || 'claude-3-5-sonnet-20241022',
         spawnClaudeCodeProcess: (opts) => {
           // The SDK tries to use the CLI_PATH as the command, which fails if not executable
-          // We wrap it in node explicitly to bypass ENOENT errors on Unix PNPM setups
-          // Use /usr/bin/env node to avoid shell wrapper issues with nvm
-          const cp = spawn('/usr/bin/env', ['node', ...opts.args], {
+          // We wrap it in the current Node binary explicitly to bypass ENOENT errors on Unix PNPM setups
+          const cp = spawn(process.execPath, opts.args, {
             cwd: opts.cwd,
             env: {
               ...process.env,
-              ...opts.env
+              ...opts.env,
             },
             signal: opts.signal,
-            stdio: 'pipe'
+            stdio: 'pipe',
           });
-          cp.stderr.on('data', d => {
+          cp.stderr.on('data', (d) => {
             logger.error({ output: d.toString() }, 'claude stderr');
           });
           return cp as any;
