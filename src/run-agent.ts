@@ -12,7 +12,9 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { createRequire } from 'module';
+import { spawn } from 'node:child_process';
 import path from 'path';
+import fs from 'fs';
 import { loadGroupMindContext } from './core/mind-files.js';
 import { logger } from './core/logger.js';
 import {
@@ -44,7 +46,7 @@ const LLM_ENV: Record<string, string | undefined> = MINIMAX_API_KEY
       ? { ANTHROPIC_API_KEY }
       : {};
 
-// Explicitly resolve the CLI path to avoid PNPM workspace symlink issues 
+// Explicitly resolve the CLI path to avoid PNPM workspace symlink issues
 // where the internal `import.meta.url` resolution inside the SDK throws an ENOENT.
 const require = createRequire(import.meta.url);
 const sdkIndex = require.resolve('@anthropic-ai/claude-agent-sdk');
@@ -108,6 +110,8 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       folder: group.folder,
       promptLen: prompt.length,
       model: DEFAULT_LLM_MODEL ?? 'default',
+      cliPath: CLI_PATH,
+      cliPathExists: fs.existsSync(CLI_PATH)
     },
     'runAgent: start',
   );
@@ -117,6 +121,10 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
   const PROGRESS_INTERVAL_MS = 30_000;
 
   try {
+    if (!fs.existsSync(workspacePath)) {
+      fs.mkdirSync(workspacePath, { recursive: true });
+    }
+
     for await (const msg of query({
       prompt,
       options: {
@@ -126,6 +134,24 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
         allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
         permissionMode: 'acceptEdits',
         model: DEFAULT_LLM_MODEL || 'claude-3-5-sonnet-20241022',
+        spawnClaudeCodeProcess: (opts) => {
+          // The SDK tries to use the CLI_PATH as the command, which fails if not executable
+          // We wrap it in node explicitly to bypass ENOENT errors on Unix PNPM setups
+          // Use /usr/bin/env node to avoid shell wrapper issues with nvm
+          const cp = spawn('/usr/bin/env', ['node', ...opts.args], {
+            cwd: opts.cwd,
+            env: {
+              ...process.env,
+              ...opts.env
+            },
+            signal: opts.signal,
+            stdio: 'pipe'
+          });
+          cp.stderr.on('data', d => {
+            logger.error({ output: d.toString() }, 'claude stderr');
+          });
+          return cp as any;
+        },
         env: { ...process.env, ...LLM_ENV } as Record<string, string>,
       },
     })) {

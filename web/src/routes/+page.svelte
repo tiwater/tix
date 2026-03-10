@@ -30,6 +30,16 @@
   let sseConnected = $state(false);
   let sseLog = $state<string[]>([]);
   let sending = $state(false);
+  let isThinking = $state(false); // True when waiting for first response chunk
+
+  // Workspace files
+  interface WorkspaceFile {
+    content: string;
+    mtimeMs: number;
+    updatedRecently?: boolean;
+    expanded?: boolean;
+  }
+  let workspaceFiles = $state<Record<string, WorkspaceFile>>({});
 
   let messagesEl: HTMLElement;
   let inputEl: HTMLTextAreaElement;
@@ -58,6 +68,11 @@
           return;
         }
         if (data.type === 'message' && data.text) {
+          if (isThinking) {
+            isThinking = false;
+            // Also refresh workspace files when the agent finishes generating a message
+            fetchWorkspaceFiles();
+          }
           pushBotMessage(data.text);
         }
       } catch {
@@ -118,6 +133,7 @@
     inputText = '';
     scrollToBottom();
     sending = true;
+    isThinking = true;
 
     try {
       const res = await fetch(`${API_BASE}/runs`, {
@@ -141,6 +157,7 @@
         ];
       }
     } catch (e: any) {
+      isThinking = false;
       messages = [
         ...messages,
         {
@@ -174,6 +191,45 @@
     }
   }
 
+  async function fetchMessages() {
+    try {
+      const res = await fetch(`${API_BASE}/api/messages?chat_jid=${encodeURIComponent(chatJid)}`);
+      if (res.ok) {
+        messages = await res.json();
+        scrollToBottom();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function fetchWorkspaceFiles() {
+    try {
+      const res = await fetch(`${API_BASE}/api/workspace?chat_jid=${encodeURIComponent(chatJid)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.files) {
+          const newFiles = data.files as Record<string, WorkspaceFile>;
+          // Compare mtimeMs to show update indicators
+          for (const [name, file] of Object.entries(newFiles)) {
+            if (workspaceFiles[name] && file.mtimeMs > workspaceFiles[name].mtimeMs) {
+              file.updatedRecently = true;
+              // Clear the indicator after 5 seconds
+              setTimeout(() => {
+                if (workspaceFiles[name]) {
+                  workspaceFiles[name].updatedRecently = false;
+                }
+              }, 5000);
+            }
+          }
+          workspaceFiles = newFiles;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   function reconnect() {
     messages = [
       ...messages,
@@ -184,21 +240,26 @@
         time: '',
       },
     ];
+    fetchMessages();
     connectSSE();
   }
 
   // --- Lifecycle ---
-  onMount(() => {
+  onMount(async () => {
     fetchMind();
+    fetchWorkspaceFiles();
+    await fetchMessages();
+    if (messages.length === 0) {
+      messages = [
+        {
+          id: 'welcome',
+          role: 'system',
+          text: '🧠 TiClaw Web Client — type a message to start',
+          time: '',
+        },
+      ];
+    }
     connectSSE();
-    messages = [
-      {
-        id: 'welcome',
-        role: 'system',
-        text: '🧠 TiClaw Web Client — type a message to start',
-        time: '',
-      },
-    ];
   });
 
   onDestroy(() => {
@@ -213,12 +274,12 @@
       <div class="logo-icon">🐾</div>
       TiClaw DevUI
     </div>
-    <span class="header-sep" />
+    <span class="header-sep"></span>
     <div
       class="status-dot"
       class:offline={!sseConnected}
       title={sseConnected ? 'SSE connected' : 'SSE offline'}
-    />
+    ></div>
   </header>
 
   <!-- Sidebar -->
@@ -276,6 +337,42 @@
       {/if}
     </div>
 
+    <!-- Workspace Files -->
+    <div class="sidebar-section">
+      <h3>Workspace Data</h3>
+      <div class="workspace-files">
+        {#each Object.entries(workspaceFiles) as [fileName, file]}
+          <div class="file-card" class:updated={file.updatedRecently}>
+            <div 
+              class="file-header" 
+              role="button"
+              tabindex="0"
+              onclick={() => file.expanded = !file.expanded}
+              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') file.expanded = !file.expanded; }}
+              style="cursor:pointer; user-select:none;"
+            >
+              <strong>{fileName}</strong>
+              <div>
+                {#if file.updatedRecently}
+                  <span class="update-badge">Updated!</span>
+                {/if}
+                <span style="font-size:10px; margin-left:6px; color:var(--text-muted)">{file.expanded ? '▼' : '▶'}</span>
+              </div>
+            </div>
+            {#if file.expanded}
+              <div class="file-content">
+                {file.content}
+              </div>
+            {/if}
+          </div>
+        {/each}
+        {#if Object.keys(workspaceFiles).length === 0}
+          <div style="color:var(--text-muted);font-size:12px;padding:8px">No Markdown files found.</div>
+        {/if}
+      </div>
+      <button class="mind-refresh" onclick={fetchWorkspaceFiles}>↻ refresh data</button>
+    </div>
+
     <!-- SSE Log -->
     <div class="sidebar-section">
       <h3>SSE Log</h3>
@@ -312,6 +409,17 @@
           </div>
         {/if}
       {/each}
+      
+      {#if isThinking}
+        <div class="msg">
+          <div class="avatar bot">🤖</div>
+          <div>
+            <div class="bubble thinking">
+              Thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+            </div>
+          </div>
+        </div>
+      {/if}
     </div>
 
     <div class="input-area">

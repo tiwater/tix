@@ -16,9 +16,11 @@
 
 import http from 'http';
 import { URL } from 'url';
+import fs from 'fs';
+import path from 'path';
 
-import { HTTP_PORT, HTTP_ENABLED } from '../core/config.js';
-import { getMindState } from '../core/db.js';
+import { HTTP_PORT, HTTP_ENABLED, TICLAW_HOME } from '../core/config.js';
+import { getMindState, getRecentMessages } from '../core/db.js';
 import { logger } from '../core/logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import type { Channel, NewMessage, RegisteredProject } from '../core/types.js';
@@ -125,6 +127,81 @@ export class HttpChannel implements Channel {
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Failed to get mind state' }));
+      }
+      return;
+    }
+
+    // Chat History
+    if (pathname === '/api/messages' && req.method === 'GET') {
+      try {
+        const chatJidParam = url.searchParams.get('chat_jid') || 'default';
+        const chatJid = chatJidParam.startsWith(WEB_JID_PREFIX)
+          ? chatJidParam
+          : `${WEB_JID_PREFIX}${chatJidParam}`;
+        
+        // Use getRecentMessages directly since it's now imported
+        const dbMessages = getRecentMessages(chatJid, 50);
+        
+        // Map DB message format to the Web UI's Message format
+        const messages = dbMessages.map((m: any) => ({
+          id: m.id,
+          role: (m.is_bot_message || m.is_from_me || m.sender_name === 'Assistant' || m.sender_name === 'TiClaw') ? 'bot' : 'user', // Accurate mapping
+          text: m.content,
+          time: new Date(m.timestamp).toLocaleTimeString()
+        }));
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(messages));
+      } catch (err) {
+        logger.error({ err }, 'Failed to fetch messages');
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to fetch messages' }));
+      }
+      return;
+    }
+
+    // Workspace Files
+    if (pathname === '/api/workspace' && req.method === 'GET') {
+      try {
+        const chatJidParam = url.searchParams.get('chat_jid') || 'default';
+        const chatJid = chatJidParam.startsWith(WEB_JID_PREFIX)
+          ? chatJidParam
+          : `${WEB_JID_PREFIX}${chatJidParam}`;
+
+        const projects = this.opts.registeredProjects();
+        const group = projects[chatJid];
+        
+        if (!group) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Group not found' }));
+          return;
+        }
+
+        // We know TICLAW_HOME from env.ts
+        // For simplicity, factory/group-folder
+        const workspacePath = path.join(TICLAW_HOME, 'factory', group.folder);
+        
+        const files: Record<string, { content: string, mtimeMs: number }> = {};
+        if (fs.existsSync(workspacePath)) {
+          const items = fs.readdirSync(workspacePath);
+          for (const item of items) {
+            if (item.endsWith('.md')) {
+              const filePath = path.join(workspacePath, item);
+              const stat = fs.statSync(filePath);
+              files[item] = {
+                content: fs.readFileSync(filePath, 'utf-8'),
+                mtimeMs: stat.mtimeMs
+              };
+            }
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ files }));
+      } catch (err) {
+        logger.error({ err }, 'Failed to fetch workspace files');
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to fetch workspace files' }));
       }
       return;
     }
