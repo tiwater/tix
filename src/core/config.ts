@@ -19,6 +19,9 @@ const envConfig = readEnvFile([
   'OPENROUTER_API_KEY',
   'MINIMAX_API_KEY',
   'MINIMAX_BASE_URL',
+  'CONTROL_PLANE_URL',
+  'CONTROL_PLANE_ENROLLMENT_MODE',
+  'CONTROL_PLANE_RUNTIME_ID',
 ]);
 
 export const ASSISTANT_NAME =
@@ -148,3 +151,15 @@ export const MINIMAX_BASE_URL =
 
 /** Default model name. Uses MiniMax-M2.5 when MINIMAX_API_KEY is set, else undefined (claude-code default). */
 export const DEFAULT_LLM_MODEL = MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined;
+
+// Generic control-plane enrollment config (control-plane agnostic)
+export const CONTROL_PLANE_URL =
+  process.env.CONTROL_PLANE_URL || envConfig.CONTROL_PLANE_URL || '';
+export const CONTROL_PLANE_ENROLLMENT_MODE =
+  process.env.CONTROL_PLANE_ENROLLMENT_MODE ||
+  envConfig.CONTROL_PLANE_ENROLLMENT_MODE ||
+  'tofu_oob';
+export const CONTROL_PLANE_RUNTIME_ID =
+  process.env.CONTROL_PLANE_RUNTIME_ID ||
+  envConfig.CONTROL_PLANE_RUNTIME_ID ||
+  '';

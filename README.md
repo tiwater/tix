@@ -30,6 +30,7 @@ TiClaw is a **robot mind builder**. It focuses on:
 - **📺 Live Monitoring:** Agent stdout and tools stream delivered to the channel in real-time.
 - **📸 Vision-Backed Audit:** Automated macOS screenshots for UI changes and Gemini-powered "Delta Feeds" for code summaries.
 - **🚀 PR Pipeline:** Seamless transition from "Issue Solved" to "PR Created" with automated context-aware descriptions (when configured).
+- **🔐 TOFU Enrollment:** Runtime-generated one-time token + out-of-band pairing, with fingerprint binding and trust-state enforcement.
 
 ## 🚀 Quick Start
 
@@ -70,6 +71,42 @@ TiClaw operates on a **Command -> Factory -> Relay** loop:
 5.  **Delivery:** PR is submitted to GitHub.
 
 For a complete guide on how to operate the system, see the [User Guide](docs/USER_GUIDE.md).
+
+## Enrollment (TOFU + Out-of-Band Verification)
+
+TiClaw now supports generic control-plane enrollment primitives:
+
+- runtime-generated one-time token (default TTL 20 minutes, bounded to 10-30)
+- token + runtime fingerprint verification
+- runtime trust states: `discovered_untrusted -> pending_verification -> trusted -> suspended/revoked`
+- untrusted runtime can expose metadata/heartbeat endpoints but cannot execute jobs via HTTP run endpoint
+
+CLI examples:
+
+```bash
+# Create one-time enrollment token
+pnpm --filter @ticlaw/cli run build
+node cli/dist/index.js enroll token-create --ttl 20
+
+# Check trust status
+node cli/dist/index.js enroll status
+
+# Verify (integration/testing)
+node cli/dist/index.js enroll verify <TOKEN>
+
+# Revoke or re-enroll
+node cli/dist/index.js enroll revoke
+node cli/dist/index.js enroll reenroll
+```
+
+HTTP endpoints:
+
+- `GET /api/enroll/status`
+- `POST /api/enroll/token`
+- `POST /api/enroll/verify`
+- `POST /api/enroll/revoke`
+- `POST /api/enroll/suspend`
+- `POST /api/enroll/reenroll`
 
 ## FAQ
 

@@ -42,6 +42,9 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   SUPABASE_URL: ['supabase', 'url'],
   SUPABASE_SERVICE_KEY: ['supabase', 'service_key'],
   SUPABASE_SYNC_ENABLED: ['supabase', 'sync_enabled'],
+  CONTROL_PLANE_URL: ['control_plane', 'url'],
+  CONTROL_PLANE_ENROLLMENT_MODE: ['control_plane', 'enrollment_mode'],
+  CONTROL_PLANE_RUNTIME_ID: ['control_plane', 'runtime_id'],
 };
 
 /**

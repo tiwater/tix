@@ -18,6 +18,7 @@ import { bootstrap } from './bootstrap.js';
 import { registerSkillsCommand } from './skills.js';
 import { start, stop, status } from './service.js';
 import { registerEnvCommand } from './env.js';
+import { registerEnrollCommand } from './enroll.js';
 
 const program = new Command();
 
@@ -48,5 +49,6 @@ program
 
 registerSkillsCommand(program);
 registerEnvCommand(program);
+registerEnrollCommand(program);
 
 program.parse();

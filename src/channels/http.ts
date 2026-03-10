@@ -19,7 +19,18 @@ import { URL } from 'url';
 import fs from 'fs';
 import path from 'path';
 
-import { HTTP_PORT, HTTP_ENABLED, TICLAW_HOME } from '../core/config.js';
+import {
+  HTTP_PORT,
+  HTTP_ENABLED,
+  CONTROL_PLANE_RUNTIME_ID,
+  TICLAW_HOME,
+} from '../core/config.js';
+import {
+  createEnrollmentToken,
+  readEnrollmentState,
+  setTrustState,
+  verifyEnrollmentToken,
+} from '../core/enrollment.js';
 import { getMindState, getRecentMessages } from '../core/db.js';
 import { logger } from '../core/logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -225,6 +236,137 @@ export class HttpChannel implements Channel {
       return;
     }
 
+    // Enrollment status
+    if (pathname === '/api/enroll/status' && req.method === 'GET') {
+      const state = readEnrollmentState(CONTROL_PLANE_RUNTIME_ID || undefined);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          runtime_id: state.runtime_id,
+          runtime_fingerprint: state.runtime_fingerprint,
+          trust_state: state.trust_state,
+          token_expires_at: state.token_expires_at || null,
+          failed_attempts: state.failed_attempts,
+          frozen_until: state.frozen_until || null,
+          trusted_at: state.trusted_at || null,
+          revoked_at: state.revoked_at || null,
+        }),
+      );
+      return;
+    }
+
+    // Enrollment token creation (local admin endpoint)
+    if (pathname === '/api/enroll/token' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        try {
+          const parsed = body ? JSON.parse(body) : {};
+          const ttlMinutes = Number(parsed.ttl_minutes);
+          const result = createEnrollmentToken({
+            ttlMinutes: Number.isFinite(ttlMinutes) ? ttlMinutes : undefined,
+            runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          });
+          res.writeHead(201, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+        }
+      });
+      return;
+    }
+
+    // Enrollment verify
+    if (pathname === '/api/enroll/verify' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        try {
+          const parsed = JSON.parse(body || '{}');
+          const token = parsed.token;
+          const runtimeFingerprint = parsed.runtime_fingerprint;
+          if (!token || !runtimeFingerprint) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                code: 'bad_request',
+                error: 'token and runtime_fingerprint are required',
+              }),
+            );
+            return;
+          }
+
+          const result = verifyEnrollmentToken({
+            token,
+            runtimeFingerprint,
+            runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          });
+
+          if (!result.ok) {
+            const status =
+              result.code === 'frozen'
+                ? 423
+                : result.code === 'expired'
+                  ? 410
+                  : 401;
+            res.writeHead(status, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                code: result.code,
+                trust_state: result.state.trust_state,
+              }),
+            );
+            return;
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              code: 'ok',
+              trust_state: result.state.trust_state,
+              trusted_at: result.state.trusted_at,
+            }),
+          );
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+        }
+      });
+      return;
+    }
+
+    // Enrollment revoke / suspend
+    if (pathname === '/api/enroll/revoke' && req.method === 'POST') {
+      const state = setTrustState('revoked', {
+        runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, trust_state: state.trust_state }));
+      return;
+    }
+
+    if (pathname === '/api/enroll/suspend' && req.method === 'POST') {
+      const state = setTrustState('suspended', {
+        runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, trust_state: state.trust_state }));
+      return;
+    }
+
+    if (pathname === '/api/enroll/reenroll' && req.method === 'POST') {
+      const state = setTrustState('discovered_untrusted', {
+        runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, trust_state: state.trust_state }));
+      return;
+    }
+
     // SSE stream (ACP: /runs/:id/stream)
     if (
       pathname.startsWith('/runs/') &&
@@ -295,6 +437,21 @@ export class HttpChannel implements Channel {
           const senderId = sender || 'web-user';
           const senderName = sender_name || sender || 'Web User';
           const timestamp = new Date().toISOString();
+
+          // Enforce trust state: untrusted runtime cannot run executable jobs.
+          const enrollState = readEnrollmentState(
+            CONTROL_PLANE_RUNTIME_ID || undefined,
+          );
+          if (enrollState.trust_state !== 'trusted') {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                error: 'runtime_not_trusted',
+                trust_state: enrollState.trust_state,
+              }),
+            );
+            return;
+          }
 
           // Auto-register if needed
           const projects = this.opts.registeredProjects();
