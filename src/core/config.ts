@@ -19,6 +19,8 @@ const envConfig = readEnvFile([
   'MIND_LOCK_MODE',
   'HTTP_PORT',
   'HTTP_ENABLED',
+  'ACP_ENABLED',
+  'ACP_HUB_URL',
   'ANTHROPIC_API_KEY',
   'MINIMAX_API_KEY',
   'MINIMAX_BASE_URL',
@@ -145,6 +147,12 @@ export const HTTP_PORT = parseInt(
 );
 export const HTTP_ENABLED =
   (process.env.HTTP_ENABLED ?? envConfig.HTTP_ENABLED ?? 'true') !== 'false';
+
+export const ACP_ENABLED =
+  (process.env.ACP_ENABLED ?? envConfig.ACP_ENABLED ?? 'false') === 'true';
+
+export const ACP_HUB_URL =
+  process.env.ACP_HUB_URL || envConfig.ACP_HUB_URL || '';
 
 // LLM API keys — prefer MiniMax if configured, fall back to Anthropic
 export const ANTHROPIC_API_KEY =

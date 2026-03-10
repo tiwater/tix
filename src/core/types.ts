@@ -97,7 +97,7 @@ export type JobFailureClassification =
   | 'permission_error'
   | 'internal_error';
 
-export type JobSource = 'api' | 'scheduled_task' | 'http_run';
+export type JobSource = 'acp' | 'api' | 'scheduled_task' | 'http_run';
 
 export interface JobErrorInfo {
   classification: JobFailureClassification;

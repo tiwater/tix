@@ -1194,6 +1194,7 @@ export function updateSessionStatus(
 }
 
 function inferChannelFromChatJid(chatJid: string): string | undefined {
+  if (chatJid.startsWith('acp:')) return 'acp';
   if (chatJid.startsWith('dc:')) return 'discord';
   if (chatJid.startsWith('tg:')) return 'telegram';
   if (chatJid.startsWith('web:')) return 'http';

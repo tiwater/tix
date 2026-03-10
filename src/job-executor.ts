@@ -47,6 +47,10 @@ import type {
 export interface JobExecutorDependencies {
   registeredProjects: () => Record<string, RegisteredProject>;
   sendMessage: (jid: string, text: string) => Promise<void>;
+  publishJobEvent?: (
+    jid: string,
+    event: Record<string, unknown>,
+  ) => Promise<void> | void;
 }
 
 class JobExecutionError extends Error {
@@ -456,6 +460,7 @@ async function executeJob(jobId: string): Promise<void> {
   let hardTimeout: NodeJS.Timeout | null = null;
   let stepTimeout: NodeJS.Timeout | null = null;
   let resultText: string | undefined;
+  let session: SessionContext | null = null;
 
   try {
     if (!sessionRecord || sessionRecord.status !== 'active') {
@@ -465,7 +470,7 @@ async function executeJob(jobId: string): Promise<void> {
         'Session unavailable for job execution',
       );
     }
-    const session = {
+    session = {
       ...sessionRecord,
       job_id: runningJob.id,
     } as SessionContext;
@@ -511,7 +516,16 @@ async function executeJob(jobId: string): Promise<void> {
       session,
       signal: controller.signal,
       messages: [{ role: 'user', content: buildJobPrompt(runningJob) }],
-      onEvent: async () => updateActivity(active, session),
+      onEvent: async (event) => {
+        updateActivity(active, session);
+        await deps.publishJobEvent?.(session.chat_jid, {
+          runtime_id: session.runtime_id,
+          agent_id: session.agent_id,
+          session_id: session.session_id,
+          job_id: runningJob.id,
+          ...event,
+        });
+      },
       onReply: async (text) => {
         resultText = text;
         await deps.sendMessage(session.chat_jid, text);
@@ -613,6 +627,16 @@ async function executeJob(jobId: string): Promise<void> {
     });
     if (jobLogSession) {
       appendJobLog(jobLogSession, {
+        phase: finalJob.status,
+        error: errorInfo,
+      });
+    }
+    if (session) {
+      await deps.publishJobEvent?.(session.chat_jid, {
+        runtime_id: session.runtime_id,
+        agent_id: session.agent_id,
+        session_id: session.session_id,
+        job_id: finalJob.id,
         phase: finalJob.status,
         error: errorInfo,
       });

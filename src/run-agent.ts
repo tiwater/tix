@@ -145,6 +145,57 @@ function buildSystemPrompt(
   return mindContext ? `${base}\n\n${mindContext}` : base;
 }
 
+function serializeEventValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function extractToolCall(block: any): Record<string, unknown> | null {
+  if (!block || typeof block !== 'object') return null;
+  if (
+    block.type !== 'tool_use' &&
+    block.type !== 'server_tool_use' &&
+    block.type !== 'mcp_tool_use'
+  ) {
+    return null;
+  }
+
+  return {
+    id: block.id || block.tool_use_id || null,
+    name: block.name || block.tool_name || 'tool',
+    arguments: serializeEventValue(block.input ?? block.arguments ?? {}),
+  };
+}
+
+function extractToolResult(msg: any): Record<string, unknown> | null {
+  if (!msg || typeof msg !== 'object') return null;
+
+  const toolCallId =
+    typeof msg.parent_tool_use_id === 'string' && msg.parent_tool_use_id
+      ? msg.parent_tool_use_id
+      : typeof msg.tool_use_id === 'string' && msg.tool_use_id
+        ? msg.tool_use_id
+        : null;
+  if (!toolCallId) return null;
+
+  const result =
+    msg.tool_use_result ??
+    msg.message?.content ??
+    msg.content ??
+    msg.result ??
+    null;
+
+  return {
+    tool_call_id: toolCallId,
+    result: serializeEventValue(result),
+    is_error: false,
+  };
+}
+
 export async function runAgent(opts: RunAgentOpts): Promise<void> {
   const { group, session, messages, onProgress, onReply, onEvent, signal } =
     opts;
@@ -249,8 +300,29 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       if (msgType === 'assistant') {
         const blocks = (msg as any).message?.content ?? [];
         for (const block of blocks) {
+          const toolCall = extractToolCall(block);
+          if (toolCall) {
+            await onEvent?.({
+              phase: 'tool_call',
+              elapsed_ms: elapsed,
+              tool_calls: [toolCall],
+            });
+            continue;
+          }
+
           if (block.type !== 'text' || !block.text) continue;
           textParts.push(block.text);
+          await onEvent?.({
+            phase: 'message_delta',
+            elapsed_ms: elapsed,
+            role: 'assistant',
+            content: [
+              {
+                type: 'markdown',
+                text: block.text,
+              },
+            ],
+          });
           if (onProgress && elapsed - lastProgressAt >= PROGRESS_INTERVAL_MS) {
             lastProgressAt = elapsed;
             appendJobLog(session, {
@@ -265,6 +337,17 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
             });
             await onProgress(block.text, elapsed);
           }
+        }
+      }
+
+      if (msgType === 'user') {
+        const toolResult = extractToolResult(msg as any);
+        if (toolResult) {
+          await onEvent?.({
+            phase: 'tool_result',
+            elapsed_ms: elapsed,
+            tool_results: [toolResult],
+          });
         }
       }
 

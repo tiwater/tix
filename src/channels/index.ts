@@ -8,6 +8,9 @@ import './discord.js';
 // feishu (飞书)
 import './feishu.js';
 
+// acp / SSE bridge
+import './acp.js';
+
 // http / SSE (web UI)
 import './http.js';
 

@@ -25,6 +25,7 @@ import { randomUUID } from 'crypto';
 import { URL } from 'url';
 
 import {
+  ACP_ENABLED,
   CONTROL_PLANE_RUNTIME_ID,
   DEFAULT_RUNTIME_ID,
   HTTP_ENABLED,
@@ -56,6 +57,7 @@ import {
   submitJob,
 } from '../job-executor.js';
 import { registerChannel, ChannelOpts } from './registry.js';
+import { maybeHandleAcpRequest } from './acp.js';
 import type {
   Channel,
   JobRecord,
@@ -553,6 +555,10 @@ export class HttpChannel implements Channel {
     setCorsHeaders(res);
 
     try {
+      if (await maybeHandleAcpRequest(req, res, url)) {
+        return;
+      }
+
       if (pathname === '/health') {
         writeJson(res, 200, { status: 'ok' });
         return;
@@ -1204,9 +1210,12 @@ export class HttpChannel implements Channel {
 }
 
 function createHttpChannel(opts: ChannelOpts): HttpChannel | null {
-  if (!HTTP_ENABLED) {
+  if (!HTTP_ENABLED && !ACP_ENABLED) {
     logger.debug('HTTP channel disabled (HTTP_ENABLED=false)');
     return null;
+  }
+  if (!HTTP_ENABLED && ACP_ENABLED) {
+    logger.info('HTTP listener enabled for ACP endpoints');
   }
   return new HttpChannel(opts);
 }

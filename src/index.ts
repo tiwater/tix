@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
+  ACP_ENABLED,
   TC_CODING_CLI,
   ASSISTANT_NAME,
   DEFAULT_RUNTIME_ID,
@@ -14,6 +15,7 @@ import {
   CONTROL_PLANE_RUNTIME_ID,
 } from './core/config.js';
 import './channels/index.js';
+import { publishAcpJobEvent } from './channels/acp.js';
 import {
   getChannelFactory,
   getRegisteredChannelNames,
@@ -120,6 +122,7 @@ function normalizeRegisteredProject(
 }
 
 function inferChannelName(chatJid: string): string | undefined {
+  if (chatJid.startsWith('acp:')) return 'acp';
   if (chatJid.startsWith('dc:')) return 'discord';
   if (chatJid.startsWith('tg:')) return 'telegram';
   if (chatJid.startsWith('web:')) return 'http';
@@ -664,6 +667,12 @@ async function main(): Promise<void> {
     enabledFromConfig.length > 0
       ? registeredChannelNames.filter((n) => enabledFromConfig.includes(n))
       : registeredChannelNames;
+  if (ACP_ENABLED && !toConnect.includes('acp')) {
+    toConnect.push('acp');
+  }
+  if (ACP_ENABLED && !toConnect.includes('http')) {
+    toConnect.push('http');
+  }
   for (const name of toConnect) {
     const factory = getChannelFactory(name);
     if (factory) {
@@ -734,6 +743,11 @@ async function main(): Promise<void> {
   startJobExecutor({
     registeredProjects: () => registeredProjects,
     sendMessage: sendFn,
+    publishJobEvent: async (jid, event) => {
+      if (jid.startsWith('acp:')) {
+        await publishAcpJobEvent(jid, event);
+      }
+    },
   });
 
   startSchedulerLoop({
