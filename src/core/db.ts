@@ -1435,6 +1435,20 @@ export function getRecoverableJobs(): JobRecord[] {
   return rows.map(mapJobRow);
 }
 
+export function listRecentJobs(limit = 50): JobRecord[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT *
+      FROM jobs
+      ORDER BY created_at DESC
+      LIMIT ?
+    `,
+    )
+    .all(limit);
+  return rows.map(mapJobRow);
+}
+
 export function transitionJobStatus(
   id: string,
   nextStatus: JobStatus,

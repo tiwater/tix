@@ -32,16 +32,20 @@ import {
   HTTP_PORT,
   RUNTIME_API_KEY,
   RUNTIME_CONCURRENCY_LIMIT,
+  SKILLS_CONFIG,
 } from '../core/config.js';
 import {
   appendAuditLog,
   ensureSession,
   getJobById,
   getMindState,
+  getRuntime,
   getSessionByChatJid,
   getSessionByScope,
+  listRecentJobs,
   upsertRuntimeRegistration,
 } from '../core/db.js';
+import { SkillsRegistry } from '../skills/registry.js';
 import {
   createEnrollmentToken,
   readEnrollmentState,
@@ -1119,6 +1123,93 @@ export class HttpChannel implements Channel {
           job_id: jobId,
           chat_jid: chatJid,
           id: msg.id,
+        });
+        return;
+      }
+
+      // ── Web UI API: Skills ──
+      if (pathname === '/api/skills' && req.method === 'GET') {
+        const registry = new SkillsRegistry(SKILLS_CONFIG);
+        const skills = registry.listAvailable();
+        writeJson(res, 200, {
+          skills: skills.map((s) => ({
+            name: s.skill.name,
+            version: s.skill.version,
+            description: s.skill.description,
+            source: s.skill.source,
+            installed: !!s.installed,
+            enabled: s.installed?.enabled ?? false,
+            permissionLevel: s.skill.permission.level,
+            directory: s.skill.directory,
+            diagnostics: s.skill.diagnostics,
+          })),
+        });
+        return;
+      }
+
+      if (
+        pathname.startsWith('/api/skills/') &&
+        (pathname.endsWith('/enable') || pathname.endsWith('/disable')) &&
+        req.method === 'POST'
+      ) {
+        const parts = pathname.split('/');
+        const skillName = parts[3];
+        const action = parts[4] as 'enable' | 'disable';
+        const registry = new SkillsRegistry(SKILLS_CONFIG);
+        try {
+          const result =
+            action === 'enable'
+              ? registry.enableSkill(skillName, {
+                  actor: 'web-ui',
+                  isAdmin: true,
+                })
+              : registry.disableSkill(skillName, {
+                  actor: 'web-ui',
+                  isAdmin: true,
+                });
+          writeJson(res, 200, { ok: true, skill: result });
+        } catch (err: any) {
+          writeProtocolError(
+            res,
+            400,
+            'input_error',
+            'skill_action_failed',
+            err.message,
+          );
+        }
+        return;
+      }
+
+      // ── Web UI API: Jobs ──
+      if (pathname === '/api/jobs' && req.method === 'GET') {
+        const limitParam = url.searchParams.get('limit');
+        const limit = Math.min(
+          Math.max(parseInt(limitParam || '50', 10) || 50, 1),
+          200,
+        );
+        const jobs = listRecentJobs(limit);
+        writeJson(res, 200, { jobs });
+        return;
+      }
+
+      // ── Web UI API: Runtime ──
+      if (pathname === '/api/runtime' && req.method === 'GET') {
+        const runtimeId = CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
+        const runtime = getRuntime(runtimeId);
+        const enrollment = readEnrollmentState(
+          CONTROL_PLANE_RUNTIME_ID || undefined,
+        );
+        const stats = getExecutorRuntimeStats(runtimeId);
+        writeJson(res, 200, {
+          runtime_id: runtimeId,
+          runtime: runtime || null,
+          enrollment: {
+            trust_state: enrollment.trust_state,
+            runtime_fingerprint: enrollment.runtime_fingerprint,
+            trusted_at: enrollment.trusted_at,
+            failed_attempts: enrollment.failed_attempts,
+          },
+          executor: stats,
         });
         return;
       }
