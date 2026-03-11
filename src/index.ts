@@ -18,6 +18,7 @@ import {
   getRegisteredChannelNames,
 } from './channels/registry.js';
 import {
+  ensureSession,
   getAllChats,
   getAllRegisteredProjects,
   getAllSessions,
@@ -25,14 +26,15 @@ import {
   getMessagesSince,
   getNewMessages,
   getRouterState,
+  getSessionByChatJid,
   initDatabase,
   setRegisteredProject,
   setRouterState,
-  setSession,
   storeChatMetadata,
   storeMessage,
   getRecentMessages,
 } from './core/db.js';
+import { DEFAULT_RUNTIME_ID } from './core/config.js';
 import {
   createPackage,
   diffMindVersions,
@@ -405,10 +407,23 @@ async function processMessages(chatJid: string): Promise<boolean> {
         };
       }
 
+      // Resolve or create a session for this chat
+      const runtimeId = (group as any).runtime_id || DEFAULT_RUNTIME_ID;
+      const agentId = (group as any).agent_id || group.folder;
+      const sessionId = chatJid;
+      const session = ensureSession({
+        runtime_id: runtimeId,
+        agent_id: agentId,
+        session_id: sessionId,
+        chat_jid: chatJid,
+        channel: chatJid.startsWith('dc:') ? 'discord' : chatJid.startsWith('web:') ? 'http' : chatJid.startsWith('fs:') ? 'feishu' : 'unknown',
+        agent_name: group.name,
+        agent_folder: group.folder,
+      });
+
       await runAgent({
-        chatJid,
         group,
-        workspacePath: workspace,
+        session: { ...session, job_id: `run-${Date.now()}`, chat_jid: chatJid },
         messages: aiMessages,
         onProgress: async (text, elapsed) => {
           const secs = Math.round(elapsed / 1000);
@@ -547,8 +562,8 @@ function loadState(): void {
   );
 
   const dbSessions = getAllSessions();
-  for (const [folder, sessionId] of Object.entries(dbSessions)) {
-    sessions[folder] = sessionId;
+  for (const sess of dbSessions) {
+    sessions[sess.agent_id] = sess.session_id;
   }
   logger.info({ count: Object.keys(sessions).length }, 'Sessions loaded');
 
