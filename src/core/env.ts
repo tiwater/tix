@@ -29,6 +29,8 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   TC_FEISHU_APP_ID: ['channels', 'feishu', 'app_id'],
   TC_FEISHU_APP_SECRET: ['channels', 'feishu', 'app_secret'],
   TC_FEISHU_ENABLED: ['channels', 'feishu', 'enabled'],
+  ACP_ENABLED: ['channels', 'acp', 'enabled'],
+  ACP_HUB_URL: ['channels', 'acp', 'hub_url'],
   GEMINI_API_KEY: ['api_keys', 'gemini'],
   ANTHROPIC_API_KEY: ['api_keys', 'anthropic'],
   CLAUDE_CODE_OAUTH_TOKEN: ['api_keys', 'claude_oauth'],
@@ -45,6 +47,12 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   CONTROL_PLANE_URL: ['control_plane', 'url'],
   CONTROL_PLANE_ENROLLMENT_MODE: ['control_plane', 'enrollment_mode'],
   CONTROL_PLANE_RUNTIME_ID: ['control_plane', 'runtime_id'],
+  RUNTIME_API_KEY: ['control_plane', 'runtime_api_key'],
+  RUNTIME_CAPABILITY_WHITELIST: ['control_plane', 'capability_whitelist'],
+  JOB_DEFAULT_TIMEOUT_MS: ['jobs', 'default_timeout_ms'],
+  JOB_DEFAULT_STEP_TIMEOUT_MS: ['jobs', 'default_step_timeout_ms'],
+  JOB_DEFAULT_RETRY_COUNT: ['jobs', 'default_retry_count'],
+  JOB_DEFAULT_RETRY_BACKOFF_MS: ['jobs', 'default_retry_backoff_ms'],
 };
 
 /**
@@ -130,6 +138,7 @@ export { TICLAW_CONFIG_PATH };
 
 /** Channels that can be enabled via config. */
 const CONFIGURABLE_CHANNELS = [
+  'acp',
   'discord',
   'feishu',
   'http',
@@ -166,6 +175,12 @@ export function getEnabledChannelsFromConfig(): string[] {
       continue;
     }
     const block = channels[name];
+    if (name === 'acp') {
+      if (!block || typeof block !== 'object') continue;
+      if (block.enabled === false || block.enabled === 'false') continue;
+      enabled.push(name);
+      continue;
+    }
     if (!block || typeof block !== 'object') continue;
     if (block.enabled === false || block.enabled === 'false') continue;
     enabled.push(name);

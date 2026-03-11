@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { _initTestDatabase, createTask, getTaskById } from './core/db.js';
+import {
+  _initTestDatabase,
+  createTask,
+  ensureSession,
+  getTaskById,
+  updateSessionStatus,
+} from './core/db.js';
 import {
   _resetSchedulerLoopForTests,
   startSchedulerLoop,
@@ -17,10 +23,28 @@ describe('task scheduler', () => {
     vi.useRealTimers();
   });
 
-  it('pauses due tasks with invalid group folders to prevent retry churn', async () => {
+  it('pauses due tasks whose session is missing', async () => {
+    ensureSession({
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-missing',
+      chat_jid: 'bad@g.us',
+      channel: 'test',
+      agent_name: 'Agent 1',
+      agent_folder: 'agent_1',
+    });
+    updateSessionStatus(
+      'runtime-1',
+      'agent-1',
+      'session-missing',
+      'terminated',
+    );
+
     createTask({
-      id: 'task-invalid-folder',
-      group_folder: '../../outside',
+      id: 'task-missing-session',
+      runtime_id: 'runtime-1',
+      agent_id: 'agent-1',
+      session_id: 'session-missing',
       chat_jid: 'bad@g.us',
       prompt: 'run',
       schedule_type: 'once',
@@ -31,12 +55,6 @@ describe('task scheduler', () => {
       created_at: '2026-02-22T00:00:00.000Z',
     });
 
-    const enqueueTask = vi.fn(
-      (_groupJid: string, _taskId: string, fn: () => Promise<void>) => {
-        void fn();
-      },
-    );
-
     startSchedulerLoop({
       registeredProjects: () => ({}),
       sendMessage: async () => {},
@@ -44,7 +62,7 @@ describe('task scheduler', () => {
 
     await vi.advanceTimersByTimeAsync(10);
 
-    const task = getTaskById('task-invalid-folder');
+    const task = getTaskById('task-missing-session');
     expect(task?.status).toBe('paused');
   });
 });

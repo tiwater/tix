@@ -11,10 +11,16 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'TC_CODING_CLI',
+  'TICLAW_RUNTIME_ID',
+  'TICLAW_RUNTIME_CONCURRENCY',
+  'TICLAW_AGENT_CONCURRENCY',
+  'TICLAW_SESSION_CONCURRENCY',
   'MIND_ADMIN_USERS',
   'MIND_LOCK_MODE',
   'HTTP_PORT',
   'HTTP_ENABLED',
+  'ACP_ENABLED',
+  'ACP_HUB_URL',
   'ANTHROPIC_API_KEY',
   'OPENROUTER_API_KEY',
   'MINIMAX_API_KEY',
@@ -22,6 +28,12 @@ const envConfig = readEnvFile([
   'CONTROL_PLANE_URL',
   'CONTROL_PLANE_ENROLLMENT_MODE',
   'CONTROL_PLANE_RUNTIME_ID',
+  'RUNTIME_API_KEY',
+  'RUNTIME_CAPABILITY_WHITELIST',
+  'JOB_DEFAULT_TIMEOUT_MS',
+  'JOB_DEFAULT_STEP_TIMEOUT_MS',
+  'JOB_DEFAULT_RETRY_COUNT',
+  'JOB_DEFAULT_RETRY_BACKOFF_MS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -137,6 +149,12 @@ export const HTTP_PORT = parseInt(
 export const HTTP_ENABLED =
   (process.env.HTTP_ENABLED ?? envConfig.HTTP_ENABLED ?? 'true') !== 'false';
 
+export const ACP_ENABLED =
+  (process.env.ACP_ENABLED ?? envConfig.ACP_ENABLED ?? 'false') === 'true';
+
+export const ACP_HUB_URL =
+  process.env.ACP_HUB_URL || envConfig.ACP_HUB_URL || '';
+
 // LLM API keys — prefer MiniMax if configured, fall back to Anthropic
 export const ANTHROPIC_API_KEY =
   process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
@@ -163,3 +181,73 @@ export const CONTROL_PLANE_RUNTIME_ID =
   process.env.CONTROL_PLANE_RUNTIME_ID ||
   envConfig.CONTROL_PLANE_RUNTIME_ID ||
   '';
+
+export const RUNTIME_API_KEY =
+  process.env.RUNTIME_API_KEY || envConfig.RUNTIME_API_KEY || '';
+
+export const RUNTIME_CAPABILITY_WHITELIST = (
+  process.env.RUNTIME_CAPABILITY_WHITELIST ||
+  envConfig.RUNTIME_CAPABILITY_WHITELIST ||
+  ''
+)
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+export const DEFAULT_RUNTIME_ID =
+  process.env.TICLAW_RUNTIME_ID ||
+  envConfig.TICLAW_RUNTIME_ID ||
+  CONTROL_PLANE_RUNTIME_ID ||
+  'ticlaw-runtime';
+
+function parseConcurrencyLimit(
+  value: string | undefined,
+  fallback: number,
+): number {
+  const parsed = parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export const RUNTIME_CONCURRENCY_LIMIT = parseConcurrencyLimit(
+  process.env.TICLAW_RUNTIME_CONCURRENCY ||
+    envConfig.TICLAW_RUNTIME_CONCURRENCY,
+  10,
+);
+
+export const AGENT_CONCURRENCY_LIMIT = parseConcurrencyLimit(
+  process.env.TICLAW_AGENT_CONCURRENCY || envConfig.TICLAW_AGENT_CONCURRENCY,
+  5,
+);
+
+export const SESSION_CONCURRENCY_LIMIT = parseConcurrencyLimit(
+  process.env.TICLAW_SESSION_CONCURRENCY ||
+    envConfig.TICLAW_SESSION_CONCURRENCY,
+  2,
+);
+
+export const JOB_DEFAULT_TIMEOUT_MS = parseConcurrencyLimit(
+  process.env.JOB_DEFAULT_TIMEOUT_MS || envConfig.JOB_DEFAULT_TIMEOUT_MS,
+  30 * 60 * 1000,
+);
+
+export const JOB_DEFAULT_STEP_TIMEOUT_MS = parseConcurrencyLimit(
+  process.env.JOB_DEFAULT_STEP_TIMEOUT_MS ||
+    envConfig.JOB_DEFAULT_STEP_TIMEOUT_MS,
+  5 * 60 * 1000,
+);
+
+export const JOB_DEFAULT_RETRY_COUNT = Math.max(
+  0,
+  parseInt(
+    process.env.JOB_DEFAULT_RETRY_COUNT ||
+      envConfig.JOB_DEFAULT_RETRY_COUNT ||
+      '1',
+    10,
+  ) || 0,
+);
+
+export const JOB_DEFAULT_RETRY_BACKOFF_MS = parseConcurrencyLimit(
+  process.env.JOB_DEFAULT_RETRY_BACKOFF_MS ||
+    envConfig.JOB_DEFAULT_RETRY_BACKOFF_MS,
+  5_000,
+);

@@ -15,6 +15,7 @@ import {
   AGENT_MIND_FILES,
 } from '../core/config.js';
 import {
+  ensureSession,
   getAllRegisteredProjects,
   getAllRouterState,
   getAllSessions,
@@ -22,7 +23,6 @@ import {
   listMindPackages,
   setRegisteredProject,
   setRouterState,
-  setSession,
   syncUpsertMindPackage,
   updateMindState,
 } from '../core/db.js';
@@ -125,17 +125,23 @@ export async function pushToSupabase(): Promise<void> {
     }
 
     // 3. Sessions
-    const sessions = getAllSessions();
-    const sessionRows = Object.entries(sessions).map(
-      ([agent_folder, session_id]) => ({
-        agent_folder,
-        session_id,
-      }),
-    );
+    const sessionRows = getAllSessions().map((session) => ({
+      runtime_id: session.runtime_id,
+      agent_id: session.agent_id,
+      session_id: session.session_id,
+      chat_jid: session.chat_jid,
+      channel: session.channel || null,
+      workspace_path: session.workspace_path,
+      memory_path: session.memory_path,
+      logs_path: session.logs_path,
+      status: session.status,
+      created_at: session.created_at,
+      updated_at: session.updated_at,
+    }));
     if (sessionRows.length > 0) {
-      await supabase
-        .from('sessions')
-        .upsert(sessionRows, { onConflict: 'agent_folder' });
+      await supabase.from('sessions').upsert(sessionRows, {
+        onConflict: 'runtime_id,agent_id,session_id',
+      });
     }
 
     // 4. Registered groups
@@ -144,6 +150,8 @@ export async function pushToSupabase(): Promise<void> {
       jid,
       name: g.name,
       folder: g.folder,
+      runtime_id: g.runtime_id,
+      agent_id: g.agent_id,
       trigger_pattern: g.trigger,
       added_at: g.added_at,
       requires_trigger:
@@ -265,7 +273,16 @@ export async function pullFromSupabase(): Promise<void> {
     const { data: sessionRows } = await supabase.from('sessions').select('*');
     if (sessionRows) {
       for (const row of sessionRows) {
-        setSession(row.agent_folder, row.session_id);
+        ensureSession({
+          runtime_id: row.runtime_id,
+          agent_id: row.agent_id,
+          session_id: row.session_id,
+          chat_jid: row.chat_jid,
+          channel: row.channel || undefined,
+          agent_name: row.agent_id,
+          agent_folder: row.agent_id,
+          status: row.status === 'terminated' ? 'terminated' : 'active',
+        });
       }
     }
 
@@ -278,6 +295,8 @@ export async function pullFromSupabase(): Promise<void> {
         const group: RegisteredProject = {
           name: row.name,
           folder: row.folder,
+          runtime_id: row.runtime_id,
+          agent_id: row.agent_id,
           trigger: row.trigger_pattern,
           added_at: row.added_at,
           requiresTrigger: row.requires_trigger === 1,
