@@ -264,6 +264,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
       permissionMode: 'acceptEdits',
       model: DEFAULT_LLM_MODEL,
+      includePartialMessages: true,
       env: {
         ...process.env,
         ...LLM_ENV,
@@ -293,6 +294,19 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
 
       const elapsed = Date.now() - start;
       const msgType = (msg as any).type;
+
+      // Handle streaming text deltas from SDK
+      if (msgType === 'stream_event') {
+        const event = (msg as any).event;
+        if (event?.type === 'content_block_delta' && event?.delta?.type === 'text_delta') {
+          await onEvent?.({
+            phase: 'stream_delta',
+            text: event.delta.text,
+          });
+        }
+        continue;
+      }
+
       await onEvent?.({
         phase: 'activity',
         elapsed_ms: elapsed,
