@@ -587,7 +587,13 @@ export class HttpChannel implements Channel {
         const sessionId = url.searchParams.get('session_id');
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
         if (!agentId || !sessionId) {
-          writeProtocolError(res, 400, 'input_error', 'missing_params', 'agent_id and session_id required');
+          writeProtocolError(
+            res,
+            400,
+            'input_error',
+            'missing_params',
+            'agent_id and session_id required',
+          );
           return;
         }
         const chatJid = buildHttpSessionId(agentId, sessionId);

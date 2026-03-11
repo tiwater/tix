@@ -177,26 +177,21 @@
         const data = JSON.parse(ev.data);
         if (data.type === 'connected') { addLog(`Stream ready: ${data.chat_jid}`); return; }
 
-        // Streaming: handle message_delta events for incremental text
-        if (data.type === 'message_delta' && data.content) {
+        // Streaming: handle token-level stream_delta events
+        if (data.type === 'stream_delta' && data.text) {
           if (isThinking) { isThinking = false; }
-          const deltaText = data.content
-            .filter((c: any) => c.type === 'markdown' || c.type === 'text')
-            .map((c: any) => c.text)
-            .join('');
-          if (!deltaText) return;
 
           // Append to existing streaming message or create a new one
           if (streamingMessageId) {
             messages = messages.map((m) =>
-              m.id === streamingMessageId ? { ...m, text: m.text + deltaText } : m
+              m.id === streamingMessageId ? { ...m, text: m.text + data.text } : m
             );
           } else {
             streamingMessageId = `bot-${Date.now()}`;
             messages = [...messages, {
               id: streamingMessageId,
               role: 'bot',
-              text: deltaText,
+              text: data.text,
               time: new Date().toLocaleTimeString(),
             }];
           }
