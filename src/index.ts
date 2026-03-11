@@ -416,7 +416,13 @@ async function processMessages(chatJid: string): Promise<boolean> {
         agent_id: agentId,
         session_id: sessionId,
         chat_jid: chatJid,
-        channel: chatJid.startsWith('dc:') ? 'discord' : chatJid.startsWith('web:') ? 'http' : chatJid.startsWith('fs:') ? 'feishu' : 'unknown',
+        channel: chatJid.startsWith('dc:')
+          ? 'discord'
+          : chatJid.startsWith('web:')
+            ? 'http'
+            : chatJid.startsWith('fs:')
+              ? 'feishu'
+              : 'unknown',
         agent_name: group.name,
         agent_folder: group.folder,
       });

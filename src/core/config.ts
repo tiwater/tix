@@ -77,10 +77,7 @@ if (!fs.existsSync(TICLAW_HOME)) {
   fs.mkdirSync(TICLAW_HOME, { recursive: true });
 }
 
-function parseBoolean(
-  value: string | undefined,
-  fallback: boolean,
-): boolean {
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value == null || value === '') return fallback;
   return value === 'true' || value === '1' || value === 'yes';
 }
@@ -158,6 +155,7 @@ export interface SkillsRuntimeConfig {
 const defaultSkillDirectories = [
   path.join(TICLAW_HOME, 'skills'),
   path.join(process.cwd(), 'skills'),
+  path.join(process.cwd(), 'skills', 'builtins'),
 ];
 
 export const SKILLS_CONFIG: SkillsRuntimeConfig = {
@@ -251,7 +249,8 @@ export const CONTROL_PLANE_RUNTIME_ID =
 export const DEFAULT_RUNTIME_ID =
   process.env.DEFAULT_RUNTIME_ID ||
   envConfig.DEFAULT_RUNTIME_ID ||
-  os.hostname() || 'ticlaw-default';
+  os.hostname() ||
+  'ticlaw-default';
 
 // ACP (Agent Communication Protocol) configuration
 export const ACP_ENABLED =
@@ -304,9 +303,7 @@ export const RUNTIME_CAPABILITY_WHITELIST = (
 
 // Job executor defaults
 export const JOB_DEFAULT_TIMEOUT_MS = parseInt(
-  process.env.JOB_DEFAULT_TIMEOUT_MS ||
-    envConfig.JOB_DEFAULT_TIMEOUT_MS ||
-    '0',
+  process.env.JOB_DEFAULT_TIMEOUT_MS || envConfig.JOB_DEFAULT_TIMEOUT_MS || '0',
   10,
 );
 export const JOB_DEFAULT_STEP_TIMEOUT_MS = parseInt(
