@@ -31,9 +31,17 @@ const LEVEL_2_HINTS = [
   'run',
 ] as const;
 
-const LEVEL_1_HINTS = ['level 1', 'level1', 'read', 'readonly', 'inspect'] as const;
+const LEVEL_1_HINTS = [
+  'level 1',
+  'level1',
+  'read',
+  'readonly',
+  'inspect',
+] as const;
 
-function detectDeclaredLevel(declared: string[]): SkillPermissionLevel | undefined {
+function detectDeclaredLevel(
+  declared: string[],
+): SkillPermissionLevel | undefined {
   const joined = declared.join(' ').toLowerCase();
   if (joined.includes('level 3') || joined.includes('level3')) return 3;
   if (joined.includes('level 2') || joined.includes('level2')) return 2;
@@ -78,7 +86,9 @@ function permissionProfileForLevel(
   };
 }
 
-export function resolveSkillPermission(skill: DiscoveredSkill): SkillPermissionProfile {
+export function resolveSkillPermission(
+  skill: DiscoveredSkill,
+): SkillPermissionProfile {
   const declared = skill.parsed.metadata.permissions;
   const reasons: string[] = [];
 
@@ -98,7 +108,9 @@ export function resolveSkillPermission(skill: DiscoveredSkill): SkillPermissionP
     .toLowerCase();
 
   if (LEVEL_3_HINTS.some((hint) => haystacks.includes(hint))) {
-    reasons.push('detected high-privilege capabilities in permissions/install metadata');
+    reasons.push(
+      'detected high-privilege capabilities in permissions/install metadata',
+    );
     return permissionProfileForLevel(3, declared, reasons);
   }
 
@@ -114,7 +126,9 @@ export function resolveSkillPermission(skill: DiscoveredSkill): SkillPermissionP
   if (LEVEL_1_HINTS.some((hint) => haystacks.includes(hint))) {
     reasons.push('detected read-only permission hints');
   } else {
-    reasons.push('defaulted to read-only because no execution or privilege hints were found');
+    reasons.push(
+      'defaulted to read-only because no execution or privilege hints were found',
+    );
   }
   return permissionProfileForLevel(1, declared, reasons);
 }
@@ -132,13 +146,17 @@ export function adaptOpenClawSkill(skill: DiscoveredSkill): AdaptedSkill {
     directory: skill.directory,
     entrypoint: skill.entrypoint,
     permission,
+    sourceRef: skill.sourceRef,
+    apiCompatibility: skill.apiCompatibility,
     requires: skill.parsed.metadata.requires,
     install: skill.parsed.metadata.install,
     commands: [
       `/skills inspect ${skill.name}`,
       `/skills install ${skill.name}`,
+      `/skills upgrade ${skill.name}`,
       `/skills enable ${skill.name}`,
       `/skills disable ${skill.name}`,
+      `/skills remove ${skill.name}`,
     ],
     diagnostics: skill.diagnostics,
   };

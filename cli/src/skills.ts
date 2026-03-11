@@ -5,7 +5,12 @@ import type { Command } from 'commander';
 import { PROJECT_ROOT } from './utils.js';
 
 async function runCoreSkillsCommand(args: string[]): Promise<void> {
-  const builtModulePath = path.join(PROJECT_ROOT, 'dist', 'skills', 'commands.js');
+  const builtModulePath = path.join(
+    PROJECT_ROOT,
+    'dist',
+    'skills',
+    'commands.js',
+  );
   if (!fs.existsSync(builtModulePath)) {
     console.error(
       'Core skills module is not built yet. Run `pnpm run build` first.',
@@ -40,7 +45,10 @@ export function registerSkillsCommand(program: Command): void {
   skills
     .command('list')
     .description('List discovered skills and their installed state')
-    .action(async () => runCoreSkillsCommand(['list']));
+    .option('--json', 'Emit machine-readable JSON')
+    .action(async (options: { json?: boolean }) =>
+      runCoreSkillsCommand(options.json ? ['list', '--json'] : ['list']),
+    );
 
   skills
     .command('inspect <name>')
@@ -48,13 +56,44 @@ export function registerSkillsCommand(program: Command): void {
     .action(async (name: string) => runCoreSkillsCommand(['inspect', name]));
 
   skills
-    .command('install <name>')
-    .description('Install a discovered skill into the TiClaw registry')
+    .command('install <target>')
+    .description(
+      'Install a skill by discovered name, local path, git repo, or npm package',
+    )
     .option('--approve', 'Explicitly approve a Level 3 skill')
-    .action(async (name: string, options: { approve?: boolean }) =>
-      runCoreSkillsCommand(
-        options.approve ? ['install', name, '--approve'] : ['install', name],
-      ),
+    .option('--trust', 'Whitelist a third-party skill source during install')
+    .option(
+      '--hash <sha256>',
+      'Verify the installed skill contents against this SHA-256',
+    )
+    .action(
+      async (
+        target: string,
+        options: { approve?: boolean; trust?: boolean; hash?: string },
+      ) => {
+        const args = ['install', target];
+        if (options.trust) args.push('--trust');
+        if (options.hash) args.push('--hash', options.hash);
+        if (options.approve) args.push('--approve');
+        await runCoreSkillsCommand(args);
+      },
+    );
+
+  skills
+    .command('upgrade <name>')
+    .description('Upgrade an installed skill from its recorded source')
+    .option('--approve', 'Explicitly approve a Level 3 skill')
+    .option(
+      '--hash <sha256>',
+      'Verify the upgraded skill contents against this SHA-256',
+    )
+    .action(
+      async (name: string, options: { approve?: boolean; hash?: string }) => {
+        const args = ['upgrade', name];
+        if (options.hash) args.push('--hash', options.hash);
+        if (options.approve) args.push('--approve');
+        await runCoreSkillsCommand(args);
+      },
     );
 
   skills
@@ -79,6 +118,8 @@ export function registerSkillsCommand(program: Command): void {
 
   skills
     .command('remove <name>')
-    .description('Alias for `disable`')
-    .action(async (name: string) => runCoreSkillsCommand(['disable', name]));
+    .description(
+      'Remove an installed skill and delete managed copies when present',
+    )
+    .action(async (name: string) => runCoreSkillsCommand(['remove', name]));
 }
