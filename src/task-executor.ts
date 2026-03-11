@@ -122,8 +122,7 @@ function resolveGroupForTask(
   const groups = deps.registeredProjects();
   const registered =
     Object.values(groups).find(
-      (candidate) =>
-        (candidate.agent_id || candidate.folder) === task.agent_id,
+      (candidate) => (candidate.agent_id || candidate.folder) === task.agent_id,
     ) || null;
   if (registered) return registered;
 
@@ -429,10 +428,7 @@ async function executeTask(taskId: string): Promise<void> {
     task.finished_at = new Date().toISOString();
     taskQueue.delete(task.id);
 
-    logger.error(
-      { task_id: task.id, error: errorInfo },
-      `Task ${finalStatus}`,
-    );
+    logger.error({ task_id: task.id, error: errorInfo }, `Task ${finalStatus}`);
     await finalizeScheduleRun(task, finalStatus, errorInfo);
   } finally {
     if (hardTimeout) clearTimeout(hardTimeout);

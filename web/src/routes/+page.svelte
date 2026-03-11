@@ -150,15 +150,74 @@
     eventSource.onopen = () => {
       sseConnected = true;
       addLog('SSE connected');
+      fetchMessageHistory();
     };
+
+    async function fetchMessageHistory() {
+      try {
+        const res = await fetch(`${API_BASE}/api/messages?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}&limit=50`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          const history = data.messages.map((m: any) => ({
+            id: m.id || `hist-${Math.random().toString(36).slice(2)}`,
+            role: m.role === 'bot' ? 'bot' : (m.role === 'user' ? 'user' : 'system'),
+            text: m.text || '',
+            time: m.time || '',
+          }));
+          // Prepend history before the welcome message, replacing welcome
+          messages = [...history, ...messages.filter((m) => m.id !== 'welcome')];
+          scrollToBottom();
+        }
+      } catch { /* ignore */ }
+    }
 
     eventSource.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
         if (data.type === 'connected') { addLog(`Stream ready: ${data.chat_jid}`); return; }
+
+        // Streaming: handle message_delta events for incremental text
+        if (data.type === 'message_delta' && data.content) {
+          if (isThinking) { isThinking = false; }
+          const deltaText = data.content
+            .filter((c: any) => c.type === 'markdown' || c.type === 'text')
+            .map((c: any) => c.text)
+            .join('');
+          if (!deltaText) return;
+
+          // Append to existing streaming message or create a new one
+          if (streamingMessageId) {
+            messages = messages.map((m) =>
+              m.id === streamingMessageId ? { ...m, text: m.text + deltaText } : m
+            );
+          } else {
+            streamingMessageId = `bot-${Date.now()}`;
+            messages = [...messages, {
+              id: streamingMessageId,
+              role: 'bot',
+              text: deltaText,
+              time: new Date().toLocaleTimeString(),
+            }];
+          }
+          scrollToBottom();
+          return;
+        }
+
+        // Final complete message — replace streaming content
         if (data.type === 'message' && data.text) {
           if (isThinking) { isThinking = false; fetchWorkspaceFiles(); }
-          pushBotMessage(data.text);
+          if (streamingMessageId) {
+            // Replace the streaming message with the final text
+            messages = messages.map((m) =>
+              m.id === streamingMessageId ? { ...m, text: data.text } : m
+            );
+            streamingMessageId = null;
+          } else {
+            pushBotMessage(data.text);
+          }
+          fetchWorkspaceFiles();
+          return;
         }
       } catch { /* ignore malformed */ }
     };
@@ -179,6 +238,8 @@
   function addLog(msg: string) {
     sseLog = [...sseLog.slice(-8), `${new Date().toLocaleTimeString()} ${msg}`];
   }
+
+  let streamingMessageId: string | null = $state(null);
 
   function pushBotMessage(text: string) {
     messages = [...messages, {

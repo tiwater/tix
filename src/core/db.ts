@@ -3,11 +3,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
-import {
-  ASSISTANT_NAME,
-  DATA_DIR,
-  STORE_DIR,
-} from './config.js';
+import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
 import { isValidGroupFolder } from './utils.js';
 import { logger } from './logger.js';
 import {
@@ -35,35 +31,58 @@ function tableExists(database: Database.Database, tableName: string): boolean {
  * Drop legacy tables from pre-simplification schema.
  * Called once during schema creation.
  */
+function hasColumn(
+  database: Database.Database,
+  table: string,
+  column: string,
+): boolean {
+  const cols = database.pragma(`table_info(${table})`) as Array<{
+    name: string;
+  }>;
+  return cols.some((c) => c.name === column);
+}
+
 function dropLegacyTables(database: Database.Database): void {
-  const legacyTables = [
+  // Tables that are purely legacy (don't exist in new schema at all)
+  const purelyLegacy = [
     'task_run_logs',
     'scheduled_tasks',
     'audit_logs',
     'jobs',
-    'sessions',
-    'agents',
     'runtimes',
     'registered_groups',
   ];
+  const toDrop = purelyLegacy.filter((t) => tableExists(database, t));
 
-  const existing = legacyTables.filter((t) => tableExists(database, t));
-  if (existing.length === 0) return;
+  // For sessions/agents: only drop if they have old-schema columns
+  if (
+    tableExists(database, 'sessions') &&
+    hasColumn(database, 'sessions', 'runtime_id')
+  ) {
+    toDrop.push('sessions');
+  }
+  if (
+    tableExists(database, 'agents') &&
+    hasColumn(database, 'agents', 'group_id')
+  ) {
+    toDrop.push('agents');
+  }
+
+  if (toDrop.length === 0) return;
 
   logger.warn(
-    { tables: existing },
+    { tables: toDrop },
     'Dropping legacy tables for simplified schema',
   );
   database.pragma('foreign_keys = OFF');
-  for (const table of existing) {
+  for (const table of toDrop) {
     database.exec(`DROP TABLE IF EXISTS ${table}`);
   }
   database.pragma('foreign_keys = ON');
 }
 
 function createSchema(database: Database.Database): void {
-  // Drop old tables if they exist (one-time migration)
-  dropLegacyTables(database);
+  // Note: legacy table migration (if needed) should be done via CLI command
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS chats (
@@ -634,9 +653,9 @@ export function ensureAgent(input: {
 }
 
 export function getAgent(agentId: string): AgentRecord | undefined {
-  return db
-    .prepare('SELECT * FROM agents WHERE agent_id = ?')
-    .get(agentId) as AgentRecord | undefined;
+  return db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(agentId) as
+    | AgentRecord
+    | undefined;
 }
 
 export function getAllAgents(): AgentRecord[] {
@@ -763,7 +782,14 @@ export function createSchedule(input: {
     INSERT INTO schedules (id, agent_id, prompt, cron, status, next_run, created_at)
     VALUES (?, ?, ?, ?, 'active', ?, ?)
   `,
-  ).run(id, input.agent_id, input.prompt, input.cron, input.next_run || null, now);
+  ).run(
+    id,
+    input.agent_id,
+    input.prompt,
+    input.cron,
+    input.next_run || null,
+    now,
+  );
 
   return getScheduleById(id)!;
 }
@@ -783,7 +809,9 @@ export function getAllSchedules(): ScheduleRecord[] {
 
 export function getSchedulesForAgent(agentId: string): ScheduleRecord[] {
   return db
-    .prepare('SELECT * FROM schedules WHERE agent_id = ? ORDER BY created_at DESC')
+    .prepare(
+      'SELECT * FROM schedules WHERE agent_id = ? ORDER BY created_at DESC',
+    )
     .all(agentId) as ScheduleRecord[];
 }
 
@@ -805,7 +833,9 @@ export function getDueSchedules(): ScheduleRecord[] {
 
 export function updateSchedule(
   id: string,
-  updates: Partial<Pick<ScheduleRecord, 'prompt' | 'cron' | 'next_run' | 'status'>>,
+  updates: Partial<
+    Pick<ScheduleRecord, 'prompt' | 'cron' | 'next_run' | 'status'>
+  >,
 ): void {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -1030,9 +1060,7 @@ function migrateJsonState(): void {
   // sessions.json carried only folder -> session_id and cannot represent the
   // new schema, so it is intentionally not migrated.
   if (migrateFile('sessions.json')) {
-    logger.warn(
-      'Ignored legacy sessions.json during schema simplification',
-    );
+    logger.warn('Ignored legacy sessions.json during schema simplification');
   }
 
   // Migrate registered_groups.json

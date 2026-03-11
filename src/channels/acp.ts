@@ -3,10 +3,7 @@ import http from 'http';
 import path from 'path';
 import { randomUUID } from 'crypto';
 
-import {
-  ACP_ENABLED,
-  ACP_HUB_URL,
-} from '../core/config.js';
+import { ACP_ENABLED, ACP_HUB_URL } from '../core/config.js';
 import { ensureSession } from '../core/db.js';
 import { logger } from '../core/logger.js';
 import { submitTask } from '../task-executor.js';
@@ -170,9 +167,7 @@ function normalizeContentPart(part: unknown): ACPContentPart | null {
 
 function normalizeContent(content: unknown): ACPContentPart[] {
   if (typeof content === 'string') {
-    return content.trim()
-      ? [{ type: 'text', text: content }]
-      : [];
+    return content.trim() ? [{ type: 'text', text: content }] : [];
   }
   if (Array.isArray(content)) {
     return content
@@ -1089,9 +1084,7 @@ export class AcpChannel implements Channel {
       id: randomUUID(),
       role: 'assistant',
       content: [
-        ...(caption
-          ? [{ type: 'markdown' as const, text: caption }]
-          : []),
+        ...(caption ? [{ type: 'markdown' as const, text: caption }] : []),
         artifactPart,
       ],
       created_at: nowIso(),

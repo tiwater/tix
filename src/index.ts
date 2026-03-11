@@ -68,6 +68,7 @@ import {
 } from './core/types.js';
 
 import { runAgent } from './run-agent.js';
+import { broadcastToChat } from './channels/http.js';
 import { getEnabledChannelsFromConfig, readEnvFile } from './core/env.js';
 import {
   isSupabaseConfigured,
@@ -428,6 +429,16 @@ async function processMessages(chatJid: string): Promise<boolean> {
         group,
         session: { ...session, task_id: `run-${Date.now()}` },
         messages: aiMessages,
+        onEvent: async (event) => {
+          const phase = (event as any).phase;
+          // Stream text deltas, tool calls, and tool results to the SSE client
+          if (phase === 'message_delta' || phase === 'tool_call' || phase === 'tool_result') {
+            broadcastToChat(chatJid, {
+              type: phase,
+              ...event,
+            });
+          }
+        },
         onProgress: async (text, elapsed) => {
           const secs = Math.round(elapsed / 1000);
           await sendFn(chatJid, `⏳ (${secs}s) Working on it...`);

@@ -54,10 +54,7 @@ export function getTaskLogPath(
   session: Pick<SessionContext, 'agent_id' | 'task_id'>,
 ): string {
   const paths = agentPaths(session.agent_id);
-  return path.join(
-    paths.logs,
-    `${safeLogFileSegment(session.task_id)}.jsonl`,
-  );
+  return path.join(paths.logs, `${safeLogFileSegment(session.task_id)}.jsonl`);
 }
 
 export function appendTaskLog(

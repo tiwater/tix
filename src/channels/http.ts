@@ -45,6 +45,7 @@ import {
   getAllSessions,
   getAgent,
   getMindState,
+  getRecentMessages,
   getSession,
   getSessionsForAgent,
   getSchedulesForAgent,
@@ -61,10 +62,7 @@ import {
 } from '../core/enrollment.js';
 import { logger } from '../core/logger.js';
 import { getTaskLogPath } from '../run-agent.js';
-import {
-  getExecutorStats,
-  listActiveTasks,
-} from '../task-executor.js';
+import { getExecutorStats, listActiveTasks } from '../task-executor.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { maybeHandleAcpRequest } from './acp.js';
 import type {
@@ -99,7 +97,7 @@ function removeClient(chatJid: string, res: http.ServerResponse): void {
   sseClients.get(chatJid)?.delete(res);
 }
 
-function broadcastToChat(chatJid: string, event: object): void {
+export function broadcastToChat(chatJid: string, event: object): void {
   const clients = sseClients.get(chatJid);
   if (!clients || clients.size === 0) return;
   const payload = `data: ${JSON.stringify(event)}\n\n`;
@@ -582,6 +580,30 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── Web UI API: Messages ──
+
+      if (pathname === '/api/messages' && req.method === 'GET') {
+        const agentId = url.searchParams.get('agent_id');
+        const sessionId = url.searchParams.get('session_id');
+        const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+        if (!agentId || !sessionId) {
+          writeProtocolError(res, 400, 'input_error', 'missing_params', 'agent_id and session_id required');
+          return;
+        }
+        const chatJid = buildHttpSessionId(agentId, sessionId);
+        const msgs = getRecentMessages(chatJid, limit);
+        writeJson(res, 200, {
+          messages: msgs.map((m) => ({
+            id: m.id,
+            role: m.is_from_me ? 'bot' : 'user',
+            text: m.content,
+            sender: m.sender_name || m.sender,
+            time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : '',
+          })),
+        });
+        return;
+      }
+
       // ── Web UI API: Agents ──
 
       if (pathname === '/api/agents' && req.method === 'GET') {
@@ -589,7 +611,9 @@ export class HttpChannel implements Channel {
         const allSessions = getAllSessions();
         // Enrich with session counts
         const agentList = allAgents.map((a) => {
-          const agentSessions = allSessions.filter((s) => s.agent_id === a.agent_id);
+          const agentSessions = allSessions.filter(
+            (s) => s.agent_id === a.agent_id,
+          );
           return {
             agent_id: a.agent_id,
             name: a.name,
@@ -606,10 +630,19 @@ export class HttpChannel implements Channel {
         const body = await readJsonBody(req);
         const name = typeof body.name === 'string' ? body.name.trim() : '';
         if (!name) {
-          writeProtocolError(res, 400, 'validation_error', 'name_required', 'Agent name is required');
+          writeProtocolError(
+            res,
+            400,
+            'validation_error',
+            'name_required',
+            'Agent name is required',
+          );
           return;
         }
-        const agentId = name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-');
+        const agentId = name
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '-')
+          .replace(/-+/g, '-');
         const agent = ensureAgent({ agent_id: agentId, name });
         writeJson(res, 201, { agent });
         return;
@@ -628,14 +661,22 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/sessions' && req.method === 'POST') {
         const body = await readJsonBody(req);
-        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const agentId =
+          typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
         if (!agentId) {
-          writeProtocolError(res, 400, 'validation_error', 'agent_id_required', 'agent_id is required');
+          writeProtocolError(
+            res,
+            400,
+            'validation_error',
+            'agent_id_required',
+            'agent_id is required',
+          );
           return;
         }
-        const sessionId = typeof body.session_id === 'string' && body.session_id.trim()
-          ? body.session_id.trim()
-          : randomUUID();
+        const sessionId =
+          typeof body.session_id === 'string' && body.session_id.trim()
+            ? body.session_id.trim()
+            : randomUUID();
         const session = ensureSession({
           agent_id: agentId,
           session_id: sessionId,
@@ -659,11 +700,19 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/schedules' && req.method === 'POST') {
         const body = await readJsonBody(req);
-        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
-        const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+        const agentId =
+          typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const prompt =
+          typeof body.prompt === 'string' ? body.prompt.trim() : '';
         const cron = typeof body.cron === 'string' ? body.cron.trim() : '';
         if (!agentId || !prompt || !cron) {
-          writeProtocolError(res, 400, 'validation_error', 'missing_fields', 'agent_id, prompt, and cron are required');
+          writeProtocolError(
+            res,
+            400,
+            'validation_error',
+            'missing_fields',
+            'agent_id, prompt, and cron are required',
+          );
           return;
         }
         const schedule = createSchedule({
@@ -675,13 +724,22 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      const scheduleToggleMatch = pathname.match(/^\/api\/schedules\/([^/]+)\/toggle$/);
+      const scheduleToggleMatch = pathname.match(
+        /^\/api\/schedules\/([^/]+)\/toggle$/,
+      );
       if (scheduleToggleMatch && req.method === 'POST') {
         const id = decodeURIComponent(scheduleToggleMatch[1]);
         const body = await readJsonBody(req);
-        const newStatus = typeof body.status === 'string' ? body.status : undefined;
+        const newStatus =
+          typeof body.status === 'string' ? body.status : undefined;
         if (newStatus !== 'active' && newStatus !== 'paused') {
-          writeProtocolError(res, 400, 'validation_error', 'invalid_status', 'status must be active or paused');
+          writeProtocolError(
+            res,
+            400,
+            'validation_error',
+            'invalid_status',
+            'status must be active or paused',
+          );
           return;
         }
         updateSchedule(id, { status: newStatus });

@@ -14,11 +14,7 @@ import os from 'os';
 import path from 'path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import {
-  _initTestDatabase,
-  ensureSession,
-  getAllSessions,
-} from './core/db.js';
+import { _initTestDatabase, ensureSession, getAllSessions } from './core/db.js';
 import {
   DelegationDepthExceededError,
   MAX_DELEGATION_DEPTH,

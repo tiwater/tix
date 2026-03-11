@@ -242,9 +242,7 @@ export const ACP_HUB_URL =
 export const CONCURRENCY_LIMIT = Math.max(
   1,
   parseInt(
-    process.env.CONCURRENCY_LIMIT ||
-      envConfig.CONCURRENCY_LIMIT ||
-      '5',
+    process.env.CONCURRENCY_LIMIT || envConfig.CONCURRENCY_LIMIT || '5',
     10,
   ) || 5,
 );
@@ -269,7 +267,9 @@ export const SESSION_CONCURRENCY_LIMIT = Math.max(
 
 // Task executor defaults
 export const TASK_DEFAULT_TIMEOUT_MS = parseInt(
-  process.env.TASK_DEFAULT_TIMEOUT_MS || envConfig.TASK_DEFAULT_TIMEOUT_MS || '0',
+  process.env.TASK_DEFAULT_TIMEOUT_MS ||
+    envConfig.TASK_DEFAULT_TIMEOUT_MS ||
+    '0',
   10,
 );
 export const TASK_DEFAULT_STEP_TIMEOUT_MS = parseInt(

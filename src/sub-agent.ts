@@ -54,7 +54,9 @@ export class DelegationDepthExceededError extends Error {
 export class DelegationTimeoutError extends Error {
   taskId: string;
   constructor(taskId: string, timeoutMs: number) {
-    super(`Sub-agent delegation timed out after ${timeoutMs}ms (task ${taskId})`);
+    super(
+      `Sub-agent delegation timed out after ${timeoutMs}ms (task ${taskId})`,
+    );
     this.name = 'DelegationTimeoutError';
     this.taskId = taskId;
   }

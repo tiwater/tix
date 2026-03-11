@@ -40,10 +40,7 @@ function store(overrides: {
   });
 }
 
-function createSession(overrides?: {
-  agent_id?: string;
-  session_id?: string;
-}) {
+function createSession(overrides?: { agent_id?: string; session_id?: string }) {
   return ensureSession({
     agent_id: overrides?.agent_id || 'agent-1',
     session_id: overrides?.session_id || 'session-1',
