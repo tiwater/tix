@@ -6,13 +6,10 @@ import { randomUUID } from 'crypto';
 import {
   ACP_ENABLED,
   ACP_HUB_URL,
-  CONTROL_PLANE_RUNTIME_ID,
-  DEFAULT_RUNTIME_ID,
-  RUNTIME_API_KEY,
 } from '../core/config.js';
 import { ensureSession } from '../core/db.js';
 import { logger } from '../core/logger.js';
-import { submitJob } from '../job-executor.js';
+import { submitTask } from '../task-executor.js';
 import { ACPClient } from '../acp-client.js';
 import type {
   ACPAgentManifest,
@@ -34,7 +31,7 @@ interface ACPSessionState extends ACPSessionDescriptor {
   metadata?: Record<string, unknown>;
   messages: ACPMessageEnvelope[];
   clients: Set<http.ServerResponse>;
-  last_job_id?: string;
+  last_task_id?: string;
   hub_session_id?: string;
   hub_sync_started?: boolean;
   hub_abort?: AbortController;
@@ -46,44 +43,31 @@ let defaultClient: ACPClient | null = null;
 const sessionsById = new Map<string, ACPSessionState>();
 const sessionIdByChatJid = new Map<string, string>();
 
-function safeAgentFolder(agentId: string): string {
-  return agentId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'agent';
-}
-
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-function buildThreadId(
-  runtimeId: string,
-  agentId: string,
-  sessionId: string,
-): string {
-  return `${encodeURIComponent(runtimeId)}:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
+function buildThreadId(agentId: string, sessionId: string): string {
+  return `${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
 }
 
 function parseThreadId(
   threadId: string,
-): { runtime_id: string; agent_id: string; session_id: string } | null {
+): { agent_id: string; session_id: string } | null {
   const parts = threadId.split(':');
-  if (parts.length !== 3) return null;
+  if (parts.length < 2) return null;
   try {
     return {
-      runtime_id: decodeURIComponent(parts[0]),
-      agent_id: decodeURIComponent(parts[1]),
-      session_id: decodeURIComponent(parts[2]),
+      agent_id: decodeURIComponent(parts[0]),
+      session_id: decodeURIComponent(parts[1]),
     };
   } catch {
     return null;
   }
 }
 
-export function buildAcpChatJid(
-  runtimeId: string,
-  agentId: string,
-  sessionId: string,
-): string {
-  return `${ACP_JID_PREFIX}${buildThreadId(runtimeId, agentId, sessionId)}`;
+export function buildAcpChatJid(agentId: string, sessionId: string): string {
+  return `${ACP_JID_PREFIX}${buildThreadId(agentId, sessionId)}`;
 }
 
 function readJsonBody(req: http.IncomingMessage): Promise<any> {
@@ -117,32 +101,6 @@ function writeJson(
     'Content-Type': 'application/json',
   });
   res.end(JSON.stringify(payload));
-}
-
-function getApiKey(req: http.IncomingMessage): string {
-  const headerKey = req.headers['x-api-key'];
-  if (typeof headerKey === 'string' && headerKey.trim()) {
-    return headerKey.trim();
-  }
-
-  const auth = req.headers.authorization;
-  if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
-    return auth.slice('Bearer '.length).trim();
-  }
-  return '';
-}
-
-function requireAcpApiKey(req: http.IncomingMessage): string {
-  if (!RUNTIME_API_KEY) return 'acp-anonymous';
-  const provided = getApiKey(req);
-  if (provided && provided === RUNTIME_API_KEY) {
-    return 'runtime-api-key';
-  }
-  throw Object.assign(new Error('Invalid ACP API key'), {
-    statusCode: 401,
-    classification: 'permission_error',
-    code: 'invalid_api_key',
-  });
 }
 
 function writeProtocolError(
@@ -182,10 +140,7 @@ function inferMimeType(filePath: string): string | undefined {
 function normalizeContentPart(part: unknown): ACPContentPart | null {
   if (!part) return null;
   if (typeof part === 'string') {
-    return {
-      type: 'text',
-      text: part,
-    };
+    return { type: 'text', text: part };
   }
   if (typeof part !== 'object') return null;
 
@@ -195,10 +150,7 @@ function normalizeContentPart(part: unknown): ACPContentPart | null {
     (type === 'text' || type === 'markdown') &&
     typeof value.text === 'string'
   ) {
-    return {
-      type,
-      text: value.text,
-    };
+    return { type, text: value.text };
   }
   if (type === 'artifact') {
     return {
@@ -219,12 +171,7 @@ function normalizeContentPart(part: unknown): ACPContentPart | null {
 function normalizeContent(content: unknown): ACPContentPart[] {
   if (typeof content === 'string') {
     return content.trim()
-      ? [
-          {
-            type: 'text',
-            text: content,
-          },
-        ]
+      ? [{ type: 'text', text: content }]
       : [];
   }
   if (Array.isArray(content)) {
@@ -399,7 +346,6 @@ function serializeSession(session: ACPSessionState): Record<string, unknown> {
   return {
     id: session.id,
     thread_id: session.thread_id,
-    runtime_id: session.runtime_id,
     agent_id: session.agent_id,
     session_id: session.session_id,
     chat_jid: session.chat_jid,
@@ -408,7 +354,7 @@ function serializeSession(session: ACPSessionState): Record<string, unknown> {
     stream_url: session.stream_url,
     message_url: session.message_url,
     tools_url: session.tools_url,
-    last_job_id: session.last_job_id || null,
+    last_task_id: session.last_task_id || null,
     metadata: session.metadata || null,
   };
 }
@@ -451,35 +397,24 @@ function appendMessage(
 
 function listAgentManifests(): ACPAgentManifest[] {
   const opts = runtimeOpts;
-  const uniqueScopes = new Map<
-    string,
-    { runtime_id: string; agent_id: string }
-  >();
+  const uniqueAgents = new Map<string, string>();
 
-  for (const group of Object.values(opts?.registeredProjects() || {})) {
-    const runtimeId = group.runtime_id || DEFAULT_RUNTIME_ID;
-    const agentId = group.agent_id || group.folder;
-    uniqueScopes.set(`${runtimeId}:${agentId}`, {
-      runtime_id: runtimeId,
-      agent_id: agentId,
-    });
+  for (const project of Object.values(opts?.registeredProjects() || {})) {
+    const agentId = project.agent_id || project.folder;
+    uniqueAgents.set(agentId, agentId);
   }
 
-  if (uniqueScopes.size === 0) {
-    uniqueScopes.set(`${DEFAULT_RUNTIME_ID}:${DEFAULT_RUNTIME_ID}`, {
-      runtime_id: DEFAULT_RUNTIME_ID,
-      agent_id: DEFAULT_RUNTIME_ID,
-    });
+  if (uniqueAgents.size === 0) {
+    uniqueAgents.set('default', 'default');
   }
 
-  return [...uniqueScopes.values()].map(({ runtime_id, agent_id }) => ({
-    id: buildThreadId(runtime_id, agent_id, agent_id),
+  return [...uniqueAgents.keys()].map((agentId) => ({
+    id: buildThreadId(agentId, agentId),
     protocol: 'acp',
-    name: `TiClaw ${agent_id}`,
+    name: `TiClaw ${agentId}`,
     description: 'TiClaw ACP-compatible agent endpoint',
     version: '1.0.0',
-    runtime_id,
-    agent_id,
+    agent_id: agentId,
     endpoints: {
       agents: '/acp/agents',
       sessions: '/acp/sessions',
@@ -496,7 +431,6 @@ function listAgentManifests(): ACPAgentManifest[] {
 }
 
 function ensureRegisteredProject(
-  runtimeId: string,
   agentId: string,
   chatJid: string,
   timestamp: string,
@@ -505,17 +439,16 @@ function ensureRegisteredProject(
   if (!opts) return;
   const projects = opts.registeredProjects();
   if (!projects[chatJid] && opts.onGroupRegistered) {
-    const group: RegisteredProject = {
+    const project: RegisteredProject = {
       name: agentId,
-      folder: safeAgentFolder(agentId),
-      runtime_id: runtimeId,
+      folder: agentId,
       agent_id: agentId,
       trigger: '',
       added_at: timestamp,
       requiresTrigger: false,
       isMain: false,
     };
-    opts.onGroupRegistered(chatJid, group);
+    opts.onGroupRegistered(chatJid, project);
   }
   opts.onChatMetadata(chatJid, timestamp, undefined, 'acp', false);
 }
@@ -526,7 +459,6 @@ function ensureHubMirror(session: ACPSessionState): void {
 
   void defaultClient
     .createSession({
-      runtime_id: session.runtime_id,
       agent_id: session.agent_id,
       session_id: session.session_id,
       thread_id: session.thread_id,
@@ -617,7 +549,7 @@ async function handleHubEvent(
     broadcastSessionEvent(session, {
       type: 'message',
       session_id: session.id,
-      job_id: session.last_job_id,
+      task_id: session.last_task_id,
       message: event.message,
     });
 
@@ -656,7 +588,7 @@ async function handleHubEvent(
     broadcastSessionEvent(session, {
       type: 'tool_result',
       session_id: session.id,
-      job_id: session.last_job_id,
+      task_id: session.last_task_id,
       tool_results: event.tool_results,
       message: envelope,
     });
@@ -664,25 +596,19 @@ async function handleHubEvent(
 }
 
 function ensureAcpSessionState(input: {
-  runtime_id?: string;
   agent_id: string;
   session_id?: string;
   thread_id?: string;
   metadata?: Record<string, unknown>;
 }): ACPSessionState {
   const parsedThread = input.thread_id ? parseThreadId(input.thread_id) : null;
-  const runtimeId =
-    parsedThread?.runtime_id ||
-    input.runtime_id ||
-    CONTROL_PLANE_RUNTIME_ID ||
-    DEFAULT_RUNTIME_ID;
   const agentId = parsedThread?.agent_id || input.agent_id;
   const sessionId =
     parsedThread?.session_id ||
     input.session_id ||
     input.thread_id ||
     randomUUID();
-  const threadId = buildThreadId(runtimeId, agentId, sessionId);
+  const threadId = buildThreadId(agentId, sessionId);
 
   const existing = sessionsById.get(threadId);
   if (existing) {
@@ -696,24 +622,20 @@ function ensureAcpSessionState(input: {
     return existing;
   }
 
-  const chatJid = buildAcpChatJid(runtimeId, agentId, sessionId);
+  const chatJid = buildAcpChatJid(agentId, sessionId);
   const timestamp = nowIso();
 
-  ensureRegisteredProject(runtimeId, agentId, chatJid, timestamp);
+  ensureRegisteredProject(agentId, chatJid, timestamp);
   ensureSession({
-    runtime_id: runtimeId,
     agent_id: agentId,
     session_id: sessionId,
-    chat_jid: chatJid,
     channel: 'acp',
     agent_name: agentId,
-    agent_folder: safeAgentFolder(agentId),
   });
 
   const session: ACPSessionState = {
     id: threadId,
     thread_id: threadId,
-    runtime_id: runtimeId,
     agent_id: agentId,
     session_id: sessionId,
     chat_jid: chatJid,
@@ -751,13 +673,13 @@ async function submitEnvelope(
   mirrorToHub = true,
 ): Promise<{
   accepted: boolean;
-  job_id?: string;
+  task_id?: string;
 }> {
   appendMessage(session, envelope);
   broadcastSessionEvent(session, {
     type: 'message',
     session_id: session.id,
-    job_id: session.last_job_id,
+    task_id: session.last_task_id,
     message: envelope,
   });
 
@@ -769,11 +691,9 @@ async function submitEnvelope(
     return { accepted: false };
   }
 
-  const job = submitJob({
-    runtime_id: session.runtime_id,
+  const task = submitTask({
     agent_id: session.agent_id,
     session_id: session.session_id,
-    chat_jid: session.chat_jid,
     prompt: buildPromptFromEnvelope(envelope, mode),
     source: 'acp',
     submitted_by: actorId,
@@ -785,15 +705,14 @@ async function submitEnvelope(
     },
   });
 
-  session.last_job_id = job.id;
+  session.last_task_id = task.id;
   session.updated_at = nowIso();
   broadcastSessionEvent(session, {
-    type: 'job',
+    type: 'task',
     session_id: session.id,
-    job_id: job.id,
+    task_id: task.id,
     data: {
       phase: 'queued',
-      runtime_id: session.runtime_id,
       agent_id: session.agent_id,
       session_id: session.session_id,
     },
@@ -801,11 +720,11 @@ async function submitEnvelope(
 
   return {
     accepted: true,
-    job_id: job.id,
+    task_id: task.id,
   };
 }
 
-export async function publishAcpJobEvent(
+export async function publishAcpTaskEvent(
   chatJid: string,
   event: Record<string, unknown>,
 ): Promise<void> {
@@ -816,10 +735,10 @@ export async function publishAcpJobEvent(
 
   const phase = typeof event.phase === 'string' ? event.phase : 'activity';
   const payload: ACPStreamEvent = {
-    type: 'job',
+    type: 'task',
     session_id: session.id,
-    job_id:
-      typeof event.job_id === 'string' ? event.job_id : session.last_job_id,
+    task_id:
+      typeof event.task_id === 'string' ? event.task_id : session.last_task_id,
     data: event,
   };
 
@@ -827,7 +746,7 @@ export async function publishAcpJobEvent(
     broadcastSessionEvent(session, {
       type: 'message.delta',
       session_id: session.id,
-      job_id: payload.job_id,
+      task_id: payload.task_id,
       data: event,
     });
     return;
@@ -838,7 +757,7 @@ export async function publishAcpJobEvent(
     broadcastSessionEvent(session, {
       type: 'tool_call',
       session_id: session.id,
-      job_id: payload.job_id,
+      task_id: payload.task_id,
       tool_calls: toolCalls,
       data: event,
     });
@@ -850,7 +769,7 @@ export async function publishAcpJobEvent(
     broadcastSessionEvent(session, {
       type: 'tool_result',
       session_id: session.id,
-      job_id: payload.job_id,
+      task_id: payload.task_id,
       tool_results: event.tool_results as ACPToolResult[],
       data: event,
     });
@@ -861,7 +780,7 @@ export async function publishAcpJobEvent(
     broadcastSessionEvent(session, {
       type: 'error',
       session_id: session.id,
-      job_id: payload.job_id,
+      task_id: payload.task_id,
       error: {
         code:
           event.error &&
@@ -874,7 +793,7 @@ export async function publishAcpJobEvent(
           typeof event.error === 'object' &&
           typeof (event.error as Record<string, unknown>).message === 'string'
             ? ((event.error as Record<string, unknown>).message as string)
-            : `ACP job ${phase}`,
+            : `Task ${phase}`,
       },
       data: event,
     });
@@ -906,7 +825,6 @@ export async function maybeHandleAcpRequest(
     }
 
     if (url.pathname === '/acp/sessions' && req.method === 'POST') {
-      const actorId = requireAcpApiKey(req);
       const parsed = await readJsonBody(req);
       const agentId =
         typeof parsed.agent_id === 'string' && parsed.agent_id.trim()
@@ -923,8 +841,6 @@ export async function maybeHandleAcpRequest(
       }
 
       const session = ensureAcpSessionState({
-        runtime_id:
-          typeof parsed.runtime_id === 'string' ? parsed.runtime_id : undefined,
         agent_id: agentId,
         session_id:
           typeof parsed.session_id === 'string' ? parsed.session_id : undefined,
@@ -936,16 +852,16 @@ export async function maybeHandleAcpRequest(
             : undefined,
       });
 
-      let jobId: string | undefined;
+      let taskId: string | undefined;
       if (parsed.message) {
         const envelope = normalizeAcpEnvelope(parsed.message);
-        const result = await submitEnvelope(session, envelope, actorId);
-        jobId = result.job_id;
+        const result = await submitEnvelope(session, envelope, 'acp');
+        taskId = result.task_id;
       }
 
-      writeJson(res, jobId ? 202 : 201, {
+      writeJson(res, taskId ? 202 : 201, {
         session: serializeSession(session),
-        job_id: jobId || null,
+        task_id: taskId || null,
       });
       return true;
     }
@@ -954,7 +870,6 @@ export async function maybeHandleAcpRequest(
       /^\/acp\/sessions\/([^/]+)\/tools$/,
     );
     if (sessionToolsMatch && req.method === 'POST') {
-      const actorId = requireAcpApiKey(req);
       const session = getSessionByRouteId(sessionToolsMatch[1]);
       if (!session) {
         writeProtocolError(
@@ -997,10 +912,10 @@ export async function maybeHandleAcpRequest(
           : {}),
       };
 
-      const result = await submitEnvelope(session, envelope, actorId, 'tools');
+      const result = await submitEnvelope(session, envelope, 'acp', 'tools');
       writeJson(res, 202, {
         session: serializeSession(session),
-        job_id: result.job_id || null,
+        task_id: result.task_id || null,
         message: envelope,
       });
       return true;
@@ -1020,8 +935,6 @@ export async function maybeHandleAcpRequest(
       }
 
       if (req.method === 'GET') {
-        requireAcpApiKey(req);
-
         if (wantsSse(req, url)) {
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -1036,7 +949,7 @@ export async function maybeHandleAcpRequest(
             {
               type: 'session',
               session_id: session.id,
-              job_id: session.last_job_id,
+              task_id: session.last_task_id,
               data: {
                 session: serializeSession(session),
                 messages: session.messages.slice(-20),
@@ -1068,13 +981,12 @@ export async function maybeHandleAcpRequest(
       }
 
       if (req.method === 'POST') {
-        const actorId = requireAcpApiKey(req);
         const parsed = await readJsonBody(req);
         const envelope = normalizeAcpEnvelope(parsed, 'user');
-        const result = await submitEnvelope(session, envelope, actorId);
-        writeJson(res, result.job_id ? 202 : 200, {
+        const result = await submitEnvelope(session, envelope, 'acp');
+        writeJson(res, result.task_id ? 202 : 200, {
           session: serializeSession(session),
-          job_id: result.job_id || null,
+          task_id: result.task_id || null,
           message: envelope,
         });
         return true;
@@ -1110,7 +1022,6 @@ export class AcpChannel implements Channel {
     if (ACP_HUB_URL) {
       defaultClient = new ACPClient({
         baseUrl: ACP_HUB_URL,
-        apiKey: RUNTIME_API_KEY || undefined,
       });
     }
   }
@@ -1138,12 +1049,7 @@ export class AcpChannel implements Channel {
     const envelope: ACPMessageEnvelope = {
       id: randomUUID(),
       role: 'assistant',
-      content: [
-        {
-          type: 'markdown',
-          text,
-        },
-      ],
+      content: [{ type: 'markdown', text }],
       created_at: nowIso(),
     };
 
@@ -1151,7 +1057,7 @@ export class AcpChannel implements Channel {
     broadcastSessionEvent(session, {
       type: 'message',
       session_id: session.id,
-      job_id: session.last_job_id,
+      task_id: session.last_task_id,
       message: envelope,
     });
     await mirrorEnvelopeToHub(session, envelope);
@@ -1184,12 +1090,7 @@ export class AcpChannel implements Channel {
       role: 'assistant',
       content: [
         ...(caption
-          ? [
-              {
-                type: 'markdown' as const,
-                text: caption,
-              },
-            ]
+          ? [{ type: 'markdown' as const, text: caption }]
           : []),
         artifactPart,
       ],
@@ -1200,7 +1101,7 @@ export class AcpChannel implements Channel {
     broadcastSessionEvent(session, {
       type: 'message',
       session_id: session.id,
-      job_id: session.last_job_id,
+      task_id: session.last_task_id,
       message: envelope,
     });
     await mirrorEnvelopeToHub(session, envelope);

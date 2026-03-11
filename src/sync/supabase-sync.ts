@@ -126,21 +126,16 @@ export async function pushToSupabase(): Promise<void> {
 
     // 3. Sessions
     const sessionRows = getAllSessions().map((session) => ({
-      runtime_id: session.runtime_id,
       agent_id: session.agent_id,
       session_id: session.session_id,
-      chat_jid: session.chat_jid,
       channel: session.channel || null,
-      workspace_path: session.workspace_path,
-      memory_path: session.memory_path,
-      logs_path: session.logs_path,
       status: session.status,
       created_at: session.created_at,
       updated_at: session.updated_at,
     }));
     if (sessionRows.length > 0) {
       await supabase.from('sessions').upsert(sessionRows, {
-        onConflict: 'runtime_id,agent_id,session_id',
+        onConflict: 'agent_id,session_id',
       });
     }
 
@@ -150,7 +145,6 @@ export async function pushToSupabase(): Promise<void> {
       jid,
       name: g.name,
       folder: g.folder,
-      runtime_id: g.runtime_id,
       agent_id: g.agent_id,
       trigger_pattern: g.trigger,
       added_at: g.added_at,
@@ -274,14 +268,10 @@ export async function pullFromSupabase(): Promise<void> {
     if (sessionRows) {
       for (const row of sessionRows) {
         ensureSession({
-          runtime_id: row.runtime_id,
           agent_id: row.agent_id,
           session_id: row.session_id,
-          chat_jid: row.chat_jid,
           channel: row.channel || undefined,
           agent_name: row.agent_id,
-          agent_folder: row.agent_id,
-          status: row.status === 'terminated' ? 'terminated' : 'active',
         });
       }
     }
@@ -292,10 +282,9 @@ export async function pullFromSupabase(): Promise<void> {
       .select('*');
     if (groupRows) {
       for (const row of groupRows) {
-        const group: RegisteredProject = {
+        const project: RegisteredProject = {
           name: row.name,
           folder: row.folder,
-          runtime_id: row.runtime_id,
           agent_id: row.agent_id,
           trigger: row.trigger_pattern,
           added_at: row.added_at,
@@ -303,7 +292,7 @@ export async function pullFromSupabase(): Promise<void> {
           isMain: row.is_main === 1,
         };
         try {
-          setRegisteredProject(row.jid, group);
+          setRegisteredProject(row.jid, project);
         } catch (err) {
           logger.warn(
             { jid: row.jid, err },

@@ -45,7 +45,6 @@ export interface ACPMessageEnvelope {
 export interface ACPSessionDescriptor {
   id: string;
   thread_id: string;
-  runtime_id: string;
   agent_id: string;
   session_id: string;
   chat_jid: string;
@@ -62,7 +61,6 @@ export interface ACPAgentManifest {
   name: string;
   description: string;
   version: string;
-  runtime_id: string;
   agent_id: string;
   endpoints: {
     agents: string;
@@ -79,7 +77,6 @@ export interface ACPAgentManifest {
 }
 
 export interface ACPCreateSessionRequest {
-  runtime_id?: string;
   agent_id: string;
   session_id?: string;
   thread_id?: string;
@@ -102,13 +99,13 @@ export interface ACPStreamEvent {
     | 'session'
     | 'message'
     | 'message.delta'
-    | 'job'
+    | 'task'
     | 'tool_call'
     | 'tool_result'
     | 'error'
     | 'heartbeat';
   session_id: string;
-  job_id?: string;
+  task_id?: string;
   message?: ACPMessageEnvelope;
   tool_calls?: ACPToolCall[];
   tool_results?: ACPToolResult[];

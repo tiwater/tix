@@ -25,19 +25,15 @@ const envConfig = readEnvFile([
   'MINIMAX_BASE_URL',
   'CONTROL_PLANE_URL',
   'CONTROL_PLANE_ENROLLMENT_MODE',
-  'CONTROL_PLANE_RUNTIME_ID',
   'ACP_ENABLED',
   'ACP_HUB_URL',
-  'RUNTIME_API_KEY',
-  'DEFAULT_RUNTIME_ID',
-  'RUNTIME_CONCURRENCY_LIMIT',
+  'CONCURRENCY_LIMIT',
   'AGENT_CONCURRENCY_LIMIT',
   'SESSION_CONCURRENCY_LIMIT',
-  'RUNTIME_CAPABILITY_WHITELIST',
-  'JOB_DEFAULT_TIMEOUT_MS',
-  'JOB_DEFAULT_STEP_TIMEOUT_MS',
-  'JOB_DEFAULT_RETRY_COUNT',
-  'JOB_DEFAULT_RETRY_BACKOFF_MS',
+  'TASK_DEFAULT_TIMEOUT_MS',
+  'TASK_DEFAULT_STEP_TIMEOUT_MS',
+  'TASK_DEFAULT_RETRY_COUNT',
+  'TASK_DEFAULT_RETRY_BACKOFF_MS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -233,24 +229,8 @@ export const MINIMAX_BASE_URL =
 /** Default model name. Uses MiniMax-M2.5 when MINIMAX_API_KEY is set, else undefined (claude-code default). */
 export const DEFAULT_LLM_MODEL = MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined;
 
-// Generic control-plane enrollment config (control-plane agnostic)
-export const CONTROL_PLANE_URL =
-  process.env.CONTROL_PLANE_URL || envConfig.CONTROL_PLANE_URL || '';
-export const CONTROL_PLANE_ENROLLMENT_MODE =
-  process.env.CONTROL_PLANE_ENROLLMENT_MODE ||
-  envConfig.CONTROL_PLANE_ENROLLMENT_MODE ||
-  'tofu_oob';
-export const CONTROL_PLANE_RUNTIME_ID =
-  process.env.CONTROL_PLANE_RUNTIME_ID ||
-  envConfig.CONTROL_PLANE_RUNTIME_ID ||
-  '';
-
-// Default runtime identifier for this TiClaw instance
-export const DEFAULT_RUNTIME_ID =
-  process.env.DEFAULT_RUNTIME_ID ||
-  envConfig.DEFAULT_RUNTIME_ID ||
-  os.hostname() ||
-  'ticlaw-default';
+// Claw identity — derived from hostname, not configurable
+export const CLAW_HOSTNAME = os.hostname() || 'ticlaw-local';
 
 // ACP (Agent Communication Protocol) configuration
 export const ACP_ENABLED =
@@ -258,16 +238,12 @@ export const ACP_ENABLED =
 export const ACP_HUB_URL =
   process.env.ACP_HUB_URL || envConfig.ACP_HUB_URL || '';
 
-// Runtime API key for authenticated access to /jobs, /runtime endpoints
-export const RUNTIME_API_KEY =
-  process.env.RUNTIME_API_KEY || envConfig.RUNTIME_API_KEY || '';
-
 // Concurrency limits
-export const RUNTIME_CONCURRENCY_LIMIT = Math.max(
+export const CONCURRENCY_LIMIT = Math.max(
   1,
   parseInt(
-    process.env.RUNTIME_CONCURRENCY_LIMIT ||
-      envConfig.RUNTIME_CONCURRENCY_LIMIT ||
+    process.env.CONCURRENCY_LIMIT ||
+      envConfig.CONCURRENCY_LIMIT ||
       '5',
     10,
   ) || 5,
@@ -291,36 +267,37 @@ export const SESSION_CONCURRENCY_LIMIT = Math.max(
   ) || 1,
 );
 
-// Runtime capability whitelist (comma-separated)
-export const RUNTIME_CAPABILITY_WHITELIST = (
-  process.env.RUNTIME_CAPABILITY_WHITELIST ||
-  envConfig.RUNTIME_CAPABILITY_WHITELIST ||
-  ''
-)
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-// Job executor defaults
-export const JOB_DEFAULT_TIMEOUT_MS = parseInt(
-  process.env.JOB_DEFAULT_TIMEOUT_MS || envConfig.JOB_DEFAULT_TIMEOUT_MS || '0',
+// Task executor defaults
+export const TASK_DEFAULT_TIMEOUT_MS = parseInt(
+  process.env.TASK_DEFAULT_TIMEOUT_MS || envConfig.TASK_DEFAULT_TIMEOUT_MS || '0',
   10,
 );
-export const JOB_DEFAULT_STEP_TIMEOUT_MS = parseInt(
-  process.env.JOB_DEFAULT_STEP_TIMEOUT_MS ||
-    envConfig.JOB_DEFAULT_STEP_TIMEOUT_MS ||
+export const TASK_DEFAULT_STEP_TIMEOUT_MS = parseInt(
+  process.env.TASK_DEFAULT_STEP_TIMEOUT_MS ||
+    envConfig.TASK_DEFAULT_STEP_TIMEOUT_MS ||
     '0',
   10,
 );
-export const JOB_DEFAULT_RETRY_COUNT = parseInt(
-  process.env.JOB_DEFAULT_RETRY_COUNT ||
-    envConfig.JOB_DEFAULT_RETRY_COUNT ||
+export const TASK_DEFAULT_RETRY_COUNT = parseInt(
+  process.env.TASK_DEFAULT_RETRY_COUNT ||
+    envConfig.TASK_DEFAULT_RETRY_COUNT ||
     '0',
   10,
 );
-export const JOB_DEFAULT_RETRY_BACKOFF_MS = parseInt(
-  process.env.JOB_DEFAULT_RETRY_BACKOFF_MS ||
-    envConfig.JOB_DEFAULT_RETRY_BACKOFF_MS ||
+export const TASK_DEFAULT_RETRY_BACKOFF_MS = parseInt(
+  process.env.TASK_DEFAULT_RETRY_BACKOFF_MS ||
+    envConfig.TASK_DEFAULT_RETRY_BACKOFF_MS ||
     '5000',
   10,
 );
+
+// --- Convention-based agent paths ---
+export function agentPaths(agentId: string) {
+  const base = path.join(AGENTS_DIR, agentId);
+  return {
+    base,
+    config: path.join(base, 'config'),
+    workspace: path.join(base, 'workspace'),
+    logs: path.join(base, 'logs'),
+  };
+}

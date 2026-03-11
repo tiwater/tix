@@ -5,8 +5,7 @@
  * no separate executor layer. Claude handles Bash / Read / Edit / Glob
  * natively through its own tool loop.
  *
- * Mind files are loaded from the isolated session workspace first, then fall
- * back to the shared agent bootstrap files.
+ * Mind files are loaded from the agent workspace (agentPaths convention).
  */
 
 import fs from 'fs';
@@ -24,6 +23,7 @@ import {
   DEFAULT_LLM_MODEL,
   MINIMAX_API_KEY,
   MINIMAX_BASE_URL,
+  agentPaths,
 } from './core/config.js';
 import type { RegisteredProject, SessionContext } from './core/types.js';
 
@@ -47,49 +47,54 @@ export interface RunAgentOpts {
 }
 
 export function safeLogFileSegment(value: string): string {
-  return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'job';
+  return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'task';
 }
 
-export function getJobLogPath(
-  session: Pick<SessionContext, 'logs_path' | 'job_id'>,
+export function getTaskLogPath(
+  session: Pick<SessionContext, 'agent_id' | 'task_id'>,
 ): string {
+  const paths = agentPaths(session.agent_id);
   return path.join(
-    session.logs_path,
-    `${safeLogFileSegment(session.job_id)}.jsonl`,
+    paths.logs,
+    `${safeLogFileSegment(session.task_id)}.jsonl`,
   );
 }
 
-export function appendJobLog(
+export function appendTaskLog(
   session: SessionContext,
   event: Record<string, unknown>,
 ): void {
-  fs.mkdirSync(session.logs_path, { recursive: true });
-  const logPath = getJobLogPath(session);
+  const paths = agentPaths(session.agent_id);
+  fs.mkdirSync(paths.logs, { recursive: true });
+  const logPath = getTaskLogPath(session);
   fs.appendFileSync(
     logPath,
     `${JSON.stringify({
       ts: new Date().toISOString(),
-      runtime_id: session.runtime_id,
       agent_id: session.agent_id,
       session_id: session.session_id,
-      job_id: session.job_id,
+      task_id: session.task_id,
       ...event,
     })}\n`,
     'utf-8',
   );
 }
 
+/** @deprecated Use appendTaskLog */
+export const appendJobLog = appendTaskLog;
+
 function bootstrapAgentMindFiles(
   group: RegisteredProject,
   session: SessionContext,
 ): void {
-  fs.mkdirSync(session.workspace_path, { recursive: true });
-  fs.mkdirSync(session.logs_path, { recursive: true });
+  const paths = agentPaths(session.agent_id);
+  fs.mkdirSync(paths.workspace, { recursive: true });
+  fs.mkdirSync(paths.logs, { recursive: true });
 
   const sourceDirs = [path.join(AGENTS_DIR, group.folder), AGENTS_DIR];
 
   for (const filename of AGENT_MIND_FILES) {
-    const dest = path.join(session.workspace_path, filename);
+    const dest = path.join(paths.workspace, filename);
     if (fs.existsSync(dest)) continue;
 
     const source = sourceDirs
@@ -101,9 +106,10 @@ function bootstrapAgentMindFiles(
     }
   }
 
-  if (!fs.existsSync(session.memory_path)) {
+  const memoryPath = path.join(paths.workspace, 'MEMORY.md');
+  if (!fs.existsSync(memoryPath)) {
     fs.writeFileSync(
-      session.memory_path,
+      memoryPath,
       '# MEMORY\n\nSession-local working memory.\n',
       'utf-8',
     );
@@ -114,9 +120,10 @@ function loadSessionMindContext(
   group: RegisteredProject,
   session: SessionContext,
 ): string {
+  const paths = agentPaths(session.agent_id);
   const parts: string[] = [];
   for (const filename of AGENT_MIND_FILES) {
-    const filePath = path.join(session.workspace_path, filename);
+    const filePath = path.join(paths.workspace, filename);
     if (!fs.existsSync(filePath)) continue;
     const content = fs.readFileSync(filePath, 'utf-8').trim();
     if (content) parts.push(content);
@@ -199,18 +206,17 @@ function extractToolResult(msg: any): Record<string, unknown> | null {
 export async function runAgent(opts: RunAgentOpts): Promise<void> {
   const { group, session, messages, onProgress, onReply, onEvent, signal } =
     opts;
+  const paths = agentPaths(session.agent_id);
   const log = logger.child({
-    runtime_id: session.runtime_id,
     agent_id: session.agent_id,
     session_id: session.session_id,
-    job_id: session.job_id,
-    chat_jid: session.chat_jid,
+    task_id: session.task_id,
   });
   const start = Date.now();
 
   const lastUser = messages.filter((message) => message.role === 'user').at(-1);
   if (!lastUser) {
-    appendJobLog(session, { phase: 'done', result: '(no message)' });
+    appendTaskLog(session, { phase: 'done', result: '(no message)' });
     await onEvent?.({ phase: 'done', result: '(no message)' });
     await onReply('(no message)');
     return;
@@ -234,20 +240,20 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
   log.info(
     {
       promptLen: prompt.length,
-      workspace_path: session.workspace_path,
+      workspace: paths.workspace,
       model: DEFAULT_LLM_MODEL ?? 'default',
     },
     'runAgent: start',
   );
-  appendJobLog(session, {
+  appendTaskLog(session, {
     phase: 'start',
     prompt_length: prompt.length,
-    workspace_path: session.workspace_path,
+    workspace: paths.workspace,
   });
   await onEvent?.({
     phase: 'start',
     prompt_length: prompt.length,
-    workspace_path: session.workspace_path,
+    workspace: paths.workspace,
   });
 
   const textParts: string[] = [];
@@ -257,17 +263,16 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
     prompt,
     options: {
       systemPrompt,
-      cwd: session.workspace_path,
+      cwd: paths.workspace,
       allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
       permissionMode: 'acceptEdits',
       model: DEFAULT_LLM_MODEL,
       env: {
         ...process.env,
         ...LLM_ENV,
-        TICLAW_RUNTIME_ID: session.runtime_id,
         TICLAW_AGENT_ID: session.agent_id,
         TICLAW_SESSION_ID: session.session_id,
-        TICLAW_JOB_ID: session.job_id,
+        TICLAW_TASK_ID: session.task_id,
       } as Record<string, string>,
     },
   });
@@ -286,7 +291,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       if (signal?.aborted) {
         throw signal.reason instanceof Error
           ? signal.reason
-          : new Error(String(signal.reason || 'Job aborted'));
+          : new Error(String(signal.reason || 'Task aborted'));
       }
 
       const elapsed = Date.now() - start;
@@ -325,7 +330,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
           });
           if (onProgress && elapsed - lastProgressAt >= PROGRESS_INTERVAL_MS) {
             lastProgressAt = elapsed;
-            appendJobLog(session, {
+            appendTaskLog(session, {
               phase: 'progress',
               elapsed_ms: elapsed,
               text: block.text,
@@ -357,7 +362,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
           (resultMsg as any).result?.trim() ||
           textParts.join('\n').trim() ||
           '(done)';
-        appendJobLog(session, {
+        appendTaskLog(session, {
           phase: 'done',
           elapsed_ms: elapsed,
           subtype: (resultMsg as any).subtype,
@@ -379,7 +384,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
     }
 
     const finalText = textParts.join('\n').trim() || '(done)';
-    appendJobLog(session, {
+    appendTaskLog(session, {
       phase: 'done',
       elapsed_ms: Date.now() - start,
       result: finalText,
@@ -392,7 +397,7 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
     await onReply(finalText);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    appendJobLog(session, {
+    appendTaskLog(session, {
       phase: 'error',
       elapsed_ms: Date.now() - start,
       error: message,

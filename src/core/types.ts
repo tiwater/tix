@@ -33,56 +33,34 @@ export interface RegisteredProject {
   folder: string; // Agent folder (e.g. main, family-chat)
   trigger: string;
   added_at: string;
-  runtime_id?: string;
   agent_id?: string;
 
   requiresTrigger?: boolean; // Default: true for rooms, false for solo chats
   isMain?: boolean; // True for the main agent (no trigger, elevated privileges)
 }
 
-export interface RuntimeRecord {
-  runtime_id: string;
-  version?: string;
-  hostname?: string;
-  os?: string;
-  capabilities?: string[];
-  capability_whitelist?: string[];
-  health?: string;
-  busy_slots?: number;
-  total_slots?: number;
-  last_heartbeat_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface AgentRecord {
-  runtime_id: string;
   agent_id: string;
   name: string;
-  folder: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface SessionRecord {
-  runtime_id: string;
-  agent_id: string;
   session_id: string;
-  chat_jid: string;
-  channel?: string;
-  workspace_path: string;
-  memory_path: string;
-  logs_path: string;
-  status: 'active' | 'terminated';
+  agent_id: string;
+  channel: string;
+  source_ref?: string;
+  status: 'active' | 'completed' | 'error';
   created_at: string;
   updated_at: string;
 }
 
 export interface SessionContext extends SessionRecord {
-  job_id: string;
+  task_id: string;
 }
 
-export type JobStatus =
+export type TaskStatus =
   | 'queued'
   | 'running'
   | 'succeeded'
@@ -90,41 +68,40 @@ export type JobStatus =
   | 'canceled'
   | 'timeout';
 
-export type JobFailureClassification =
+export type TaskFailureClassification =
   | 'tool_error'
   | 'input_error'
   | 'env_error'
   | 'permission_error'
   | 'internal_error';
 
-export type JobSource = 'acp' | 'api' | 'scheduled_task' | 'http_run';
+export type TaskSource = 'acp' | 'api' | 'schedule' | 'http_run';
 
-export interface JobErrorInfo {
-  classification: JobFailureClassification;
+export interface TaskErrorInfo {
+  classification: TaskFailureClassification;
   code: string;
   message: string;
   details?: Record<string, unknown>;
 }
 
-export interface JobResultInfo {
+export interface TaskResultInfo {
   text?: string;
   details?: Record<string, unknown>;
 }
 
-export interface JobRecord {
+/** In-memory task execution record (not persisted in DB). */
+export interface TaskRecord {
   id: string;
-  runtime_id: string;
   agent_id: string;
   session_id: string;
-  chat_jid: string;
-  source: JobSource;
+  source: TaskSource;
   source_ref?: string;
   prompt: string;
   submitted_by: string;
   submitter_type: string;
   idempotency_key?: string;
   required_capabilities: string[];
-  status: JobStatus;
+  status: TaskStatus;
   timeout_ms: number;
   step_timeout_ms?: number;
   max_retries: number;
@@ -134,8 +111,8 @@ export interface JobRecord {
   last_activity_at?: string;
   cancel_requested_at?: string;
   canceled_by?: string;
-  result?: JobResultInfo;
-  error?: JobErrorInfo;
+  result?: TaskResultInfo;
+  error?: TaskErrorInfo;
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -143,14 +120,12 @@ export interface JobRecord {
   finished_at?: string;
 }
 
-export interface CreateJobInput {
+export interface CreateTaskInput {
   id?: string;
-  runtime_id?: string;
   agent_id: string;
   session_id: string;
-  chat_jid: string;
   prompt: string;
-  source: JobSource;
+  source: TaskSource;
   source_ref?: string;
   submitted_by: string;
   submitter_type: string;
@@ -163,18 +138,13 @@ export interface CreateJobInput {
   metadata?: Record<string, unknown>;
 }
 
-export interface AuditLogRecord {
+export interface ScheduleRecord {
   id: string;
-  job_id?: string;
-  runtime_id?: string;
-  agent_id?: string;
-  session_id?: string;
-  actor_type: string;
-  actor_id: string;
-  action: string;
-  result?: string;
-  machine_hostname: string;
-  details?: Record<string, unknown>;
+  agent_id: string;
+  prompt: string;
+  cron: string;
+  status: 'active' | 'paused';
+  next_run: string | null;
   created_at: string;
 }
 
@@ -187,40 +157,9 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
-  runtime_id?: string;
   agent_id?: string;
   session_id?: string;
-  job_id?: string;
-}
-
-export interface ScheduledTask {
-  id: string;
-  runtime_id: string;
-  agent_id: string;
-  session_id: string;
-  chat_jid: string;
-  prompt: string;
-  schedule_type: 'cron' | 'interval' | 'once';
-  schedule_value: string;
-  context_mode: 'group' | 'isolated';
-  next_run: string | null;
-  last_run: string | null;
-  last_result: string | null;
-  status: 'active' | 'paused' | 'completed';
-  created_at: string;
-}
-
-export interface TaskRunLog {
-  runtime_id: string;
-  agent_id: string;
-  session_id: string;
-  job_id: string;
-  task_id: string;
-  run_at: string;
-  duration_ms: number;
-  status: 'success' | 'error';
-  result: string | null;
-  error: string | null;
+  task_id?: string;
 }
 
 export interface AvailableProject {

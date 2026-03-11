@@ -6,7 +6,7 @@
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3280';
 
   // --- Types ---
-  type Tab = 'chat' | 'skills' | 'jobs' | 'runtime';
+  type Tab = 'chat' | 'sessions' | 'schedules' | 'skills' | 'claw';
 
   interface Message {
     id: string;
@@ -44,31 +44,44 @@
     diagnostics: string[];
   }
 
-  interface JobInfo {
-    id: string;
-    status: string;
-    prompt: string;
+  interface AgentInfo {
     agent_id: string;
-    session_id: string;
-    created_at: string;
-    started_at: string | null;
-    finished_at: string | null;
-    result: any;
-    error: any;
+    session_count: number;
+    last_active: string;
   }
 
-  interface RuntimeInfo {
-    runtime_id: string;
-    default_agent_id: string;
-    default_session_id: string;
-    runtime: any;
+  interface SessionInfo {
+    session_id: string;
+    agent_id: string;
+    channel: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }
+
+  interface ScheduleInfo {
+    id: string;
+    agent_id: string;
+    prompt: string;
+    cron: string;
+    status: string;
+    next_run: string | null;
+    created_at: string;
+  }
+
+  interface ClawInfo {
+    hostname: string;
     enrollment: {
       trust_state: string;
-      runtime_fingerprint: string;
+      fingerprint: string;
       trusted_at: string | null;
       failed_attempts: number;
     };
-    executor: any;
+    executor: {
+      active_tasks?: number;
+      queued_tasks?: number;
+      total_slots?: number;
+    };
   }
 
   // --- State ---
@@ -86,11 +99,26 @@
 
   // Tab data
   let skills = $state<SkillInfo[]>([]);
-  let jobs = $state<JobInfo[]>([]);
-  let runtimeInfo = $state<RuntimeInfo | null>(null);
+  let agents = $state<AgentInfo[]>([]);
+  let sessions = $state<SessionInfo[]>([]);
+  let schedules = $state<ScheduleInfo[]>([]);
+  let clawInfo = $state<ClawInfo | null>(null);
+  let selectedAgentId = $state<string | null>(null);
+
   let skillsLoading = $state(false);
-  let jobsLoading = $state(false);
-  let runtimeLoading = $state(false);
+  let agentsLoading = $state(false);
+  let schedulesLoading = $state(false);
+  let clawLoading = $state(false);
+
+  // Modals
+  let showNewAgent = $state(false);
+  let showNewSession = $state(false);
+  let showNewSchedule = $state(false);
+  let newAgentName = $state('');
+  let newSessionAgentId = $state('');
+  let newScheduleAgentId = $state('');
+  let newSchedulePrompt = $state('');
+  let newScheduleCron = $state('');
 
   let messagesEl = $state<HTMLElement>(null!);
   let inputEl = $state<HTMLTextAreaElement>(null!);
@@ -98,17 +126,19 @@
 
   const tabs: { id: Tab; icon: string; label: string }[] = [
     { id: 'chat', icon: '💬', label: 'Chat' },
+    { id: 'sessions', icon: '📂', label: 'Sessions' },
+    { id: 'schedules', icon: '⏰', label: 'Schedules' },
     { id: 'skills', icon: '🧩', label: 'Skills' },
-    { id: 'jobs', icon: '📋', label: 'Jobs' },
-    { id: 'runtime', icon: '🦀', label: 'Claw' },
+    { id: 'claw', icon: '🦀', label: 'Claw' },
   ];
 
   // --- Tab switching ---
   function switchTab(tab: Tab) {
     activeTab = tab;
     if (tab === 'skills') fetchSkills();
-    if (tab === 'jobs') fetchJobs();
-    if (tab === 'runtime') fetchRuntime();
+    if (tab === 'sessions') fetchAgents();
+    if (tab === 'schedules') fetchSchedules();
+    if (tab === 'claw') fetchClaw();
   }
 
   // --- SSE ---
@@ -193,7 +223,21 @@
         }),
       });
       if (!res.ok) {
-        messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ POST failed: ${res.status}`, time: '' }];
+        isThinking = false;
+        if (res.status === 403) {
+          try {
+            const errData = await res.json();
+            if (errData.error === 'claw_not_trusted') {
+              messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `🔒 Claw is not trusted (${errData.trust_state}). Go to the Claw tab and click "Trust this Claw" to enable messaging.`, time: '' }];
+            } else {
+              messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ Forbidden: ${errData.error || res.status}`, time: '' }];
+            }
+          } catch {
+            messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ POST failed: ${res.status}`, time: '' }];
+          }
+        } else {
+          messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ POST failed: ${res.status}`, time: '' }];
+        }
       }
     } catch (e: any) {
       isThinking = false;
@@ -251,38 +295,56 @@
     skillsLoading = false;
   }
 
-  async function fetchJobs() {
-    jobsLoading = true;
+  async function fetchAgents() {
+    agentsLoading = true;
     try {
-      const res = await fetch(`${API_BASE}/api/jobs?limit=50`);
-      if (res.ok) { const data = await res.json(); jobs = data.jobs || []; }
-    } catch { /* ignore */ }
-    jobsLoading = false;
-  }
-
-  async function fetchRuntime() {
-    runtimeLoading = true;
-    try {
-      const res = await fetch(`${API_BASE}/api/claw`);
+      const res = await fetch(`${API_BASE}/api/agents`);
       if (res.ok) {
-        runtimeInfo = await res.json();
-        // Auto-discover default agent/session from runtime
-        if (runtimeInfo?.default_agent_id && agentId === 'default') {
-          agentId = runtimeInfo.default_agent_id;
-        }
-        if (runtimeInfo?.default_session_id && sessionId === 'default') {
-          sessionId = runtimeInfo.default_session_id;
-        }
+        const data = await res.json();
+        agents = data.agents || [];
       }
     } catch { /* ignore */ }
-    runtimeLoading = false;
+    agentsLoading = false;
   }
 
-  async function trustRuntime() {
+  async function fetchSessionsForAgent(agId: string) {
+    selectedAgentId = agId;
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions?agent_id=${encodeURIComponent(agId)}`);
+      if (res.ok) {
+        const data = await res.json();
+        sessions = data.sessions || [];
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function fetchSchedules() {
+    schedulesLoading = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/schedules`);
+      if (res.ok) {
+        const data = await res.json();
+        schedules = data.schedules || [];
+      }
+    } catch { /* ignore */ }
+    schedulesLoading = false;
+  }
+
+  async function fetchClaw() {
+    clawLoading = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/claw`);
+      if (res.ok) { clawInfo = await res.json(); }
+    } catch { /* ignore */ }
+    clawLoading = false;
+  }
+
+  async function trustClaw() {
     try {
       const res = await fetch(`${API_BASE}/api/claw/trust`, { method: 'POST' });
       if (res.ok) {
-        await fetchRuntime();
+        await fetchClaw();
+        addLog('Claw trusted ✓');
       }
     } catch { /* ignore */ }
   }
@@ -295,15 +357,92 @@
     } catch { /* ignore */ }
   }
 
+  // --- Agent/Session/Schedule creation ---
+  async function createAgent() {
+    if (!newAgentName.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newAgentName.trim() }),
+      });
+      if (res.ok) {
+        newAgentName = '';
+        showNewAgent = false;
+        await fetchAgents();
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function createSession() {
+    const aid = newSessionAgentId || selectedAgentId;
+    if (!aid) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: aid }),
+      });
+      if (res.ok) {
+        showNewSession = false;
+        newSessionAgentId = '';
+        await fetchSessionsForAgent(aid);
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function createSchedule_() {
+    if (!newScheduleAgentId || !newSchedulePrompt.trim() || !newScheduleCron.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/schedules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent_id: newScheduleAgentId,
+          prompt: newSchedulePrompt.trim(),
+          cron: newScheduleCron.trim(),
+        }),
+      });
+      if (res.ok) {
+        newScheduleAgentId = '';
+        newSchedulePrompt = '';
+        newScheduleCron = '';
+        showNewSchedule = false;
+        await fetchSchedules();
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function toggleSchedule(id: string, currentStatus: string) {
+    const newStatus = currentStatus === 'active' ? 'paused' : 'active';
+    try {
+      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(id)}/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      await fetchSchedules();
+    } catch { /* ignore */ }
+  }
+
+  async function removeSchedule(id: string) {
+    try {
+      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await fetchSchedules();
+    } catch { /* ignore */ }
+  }
+
+  function selectSession(sess: SessionInfo) {
+    agentId = sess.agent_id;
+    sessionId = sess.session_id;
+    activeTab = 'chat';
+    reconnect();
+  }
+
   function reconnect() {
     messages = [...messages, { id: `sys-${Date.now()}`, role: 'system', text: `Reconnecting…`, time: '' }];
     fetchMessages();
     connectSSE();
-  }
-
-  function formatTime(iso: string | null): string {
-    if (!iso) return '—';
-    try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
   }
 
   function formatDate(iso: string | null): string {
@@ -314,9 +453,19 @@
     } catch { return iso; }
   }
 
+  function formatShortDate(iso: string | null): string {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString();
+      return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+    } catch { return iso; }
+  }
+
   // --- Lifecycle ---
   onMount(async () => {
-    await fetchRuntime();
+    await fetchClaw();
     fetchMind();
     fetchWorkspaceFiles();
     await fetchMessages();
@@ -363,6 +512,13 @@
 
   <!-- Main Content -->
   <div class="main-content">
+    {#if clawInfo && clawInfo.enrollment.trust_state !== 'trusted'}
+      <div class="trust-banner">
+        <span>🔒 This claw is not trusted ({clawInfo.enrollment.trust_state}). Messaging is disabled.</span>
+        <button class="btn-sm btn-accent" onclick={trustClaw}>🔓 Trust this Claw</button>
+      </div>
+    {/if}
+
     {#if activeTab === 'chat'}
       <!-- Chat View -->
       <div class="messages" bind:this={messagesEl}>
@@ -412,6 +568,187 @@
           {sending ? '⏳' : '➤'}
         </button>
       </div>
+
+    {:else if activeTab === 'sessions'}
+      <!-- Sessions View -->
+      <div class="tab-header">
+        <span class="tab-header-icon">📂</span>
+        <h2>Agents & Sessions</h2>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn-sm btn-accent" onclick={() => { showNewAgent = true; }}>＋ New Agent</button>
+          <button class="btn-sm" onclick={fetchAgents}>↻ Refresh</button>
+        </div>
+      </div>
+
+      <div class="sessions-layout">
+        <!-- Agents column -->
+        <div class="agents-panel">
+          <div class="panel-title">Agents</div>
+          {#if agentsLoading}
+            <div class="empty-state-sm">⏳ Loading…</div>
+          {:else if agents.length === 0}
+            <div class="empty-state-sm">No agents yet. Create one!</div>
+          {:else}
+            {#each agents as agent}
+              <button
+                class="agent-item"
+                class:selected={selectedAgentId === agent.agent_id}
+                onclick={() => fetchSessionsForAgent(agent.agent_id)}
+              >
+                <div class="agent-name">{agent.agent_id}</div>
+                <div class="agent-meta">{agent.session_count} session{agent.session_count !== 1 ? 's' : ''}</div>
+              </button>
+            {/each}
+          {/if}
+        </div>
+
+        <!-- Sessions column -->
+        <div class="sessions-panel">
+          {#if selectedAgentId}
+            <div class="panel-title">
+              Sessions for <strong>{selectedAgentId}</strong>
+              <button class="btn-sm btn-accent" style="margin-left:auto" onclick={() => { newSessionAgentId = selectedAgentId || ''; showNewSession = true; }}>＋ New Session</button>
+            </div>
+            {#if sessions.length === 0}
+              <div class="empty-state-sm">No sessions. Create one to start chatting.</div>
+            {:else}
+              {#each sessions as sess}
+                <button class="session-item" onclick={() => selectSession(sess)}>
+                  <div class="session-id">{sess.session_id.slice(0, 12)}…</div>
+                  <div class="session-meta">
+                    <span class="badge small {sess.status}">{sess.status}</span>
+                    <span class="session-channel">{sess.channel}</span>
+                    <span class="session-time">{formatShortDate(sess.updated_at)}</span>
+                  </div>
+                </button>
+              {/each}
+            {/if}
+          {:else}
+            <div class="empty-state-sm">← Select an agent to see sessions</div>
+          {/if}
+        </div>
+      </div>
+
+      <!-- New Agent Modal -->
+      {#if showNewAgent}
+        <div class="modal-overlay" onclick={() => showNewAgent = false} role="presentation">
+          <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') showNewAgent = false }}>
+            <h3>Create New Agent</h3>
+            <div class="modal-field">
+              <label for="new-agent-name">Agent Name</label>
+              <input id="new-agent-name" bind:value={newAgentName} placeholder="my-agent" onkeydown={(e) => { if (e.key === 'Enter') createAgent() }} />
+            </div>
+            <div class="modal-actions">
+              <button class="btn-sm" onclick={() => showNewAgent = false}>Cancel</button>
+              <button class="btn-sm btn-accent" onclick={createAgent} disabled={!newAgentName.trim()}>Create</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- New Session Modal -->
+      {#if showNewSession}
+        <div class="modal-overlay" onclick={() => showNewSession = false} role="presentation">
+          <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') showNewSession = false }}>
+            <h3>Create New Session</h3>
+            <div class="modal-field">
+              <label for="new-session-agent">Agent</label>
+              <input id="new-session-agent" bind:value={newSessionAgentId} placeholder="agent-id" />
+            </div>
+            <div class="modal-actions">
+              <button class="btn-sm" onclick={() => showNewSession = false}>Cancel</button>
+              <button class="btn-sm btn-accent" onclick={createSession} disabled={!newSessionAgentId}>Create</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+    {:else if activeTab === 'schedules'}
+      <!-- Schedules View -->
+      <div class="tab-header">
+        <span class="tab-header-icon">⏰</span>
+        <h2>Schedules</h2>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn-sm btn-accent" onclick={() => { showNewSchedule = true; }}>＋ New Schedule</button>
+          <button class="btn-sm" onclick={fetchSchedules}>↻ Refresh</button>
+        </div>
+      </div>
+      <div class="schedules-wrapper">
+        {#if schedulesLoading}
+          <div class="empty-state">
+            <div class="empty-state-icon">⏳</div>
+            <div class="empty-state-text">Loading schedules…</div>
+          </div>
+        {:else if schedules.length === 0}
+          <div class="empty-state">
+            <div class="empty-state-icon">⏰</div>
+            <div class="empty-state-text">No schedules yet. Create a cron schedule to automate agent tasks.</div>
+          </div>
+        {:else}
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Agent</th>
+                <th>Cron</th>
+                <th>Prompt</th>
+                <th>Next Run</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each schedules as sched}
+                <tr>
+                  <td>
+                    <span class="status-pill {sched.status}">
+                      {#if sched.status === 'active'}▶{:else}⏸{/if}
+                      {sched.status}
+                    </span>
+                  </td>
+                  <td style="font-size:12px;color:var(--text-muted)">{sched.agent_id}</td>
+                  <td><code class="cron-code">{sched.cron}</code></td>
+                  <td class="prompt-cell" title={sched.prompt}>{sched.prompt}</td>
+                  <td class="time-cell">{formatShortDate(sched.next_run)}</td>
+                  <td>
+                    <div style="display:flex;gap:4px">
+                      <button class="btn-icon" title={sched.status === 'active' ? 'Pause' : 'Resume'} onclick={() => toggleSchedule(sched.id, sched.status)}>
+                        {sched.status === 'active' ? '⏸' : '▶'}
+                      </button>
+                      <button class="btn-icon btn-danger" title="Delete" onclick={() => removeSchedule(sched.id)}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      </div>
+
+      <!-- New Schedule Modal -->
+      {#if showNewSchedule}
+        <div class="modal-overlay" onclick={() => showNewSchedule = false} role="presentation">
+          <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') showNewSchedule = false }}>
+            <h3>Create Schedule</h3>
+            <div class="modal-field">
+              <label for="sched-agent">Agent ID</label>
+              <input id="sched-agent" bind:value={newScheduleAgentId} placeholder="my-agent" />
+            </div>
+            <div class="modal-field">
+              <label for="sched-prompt">Prompt</label>
+              <textarea id="sched-prompt" bind:value={newSchedulePrompt} placeholder="Check for updates and summarize…" rows="3"></textarea>
+            </div>
+            <div class="modal-field">
+              <label for="sched-cron">Cron Expression</label>
+              <input id="sched-cron" bind:value={newScheduleCron} placeholder="0 9 * * *" />
+              <div class="field-hint">e.g. <code>0 9 * * *</code> = every day at 9am</div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-sm" onclick={() => showNewSchedule = false}>Cancel</button>
+              <button class="btn-sm btn-accent" onclick={createSchedule_} disabled={!newScheduleAgentId || !newSchedulePrompt.trim() || !newScheduleCron.trim()}>Create</button>
+            </div>
+          </div>
+        </div>
+      {/if}
 
     {:else if activeTab === 'skills'}
       <!-- Skills View -->
@@ -463,149 +800,78 @@
         {/if}
       </div>
 
-    {:else if activeTab === 'jobs'}
-      <!-- Jobs View -->
-      <div class="tab-header">
-        <span class="tab-header-icon">📋</span>
-        <h2>Jobs</h2>
-        <div style="margin-left:auto">
-          <button class="btn-sm" onclick={fetchJobs}>↻ Refresh</button>
-        </div>
-      </div>
-      <div class="jobs-table-wrapper">
-        {#if jobsLoading}
-          <div class="empty-state">
-            <div class="empty-state-icon">⏳</div>
-            <div class="empty-state-text">Loading jobs…</div>
-          </div>
-        {:else if jobs.length === 0}
-          <div class="empty-state">
-            <div class="empty-state-icon">📋</div>
-            <div class="empty-state-text">No jobs yet. Send a message to create a job.</div>
-          </div>
-        {:else}
-          <table class="jobs-table">
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Agent</th>
-                <th>Prompt</th>
-                <th>Created</th>
-                <th>Finished</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each jobs as job}
-                <tr>
-                  <td>
-                    <span class="status-pill {job.status}">
-                      {#if job.status === 'queued'}⏳{:else if job.status === 'running'}🔄{:else if job.status === 'succeeded'}✅{:else if job.status === 'failed'}❌{:else}⊘{/if}
-                      {job.status}
-                    </span>
-                  </td>
-                  <td style="font-size:12px;color:var(--text-muted)">{job.agent_id || '—'}</td>
-                  <td class="prompt-cell" title={job.prompt}>{job.prompt}</td>
-                  <td class="time-cell">{formatDate(job.created_at)}</td>
-                  <td class="time-cell">{formatDate(job.finished_at)}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-      </div>
-
-    {:else if activeTab === 'runtime'}
-      <!-- Runtime View -->
+    {:else if activeTab === 'claw'}
+      <!-- Claw View -->
       <div class="tab-header">
         <span class="tab-header-icon">🦀</span>
         <h2>Claw</h2>
         <div style="margin-left:auto">
-          <button class="btn-sm" onclick={fetchRuntime}>↻ Refresh</button>
+          <button class="btn-sm" onclick={fetchClaw}>↻ Refresh</button>
         </div>
       </div>
       <div class="runtime-content">
-        {#if runtimeLoading}
+        {#if clawLoading}
           <div class="empty-state">
             <div class="empty-state-icon">⏳</div>
-            <div class="empty-state-text">Loading runtime info…</div>
+            <div class="empty-state-text">Loading claw info…</div>
           </div>
-        {:else if runtimeInfo}
+        {:else if clawInfo}
           <div class="runtime-card">
             <h3>Identity</h3>
             <div class="runtime-row">
-              <span class="runtime-key">Runtime ID</span>
-              <span class="runtime-val">{runtimeInfo.runtime_id}</span>
+              <span class="runtime-key">Hostname</span>
+              <span class="runtime-val">{clawInfo.hostname || '—'}</span>
             </div>
-            {#if runtimeInfo.runtime}
-              <div class="runtime-row">
-                <span class="runtime-key">Hostname</span>
-                <span class="runtime-val">{runtimeInfo.runtime.hostname || '—'}</span>
-              </div>
-              <div class="runtime-row">
-                <span class="runtime-key">Version</span>
-                <span class="runtime-val">{runtimeInfo.runtime.version || '—'}</span>
-              </div>
-              <div class="runtime-row">
-                <span class="runtime-key">OS</span>
-                <span class="runtime-val">{runtimeInfo.runtime.os || '—'}</span>
-              </div>
-            {/if}
           </div>
 
           <div class="runtime-card">
             <h3>Enrollment</h3>
             <div class="runtime-row">
               <span class="runtime-key">Trust State</span>
-              <span class="badge {runtimeInfo.enrollment.trust_state}">
-                {runtimeInfo.enrollment.trust_state}
+              <span class="badge {clawInfo.enrollment.trust_state}">
+                {clawInfo.enrollment.trust_state}
               </span>
             </div>
-            {#if runtimeInfo.enrollment.trust_state !== 'trusted'}
+            {#if clawInfo.enrollment.trust_state !== 'trusted'}
               <div style="margin-top:8px">
-                <button class="btn-sm" style="color:var(--green);border-color:var(--green)" onclick={trustRuntime}>🔓 Trust Runtime</button>
+                <button class="btn-sm" style="color:var(--green);border-color:var(--green)" onclick={trustClaw}>🔓 Trust this Claw</button>
               </div>
             {/if}
             <div class="runtime-row">
               <span class="runtime-key">Fingerprint</span>
-              <span class="runtime-val" style="font-size:11px">{runtimeInfo.enrollment.runtime_fingerprint?.slice(0, 16) || '—'}…</span>
+              <span class="runtime-val" style="font-size:11px">{clawInfo.enrollment.fingerprint?.slice(0, 16) || '—'}…</span>
             </div>
-            {#if runtimeInfo.enrollment.trusted_at}
+            {#if clawInfo.enrollment.trusted_at}
               <div class="runtime-row">
                 <span class="runtime-key">Trusted At</span>
-                <span class="runtime-val" style="font-size:12px">{formatDate(runtimeInfo.enrollment.trusted_at)}</span>
+                <span class="runtime-val" style="font-size:12px">{formatDate(clawInfo.enrollment.trusted_at)}</span>
               </div>
             {/if}
           </div>
 
-          {#if runtimeInfo.executor}
+          {#if clawInfo.executor}
             <div class="runtime-card">
               <h3>Executor</h3>
               <div class="stats-row">
                 <div class="stat-card">
-                  <div class="stat-value">{runtimeInfo.executor.active_jobs ?? 0}</div>
+                  <div class="stat-value">{clawInfo.executor.active_tasks ?? 0}</div>
                   <div class="stat-label">Active</div>
                 </div>
                 <div class="stat-card">
-                  <div class="stat-value">{runtimeInfo.executor.queued_jobs ?? 0}</div>
+                  <div class="stat-value">{clawInfo.executor.queued_tasks ?? 0}</div>
                   <div class="stat-label">Queued</div>
                 </div>
                 <div class="stat-card">
-                  <div class="stat-value">{runtimeInfo.executor.total_slots ?? 0}</div>
+                  <div class="stat-value">{clawInfo.executor.total_slots ?? 0}</div>
                   <div class="stat-label">Slots</div>
                 </div>
               </div>
-              {#if runtimeInfo.executor.capabilities}
-                <div class="runtime-row">
-                  <span class="runtime-key">Capabilities</span>
-                  <span class="runtime-val" style="font-size:11px">{runtimeInfo.executor.capabilities?.join(', ') || '—'}</span>
-                </div>
-              {/if}
             </div>
           {/if}
         {:else}
           <div class="empty-state">
             <div class="empty-state-icon">⚙️</div>
-            <div class="empty-state-text">No runtime data available</div>
+            <div class="empty-state-text">No claw data available</div>
           </div>
         {/if}
       </div>
@@ -616,20 +882,28 @@
   <aside class="sidebar">
     <!-- Session Config -->
     <div class="sidebar-section">
-      <h3>Session</h3>
+      <h3>Active Session</h3>
       <div style="display:flex;flex-direction:column;gap:6px">
-        <input
-          class="chat-id-input"
-          bind:value={agentId}
-          placeholder="web-agent"
-          onchange={reconnect}
-        />
-        <input
-          class="chat-id-input"
-          bind:value={sessionId}
-          placeholder="web-session"
-          onchange={reconnect}
-        />
+        <div class="sidebar-field">
+          <label for="sidebar-agent">Agent</label>
+          <input
+            id="sidebar-agent"
+            class="chat-id-input"
+            bind:value={agentId}
+            placeholder="web-agent"
+            onchange={reconnect}
+          />
+        </div>
+        <div class="sidebar-field">
+          <label for="sidebar-session">Session</label>
+          <input
+            id="sidebar-session"
+            class="chat-id-input"
+            bind:value={sessionId}
+            placeholder="web-session"
+            onchange={reconnect}
+          />
+        </div>
       </div>
     </div>
 

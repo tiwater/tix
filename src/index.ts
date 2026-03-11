@@ -10,7 +10,7 @@ import {
   MIND_ADMIN_USERS,
   POLL_INTERVAL,
   TRIGGER_PATTERN,
-  CONTROL_PLANE_RUNTIME_ID,
+  CLAW_HOSTNAME,
 } from './core/config.js';
 import './channels/index.js';
 import {
@@ -22,11 +22,11 @@ import {
   getAllChats,
   getAllRegisteredProjects,
   getAllSessions,
-  getAllTasks,
+  getAllSchedules,
   getMessagesSince,
   getNewMessages,
   getRouterState,
-  getSessionByChatJid,
+  getSession,
   initDatabase,
   setRegisteredProject,
   setRouterState,
@@ -34,7 +34,7 @@ import {
   storeMessage,
   getRecentMessages,
 } from './core/db.js';
-import { DEFAULT_RUNTIME_ID } from './core/config.js';
+
 import {
   createPackage,
   diffMindVersions,
@@ -192,10 +192,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
       if (cmd === 'enroll') {
         const sub = parts[2] || 'status';
         if (sub === 'status') {
-          const e = readEnrollmentState(CONTROL_PLANE_RUNTIME_ID || undefined);
+          const e = readEnrollmentState(CLAW_HOSTNAME || undefined);
           await sendFn(
             chatJid,
-            `🔐 Enrollment status\n- runtime_id: ${e.runtime_id}\n- fingerprint: ${e.runtime_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
+            `🔐 Enrollment status\n- claw: ${e.runtime_id}\n- fingerprint: ${e.runtime_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
           );
           return true;
         }
@@ -206,11 +206,11 @@ async function processMessages(chatJid: string): Promise<boolean> {
             await sendFn(chatJid, 'Usage: /mind enroll verify <token>');
             return true;
           }
-          const e = readEnrollmentState(CONTROL_PLANE_RUNTIME_ID || undefined);
+          const e = readEnrollmentState(CLAW_HOSTNAME || undefined);
           const result = verifyEnrollmentToken({
             token,
             runtimeFingerprint: e.runtime_fingerprint,
-            runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+            runtimeId: CLAW_HOSTNAME || undefined,
           });
 
           if (result.ok) {
@@ -408,28 +408,25 @@ async function processMessages(chatJid: string): Promise<boolean> {
       }
 
       // Resolve or create a session for this chat
-      const runtimeId = (group as any).runtime_id || DEFAULT_RUNTIME_ID;
       const agentId = (group as any).agent_id || group.folder;
       const sessionId = chatJid;
+      const channel = chatJid.startsWith('dc:')
+        ? 'discord'
+        : chatJid.startsWith('web:')
+          ? 'http'
+          : chatJid.startsWith('fs:')
+            ? 'feishu'
+            : 'unknown';
       const session = ensureSession({
-        runtime_id: runtimeId,
         agent_id: agentId,
         session_id: sessionId,
-        chat_jid: chatJid,
-        channel: chatJid.startsWith('dc:')
-          ? 'discord'
-          : chatJid.startsWith('web:')
-            ? 'http'
-            : chatJid.startsWith('fs:')
-              ? 'feishu'
-              : 'unknown',
+        channel,
         agent_name: group.name,
-        agent_folder: group.folder,
       });
 
       await runAgent({
         group,
-        session: { ...session, job_id: `run-${Date.now()}`, chat_jid: chatJid },
+        session: { ...session, task_id: `run-${Date.now()}` },
         messages: aiMessages,
         onProgress: async (text, elapsed) => {
           const secs = Math.round(elapsed / 1000);
@@ -620,6 +617,16 @@ let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
+
+  // Ensure default agent and session exist
+  ensureSession({
+    agent_id: 'web-agent',
+    session_id: 'web-session',
+    channel: 'web',
+    agent_name: 'Web Agent',
+  });
+  logger.info('Default agent and session ensured');
+
   if (isSupabaseConfigured()) {
     await pullFromSupabase();
     startPeriodicSupabasePush();

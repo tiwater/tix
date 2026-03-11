@@ -3,11 +3,10 @@
  * system-level concerns for production readiness.
  *
  * Covers:
- *  1. ID consistency across DB schema
- *  2. Job lifecycle (create/run/succeed/fail/cancel)
- *  3. Session isolation (no cross-session leakage)
- *  4. Skills governance (trust, permissions)
- *  5. Enrollment state machine (TOFU flow)
+ *  1. Session topology (agent_id/session_id consistency)
+ *  2. Skills governance (trust, permissions)
+ *  3. Enrollment state machine (TOFU flow)
+ *  4. Sub-agent delegation depth limits
  */
 
 import fs from 'fs';
@@ -17,14 +16,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import {
   _initTestDatabase,
-  appendAuditLog,
-  createJob,
   ensureSession,
-  getJobByIdempotencyKey,
-  getRuntime,
-  getSessionByScope,
-  transitionJobStatus,
-  upsertRuntimeRegistration,
+  getAllSessions,
 } from './core/db.js';
 import {
   DelegationDepthExceededError,
@@ -43,262 +36,66 @@ beforeEach(() => {
   _initTestDatabase();
 });
 
-// ─── 1. ID Consistency ───────────────────────────────────────
+// ─── 1. Session Topology ─────────────────────────────────────
 
-describe('Production Gate: ID Consistency', () => {
-  it('runtime_id/agent_id/session_id are consistent across DB tables', () => {
+describe('Production Gate: Session Topology', () => {
+  it('agent_id/session_id are consistent across DB', () => {
     const session = ensureSession({
-      runtime_id: 'rt-gate',
       agent_id: 'ag-gate',
       session_id: 'ss-gate',
-      chat_jid: 'gate-chat',
       channel: 'test',
       agent_name: 'Gate Agent',
-      agent_folder: 'gate_agent',
     });
 
-    expect(session.runtime_id).toBe('rt-gate');
     expect(session.agent_id).toBe('ag-gate');
     expect(session.session_id).toBe('ss-gate');
-
-    const job = createJob({
-      runtime_id: 'rt-gate',
-      agent_id: 'ag-gate',
-      session_id: 'ss-gate',
-      chat_jid: 'gate-chat',
-      prompt: 'test consistency',
-      source: 'api',
-      submitted_by: 'gate-test',
-      submitter_type: 'test',
-    });
-
-    expect(job.runtime_id).toBe('rt-gate');
-    expect(job.agent_id).toBe('ag-gate');
-    expect(job.session_id).toBe('ss-gate');
-
-    appendAuditLog({
-      job_id: job.id,
-      runtime_id: 'rt-gate',
-      agent_id: 'ag-gate',
-      session_id: 'ss-gate',
-      actor_type: 'test',
-      actor_id: 'gate-test',
-      action: 'test_action',
-      machine_hostname: os.hostname(),
-    });
   });
 
-  it('session paths are scoped to runtime/agent/session', () => {
+  it('different sessions for same agent are correctly tracked', () => {
     const s1 = ensureSession({
-      runtime_id: 'rt-1',
       agent_id: 'ag-1',
       session_id: 'ss-1',
-      chat_jid: 'chat-1',
       channel: 'test',
       agent_name: 'A1',
-      agent_folder: 'a1',
     });
     const s2 = ensureSession({
-      runtime_id: 'rt-1',
       agent_id: 'ag-1',
       session_id: 'ss-2',
-      chat_jid: 'chat-2',
       channel: 'test',
       agent_name: 'A1',
-      agent_folder: 'a1',
-    });
-    const s3 = ensureSession({
-      runtime_id: 'rt-1',
-      agent_id: 'ag-2',
-      session_id: 'ss-3',
-      chat_jid: 'chat-3',
-      channel: 'test',
-      agent_name: 'A2',
-      agent_folder: 'a2',
     });
 
-    const paths = [s1.workspace_path, s2.workspace_path, s3.workspace_path];
-    expect(new Set(paths).size).toBe(3);
-    expect(s1.workspace_path).toContain('ag-1');
-    expect(s3.workspace_path).toContain('ag-2');
-  });
-});
+    expect(s1.session_id).toBe('ss-1');
+    expect(s2.session_id).toBe('ss-2');
+    expect(s1.agent_id).toBe(s2.agent_id);
 
-// ─── 2. Job Lifecycle ────────────────────────────────────────
-
-describe('Production Gate: Job Lifecycle', () => {
-  beforeEach(() => {
-    ensureSession({
-      runtime_id: 'rt-job',
-      agent_id: 'ag-job',
-      session_id: 'ss-job',
-      chat_jid: 'job-chat',
-      channel: 'test',
-      agent_name: 'Job Agent',
-      agent_folder: 'job_agent',
-    });
+    const sessions = getAllSessions();
+    expect(sessions).toHaveLength(2);
   });
 
-  it('job transitions through queued → running → succeeded', () => {
-    const job = createJob({
-      runtime_id: 'rt-job',
-      agent_id: 'ag-job',
-      session_id: 'ss-job',
-      chat_jid: 'job-chat',
-      prompt: 'succeed please',
-      source: 'api',
-      submitted_by: 'tester',
-      submitter_type: 'test',
-    });
-    expect(job.status).toBe('queued');
-
-    const running = transitionJobStatus(job.id, 'running', {
-      started_at: new Date().toISOString(),
-      attempt_count: 1,
-    });
-    expect(running.status).toBe('running');
-
-    const succeeded = transitionJobStatus(job.id, 'succeeded', {
-      result: { text: 'done' },
-      finished_at: new Date().toISOString(),
-    });
-    expect(succeeded.status).toBe('succeeded');
-    expect(succeeded.result?.text).toBe('done');
-  });
-
-  it('job transitions through queued → running → failed', () => {
-    const job = createJob({
-      runtime_id: 'rt-job',
-      agent_id: 'ag-job',
-      session_id: 'ss-job',
-      chat_jid: 'job-chat',
-      prompt: 'fail please',
-      source: 'api',
-      submitted_by: 'tester',
-      submitter_type: 'test',
-    });
-
-    transitionJobStatus(job.id, 'running', {
-      started_at: new Date().toISOString(),
-      attempt_count: 1,
-    });
-
-    const failed = transitionJobStatus(job.id, 'failed', {
-      error: {
-        classification: 'internal_error',
-        code: 'test_failure',
-        message: 'intentional test failure',
-      },
-      finished_at: new Date().toISOString(),
-    });
-    expect(failed.status).toBe('failed');
-    expect(failed.error?.code).toBe('test_failure');
-  });
-
-  it('job cancel flow works', () => {
-    const job = createJob({
-      runtime_id: 'rt-job',
-      agent_id: 'ag-job',
-      session_id: 'ss-job',
-      chat_jid: 'job-chat',
-      prompt: 'cancel me',
-      source: 'api',
-      submitted_by: 'tester',
-      submitter_type: 'test',
-    });
-
-    transitionJobStatus(job.id, 'running', {
-      started_at: new Date().toISOString(),
-      attempt_count: 1,
-    });
-
-    const canceled = transitionJobStatus(job.id, 'canceled', {
-      cancel_requested_at: new Date().toISOString(),
-      canceled_by: 'admin',
-      finished_at: new Date().toISOString(),
-    });
-    expect(canceled.status).toBe('canceled');
-    expect(canceled.canceled_by).toBe('admin');
-  });
-
-  it('idempotency key prevents duplicate jobs', () => {
-    const first = createJob({
-      runtime_id: 'rt-job',
-      agent_id: 'ag-job',
-      session_id: 'ss-job',
-      chat_jid: 'job-chat',
-      prompt: 'idempotent',
-      source: 'api',
-      submitted_by: 'tester',
-      submitter_type: 'test',
-      idempotency_key: 'gate-idem-1',
-    });
-
-    const duplicate = getJobByIdempotencyKey('gate-idem-1');
-    expect(duplicate?.id).toBe(first.id);
-  });
-});
-
-// ─── 3. Session Isolation ────────────────────────────────────
-
-describe('Production Gate: Session Isolation', () => {
-  it('different sessions have isolated paths', () => {
+  it('different agents have separate sessions', () => {
     const s1 = ensureSession({
-      runtime_id: 'rt-iso',
-      agent_id: 'ag-iso',
-      session_id: 'ss-iso-1',
-      chat_jid: 'iso-chat-1',
-      channel: 'test',
-      agent_name: 'Iso Agent',
-      agent_folder: 'iso_agent',
-    });
-    const s2 = ensureSession({
-      runtime_id: 'rt-iso',
-      agent_id: 'ag-iso',
-      session_id: 'ss-iso-2',
-      chat_jid: 'iso-chat-2',
-      channel: 'test',
-      agent_name: 'Iso Agent',
-      agent_folder: 'iso_agent',
-    });
-
-    expect(s1.workspace_path).not.toBe(s2.workspace_path);
-    expect(s1.memory_path).not.toBe(s2.memory_path);
-    expect(s1.logs_path).not.toBe(s2.logs_path);
-
-    const lookup1 = getSessionByScope('rt-iso', 'ag-iso', 'ss-iso-1');
-    const lookup2 = getSessionByScope('rt-iso', 'ag-iso', 'ss-iso-2');
-    expect(lookup1?.session_id).toBe('ss-iso-1');
-    expect(lookup2?.session_id).toBe('ss-iso-2');
-  });
-
-  it('different agents have separate workspace hierarchies', () => {
-    const s1 = ensureSession({
-      runtime_id: 'rt-iso',
       agent_id: 'ag-alpha',
-      session_id: 'ss-1',
-      chat_jid: 'alpha-chat',
+      session_id: 'ss-alpha-1',
       channel: 'test',
       agent_name: 'Alpha',
-      agent_folder: 'alpha',
     });
     const s2 = ensureSession({
-      runtime_id: 'rt-iso',
       agent_id: 'ag-beta',
-      session_id: 'ss-1',
-      chat_jid: 'beta-chat',
+      session_id: 'ss-beta-1',
       channel: 'test',
       agent_name: 'Beta',
-      agent_folder: 'beta',
     });
 
-    expect(s1.workspace_path).not.toBe(s2.workspace_path);
-    expect(s1.workspace_path).toContain('alpha');
-    expect(s2.workspace_path).toContain('beta');
+    expect(s1.agent_id).toBe('ag-alpha');
+    expect(s2.agent_id).toBe('ag-beta');
+
+    const sessions = getAllSessions();
+    expect(sessions).toHaveLength(2);
   });
 });
 
-// ─── 4. Skills Governance ────────────────────────────────────
+// ─── 2. Skills Governance ────────────────────────────────────
 
 describe('Production Gate: Skills Governance', () => {
   let tmpDir: string;
@@ -351,7 +148,7 @@ describe('Production Gate: Skills Governance', () => {
   });
 });
 
-// ─── 5. Enrollment State Machine ─────────────────────────────
+// ─── 3. Enrollment State Machine ─────────────────────────────
 
 describe('Production Gate: TOFU Enrollment', () => {
   let tmpDir: string;
@@ -418,7 +215,7 @@ describe('Production Gate: TOFU Enrollment', () => {
   });
 });
 
-// ─── 6. Sub-agent Depth Limit ────────────────────────────────
+// ─── 4. Sub-agent Depth Limit ────────────────────────────────
 
 describe('Production Gate: Sub-agent Delegation', () => {
   it('enforces maximum delegation depth', () => {
@@ -431,35 +228,5 @@ describe('Production Gate: Sub-agent Delegation', () => {
     const err = new DelegationDepthExceededError(3);
     expect(err.message).toContain('3');
     expect(err.message).toContain(String(MAX_DELEGATION_DEPTH));
-  });
-});
-
-// ─── 7. Runtime Registration ─────────────────────────────────
-
-describe('Production Gate: Runtime Registration', () => {
-  it('upserts runtime with capabilities and heartbeat', () => {
-    upsertRuntimeRegistration({
-      runtime_id: 'rt-gate-reg',
-      version: '2.0.0',
-      hostname: 'gate-host',
-      os: 'linux',
-      capabilities: ['office', 'filesystem', 'network'],
-      capability_whitelist: ['office', 'filesystem'],
-      health: 'healthy',
-      busy_slots: 0,
-      total_slots: 5,
-      last_heartbeat_at: new Date().toISOString(),
-    });
-
-    upsertRuntimeRegistration({
-      runtime_id: 'rt-gate-reg',
-      busy_slots: 2,
-      last_heartbeat_at: new Date().toISOString(),
-    });
-
-    const rt = getRuntime('rt-gate-reg');
-    expect(rt).toBeDefined();
-    expect(rt!.hostname).toBe('gate-host');
-    expect(rt!.busy_slots).toBe(2);
   });
 });

@@ -10,24 +10,21 @@ vi.mock('../core/config.js', async (importOriginal) => {
     ACP_HUB_URL: '',
     AGENTS_DIR: `${TICLAW_HOME}/agents`,
     DATA_DIR: `${TICLAW_HOME}/data`,
-    DEFAULT_RUNTIME_ID: 'runtime-1',
     HTTP_ENABLED: true,
     HTTP_PORT: 33981,
-    RUNTIME_API_KEY: 'test-key',
-    RUNTIME_CONCURRENCY_LIMIT: 10,
     STORE_DIR: `${TICLAW_HOME}/store`,
     TICLAW_HOME,
   };
 });
 
-import { _initTestDatabase, getSessionByScope } from '../core/db.js';
+import { _initTestDatabase, getSession } from '../core/db.js';
 import type { RegisteredProject } from '../core/types.js';
 import {
   AcpChannel,
   buildAcpChatJid,
   maybeHandleAcpRequest,
   normalizeAcpEnvelope,
-  publishAcpJobEvent,
+  publishAcpTaskEvent,
 } from './acp.js';
 
 class MockRequest extends EventEmitter {
@@ -130,8 +127,8 @@ describe('ACP channel', () => {
       onMessage: vi.fn(),
       onChatMetadata: vi.fn(),
       registeredProjects: () => projects,
-      onGroupRegistered: (jid: string, group: RegisteredProject) => {
-        projects[jid] = group;
+      onGroupRegistered: (jid: string, project: RegisteredProject) => {
+        projects[jid] = project;
       },
     };
 
@@ -158,15 +155,11 @@ describe('ACP channel', () => {
     });
   });
 
-  it('creates ACP sessions and queues jobs through the HTTP server', async () => {
+  it('creates ACP sessions and queues tasks through the HTTP server', async () => {
     const createdResponse = await callAcpRoute({
       method: 'POST',
       path: '/acp/sessions',
-      headers: {
-        authorization: 'Bearer test-key',
-      },
       body: {
-        runtime_id: 'runtime-1',
         agent_id: 'agent-1',
         session_id: 'thread-1',
       },
@@ -179,9 +172,6 @@ describe('ACP channel', () => {
     const messageResponse = await callAcpRoute({
       method: 'POST',
       path: created.session.message_url,
-      headers: {
-        authorization: 'Bearer test-key',
-      },
       body: {
         role: 'user',
         content: [
@@ -196,24 +186,16 @@ describe('ACP channel', () => {
     });
     expect(messageResponse.statusCode).toBe(202);
     const queued = messageResponse.json();
-    expect(queued.job_id).toBeTruthy();
-
-    const sessionRecord = getSessionByScope('runtime-1', 'agent-1', 'thread-1');
-    expect(sessionRecord?.chat_jid).toBe(
-      buildAcpChatJid('runtime-1', 'agent-1', 'thread-1'),
-    );
+    expect(queued.task_id).toBeTruthy();
 
     const sessionResponse = await callAcpRoute({
       method: 'GET',
       path: created.session.message_url,
-      headers: {
-        authorization: 'Bearer test-key',
-      },
     });
 
     expect(sessionResponse.statusCode).toBe(200);
     const sessionPayload = sessionResponse.json();
-    expect(sessionPayload.session.last_job_id).toBe(queued.job_id);
+    expect(sessionPayload.session.last_task_id).toBe(queued.task_id);
     expect(sessionPayload.messages).toHaveLength(1);
     expect(sessionPayload.messages[0].content[0].type).toBe('markdown');
   });
@@ -222,11 +204,7 @@ describe('ACP channel', () => {
     const createdResponse = await callAcpRoute({
       method: 'POST',
       path: '/acp/sessions',
-      headers: {
-        authorization: 'Bearer test-key',
-      },
       body: {
-        runtime_id: 'runtime-1',
         agent_id: 'agent-1',
         session_id: 'thread-sse',
       },
@@ -237,7 +215,6 @@ describe('ACP channel', () => {
       method: 'GET',
       url: created.session.stream_url,
       headers: {
-        authorization: 'Bearer test-key',
         accept: 'text/event-stream',
       },
     });
@@ -253,7 +230,7 @@ describe('ACP channel', () => {
     const initialChunk = res.chunks.join('');
     expect(initialChunk).toContain('"type":"session"');
 
-    await publishAcpJobEvent(created.session.chat_jid, {
+    await publishAcpTaskEvent(created.session.chat_jid, {
       phase: 'tool_call',
       tool_calls: [
         { id: 'tool-1', name: 'Read', arguments: { path: 'README.md' } },

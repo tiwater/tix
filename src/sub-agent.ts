@@ -1,19 +1,18 @@
 /**
  * Sub-agent delegation — allows one agent to delegate a task to another
- * agent on the same runtime via the job executor.
+ * agent via the task executor.
  *
- * Uses the existing job infrastructure:
- *  1. Creates a job targeting a different agent_id
+ * Uses the in-memory task system:
+ *  1. Submits a task targeting a different agent_id
  *  2. Polls for completion
  *  3. Returns the result or throws on failure
  *
  * Delegation depth is capped at MAX_DELEGATION_DEPTH to prevent loops.
  */
 
-import { getJobById } from './core/db.js';
 import { logger } from './core/logger.js';
-import { submitJob } from './job-executor.js';
-import type { JobRecord, SessionContext } from './core/types.js';
+import { submitTask, getActiveTaskById } from './task-executor.js';
+import type { TaskRecord, SessionContext } from './core/types.js';
 
 export const MAX_DELEGATION_DEPTH = 3;
 
@@ -36,7 +35,7 @@ export interface DelegateOpts {
 }
 
 export interface DelegationResult {
-  jobId: string;
+  taskId: string;
   status: 'succeeded' | 'failed' | 'canceled' | 'timeout';
   resultText?: string;
   error?: string;
@@ -53,11 +52,11 @@ export class DelegationDepthExceededError extends Error {
 }
 
 export class DelegationTimeoutError extends Error {
-  jobId: string;
-  constructor(jobId: string, timeoutMs: number) {
-    super(`Sub-agent delegation timed out after ${timeoutMs}ms (job ${jobId})`);
+  taskId: string;
+  constructor(taskId: string, timeoutMs: number) {
+    super(`Sub-agent delegation timed out after ${timeoutMs}ms (task ${taskId})`);
     this.name = 'DelegationTimeoutError';
-    this.jobId = jobId;
+    this.taskId = taskId;
   }
 }
 
@@ -89,29 +88,27 @@ export async function delegateToAgent(
     'sub-agent delegation started',
   );
 
-  // Submit a job targeting the other agent
-  const job = submitJob({
-    runtime_id: opts.parentSession.runtime_id,
+  // Submit a task targeting the other agent
+  const task = submitTask({
     agent_id: opts.targetAgentId,
     session_id: `delegated:${opts.parentSession.session_id}:${Date.now()}`,
-    chat_jid: opts.parentSession.chat_jid,
     prompt: `[DELEGATED from agent="${opts.parentSession.agent_id}" depth=${depth + 1}]\n${opts.prompt}`,
     source: 'api',
-    source_ref: `delegation:${opts.parentSession.job_id}`,
+    source_ref: `delegation:${opts.parentSession.task_id}`,
     submitted_by: opts.parentSession.agent_id,
     submitter_type: 'agent',
-    idempotency_key: `delegate:${opts.parentSession.job_id}:${opts.targetAgentId}:${Date.now()}`,
+    idempotency_key: `delegate:${opts.parentSession.task_id}:${opts.targetAgentId}:${Date.now()}`,
     timeout_ms: timeoutMs,
     metadata: {
       delegation_depth: depth + 1,
-      parent_job_id: opts.parentSession.job_id,
+      parent_task_id: opts.parentSession.task_id,
       parent_agent_id: opts.parentSession.agent_id,
     },
   });
 
   // Poll for completion
-  const result = await pollJobCompletion(
-    job.id,
+  const result = await pollTaskCompletion(
+    task.id,
     timeoutMs,
     startMs,
     opts.signal,
@@ -119,7 +116,7 @@ export async function delegateToAgent(
 
   logger.info(
     {
-      jobId: job.id,
+      taskId: task.id,
       status: result.status,
       durationMs: result.durationMs,
     },
@@ -129,8 +126,8 @@ export async function delegateToAgent(
   return result;
 }
 
-async function pollJobCompletion(
-  jobId: string,
+async function pollTaskCompletion(
+  taskId: string,
   timeoutMs: number,
   startMs: number,
   signal?: AbortSignal,
@@ -138,7 +135,7 @@ async function pollJobCompletion(
   while (true) {
     if (signal?.aborted) {
       return {
-        jobId,
+        taskId,
         status: 'canceled',
         error: 'Parent agent was canceled',
         durationMs: Date.now() - startMs,
@@ -147,25 +144,26 @@ async function pollJobCompletion(
 
     const elapsed = Date.now() - startMs;
     if (elapsed >= timeoutMs) {
-      throw new DelegationTimeoutError(jobId, timeoutMs);
+      throw new DelegationTimeoutError(taskId, timeoutMs);
     }
 
-    const job = getJobById(jobId);
-    if (!job) {
+    const task = getActiveTaskById(taskId);
+    if (!task) {
+      // Task completed and was removed from the queue
       return {
-        jobId,
-        status: 'failed',
-        error: 'Delegated job not found',
+        taskId,
+        status: 'succeeded',
+        resultText: undefined,
         durationMs: Date.now() - startMs,
       };
     }
 
-    if (isTerminal(job.status)) {
+    if (isTerminal(task.status)) {
       return {
-        jobId,
-        status: job.status as DelegationResult['status'],
-        resultText: job.result?.text,
-        error: job.error?.message,
+        taskId,
+        status: task.status as DelegationResult['status'],
+        resultText: task.result?.text,
+        error: task.error?.message,
         durationMs: Date.now() - startMs,
       };
     }

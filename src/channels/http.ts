@@ -2,22 +2,27 @@
  * HTTP SSE channel for TiClaw.
  *
  * Routes:
- *   POST /runtime/register
- *   POST /runtime/heartbeat
- *   POST /jobs
- *   GET  /jobs/:id
- *   POST /jobs/:id/cancel
- *   POST /jobs/:id/retry
- *   GET  /jobs/:id/logs
- *   GET  /jobs/:id/artifacts
- *   POST /runs
- *   GET  /runs/:id/stream
- *   GET  /agents
- *   GET  /api/mind
- *   GET  /health
+ *   POST /runs                — send a message to an agent
+ *   GET  /runs/:id/stream     — SSE stream for a session
+ *   GET  /agents              — agent info
+ *   GET  /api/mind            — mind state
+ *   GET  /api/agents          — list agents
+ *   POST /api/agents          — create agent
+ *   GET  /api/sessions        — list sessions
+ *   POST /api/sessions        — create session
+ *   GET  /api/schedules       — list schedules
+ *   POST /api/schedules       — create schedule
+ *   DEL  /api/schedules/:id   — delete schedule
+ *   POST /api/schedules/:id/toggle — toggle schedule
+ *   GET  /api/skills          — list skills
+ *   POST /api/skills/:name/*  — enable/disable skills
+ *   GET  /api/tasks           — list active tasks
+ *   GET  /api/claw            — claw status
+ *   POST /api/claw/trust      — trust claw
+ *   GET  /api/enroll/*        — enrollment endpoints
+ *   GET  /health              — health check
  */
 
-import { execFileSync } from 'child_process';
 import fs from 'fs';
 import http from 'http';
 import path from 'path';
@@ -26,24 +31,26 @@ import { URL } from 'url';
 
 import {
   ACP_ENABLED,
-  CONTROL_PLANE_RUNTIME_ID,
-  DEFAULT_RUNTIME_ID,
+  CLAW_HOSTNAME,
   HTTP_ENABLED,
   HTTP_PORT,
-  RUNTIME_API_KEY,
-  RUNTIME_CONCURRENCY_LIMIT,
   SKILLS_CONFIG,
+  agentPaths,
 } from '../core/config.js';
 import {
-  appendAuditLog,
+  ensureAgent,
   ensureSession,
-  getJobById,
+  getAllAgents,
+  getAllSchedules,
+  getAllSessions,
+  getAgent,
   getMindState,
-  getRuntime,
-  getSessionByChatJid,
-  getSessionByScope,
-  listRecentJobs,
-  upsertRuntimeRegistration,
+  getSession,
+  getSessionsForAgent,
+  getSchedulesForAgent,
+  createSchedule,
+  updateSchedule,
+  deleteSchedule,
 } from '../core/db.js';
 import { SkillsRegistry } from '../skills/registry.js';
 import {
@@ -53,48 +60,34 @@ import {
   verifyEnrollmentToken,
 } from '../core/enrollment.js';
 import { logger } from '../core/logger.js';
-import { getJobLogPath } from '../run-agent.js';
+import { getTaskLogPath } from '../run-agent.js';
 import {
-  cancelJob,
-  getExecutorRuntimeStats,
-  retryJob,
-  submitJob,
-} from '../job-executor.js';
+  getExecutorStats,
+  listActiveTasks,
+} from '../task-executor.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { maybeHandleAcpRequest } from './acp.js';
 import type {
   Channel,
-  JobRecord,
-  JobStatus,
   NewMessage,
   RegisteredProject,
   SessionContext,
 } from '../core/types.js';
 
 const WEB_JID_PREFIX = 'web:';
-const MAX_ARTIFACTS = 200;
 
 const sseClients = new Map<string, Set<http.ServerResponse>>();
-const activeHttpJobs = new Map<
+const activeHttpTasks = new Map<
   string,
   {
-    runtime_id: string;
     agent_id: string;
     session_id: string;
-    job_id: string;
+    task_id: string;
   }
 >();
 
-function safeAgentFolder(agentId: string): string {
-  return agentId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'agent';
-}
-
-function buildHttpChatJid(
-  runtimeId: string,
-  agentId: string,
-  sessionId: string,
-): string {
-  return `${WEB_JID_PREFIX}${encodeURIComponent(runtimeId)}:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
+function buildHttpSessionId(agentId: string, sessionId: string): string {
+  return `${WEB_JID_PREFIX}${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
 }
 
 function addClient(chatJid: string, res: http.ServerResponse): void {
@@ -124,7 +117,7 @@ function setCorsHeaders(res: http.ServerResponse): void {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Authorization, Content-Type, Idempotency-Key, X-API-Key',
+    'Authorization, Content-Type, X-API-Key',
   );
 }
 
@@ -137,29 +130,6 @@ function writeJson(
   res.end(JSON.stringify(payload));
 }
 
-function buildProtocolError(
-  classification: string,
-  code: string,
-  message: string,
-  details?: Record<string, unknown>,
-): {
-  error: {
-    classification: string;
-    code: string;
-    message: string;
-    details?: Record<string, unknown>;
-  };
-} {
-  return {
-    error: {
-      classification,
-      code,
-      message,
-      ...(details ? { details } : {}),
-    },
-  };
-}
-
 function writeProtocolError(
   res: http.ServerResponse,
   statusCode: number,
@@ -168,11 +138,14 @@ function writeProtocolError(
   message: string,
   details?: Record<string, unknown>,
 ): void {
-  writeJson(
-    res,
-    statusCode,
-    buildProtocolError(classification, code, message, details),
-  );
+  writeJson(res, statusCode, {
+    error: {
+      classification,
+      code,
+      message,
+      ...(details ? { details } : {}),
+    },
+  });
 }
 
 async function readJsonBody(req: http.IncomingMessage): Promise<any> {
@@ -188,128 +161,30 @@ async function readJsonBody(req: http.IncomingMessage): Promise<any> {
   }
 }
 
-function getApiKey(req: http.IncomingMessage): string {
-  const headerKey = req.headers['x-api-key'];
-  if (typeof headerKey === 'string' && headerKey.trim())
-    return headerKey.trim();
-
-  const auth = req.headers.authorization;
-  if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
-    return auth.slice('Bearer '.length).trim();
-  }
-  return '';
-}
-
-function requireApiKey(req: http.IncomingMessage): string {
-  if (!RUNTIME_API_KEY) {
-    throw Object.assign(new Error('Runtime API key is not configured'), {
-      statusCode: 503,
-      classification: 'env_error',
-      code: 'runtime_api_key_missing',
-    });
-  }
-  const provided = getApiKey(req);
-  if (!provided || provided !== RUNTIME_API_KEY) {
-    throw Object.assign(new Error('Invalid runtime API key'), {
-      statusCode: 401,
-      classification: 'permission_error',
-      code: 'invalid_api_key',
-    });
-  }
-  return 'runtime-api-key';
-}
-
-function parseLimit(
-  value: string | null,
-  fallback: number,
-  max: number,
-): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.min(parsed, max);
-}
-
-function serializeJob(job: JobRecord): Record<string, unknown> {
-  return {
-    id: job.id,
-    runtime_id: job.runtime_id,
-    agent_id: job.agent_id,
-    session_id: job.session_id,
-    chat_jid: job.chat_jid,
-    source: job.source,
-    source_ref: job.source_ref || null,
-    status: job.status,
-    prompt: job.prompt,
-    submitted_by: job.submitted_by,
-    submitter_type: job.submitter_type,
-    idempotency_key: job.idempotency_key || null,
-    required_capabilities: job.required_capabilities,
-    timeout_ms: job.timeout_ms,
-    step_timeout_ms: job.step_timeout_ms || null,
-    max_retries: job.max_retries,
-    retry_backoff_ms: job.retry_backoff_ms,
-    attempt_count: job.attempt_count,
-    next_attempt_at: job.next_attempt_at,
-    last_activity_at: job.last_activity_at || null,
-    cancel_requested_at: job.cancel_requested_at || null,
-    canceled_by: job.canceled_by || null,
-    result: job.result || null,
-    error: job.error || null,
-    metadata: job.metadata || null,
-    created_at: job.created_at,
-    updated_at: job.updated_at,
-    started_at: job.started_at || null,
-    finished_at: job.finished_at || null,
-    links: {
-      self: `/jobs/${job.id}`,
-      logs: `/jobs/${job.id}/logs`,
-      artifacts: `/jobs/${job.id}/artifacts`,
-    },
-  };
-}
-
 function protocolErrorFromUnknown(err: unknown): {
   statusCode: number;
   classification: string;
   code: string;
   message: string;
 } {
-  const anyErr = err as any;
-  if (
-    typeof anyErr?.statusCode === 'number' &&
-    typeof anyErr?.classification === 'string' &&
-    typeof anyErr?.code === 'string'
-  ) {
-    return {
-      statusCode: anyErr.statusCode,
-      classification: anyErr.classification,
-      code: anyErr.code,
-      message: anyErr.message || String(err),
-    };
+  if (err && typeof err === 'object') {
+    const e = err as any;
+    if (typeof e.statusCode === 'number' && typeof e.message === 'string') {
+      return {
+        statusCode: e.statusCode,
+        classification: e.classification || 'internal_error',
+        code: e.code || 'internal_error',
+        message: e.message,
+      };
+    }
   }
 
   const message = err instanceof Error ? err.message : String(err);
-  if (message === 'Invalid JSON body') {
-    return {
-      statusCode: 400,
-      classification: 'input_error',
-      code: 'invalid_json',
-      message,
-    };
-  }
   if (message.toLowerCase().includes('not found')) {
     return {
       statusCode: 404,
       classification: 'input_error',
       code: 'not_found',
-      message,
-    };
-  }
-  if (message.toLowerCase().includes('retryable')) {
-    return {
-      statusCode: 409,
-      classification: 'input_error',
-      code: 'job_not_retryable',
       message,
     };
   }
@@ -319,199 +194,6 @@ function protocolErrorFromUnknown(err: unknown): {
     code: 'internal_error',
     message,
   };
-}
-
-function ensureJob(jobId: string): JobRecord {
-  const job = getJobById(jobId);
-  if (!job) {
-    throw Object.assign(new Error(`Job not found: ${jobId}`), {
-      statusCode: 404,
-      classification: 'input_error',
-      code: 'job_not_found',
-    });
-  }
-  return job;
-}
-
-function getJobSession(job: JobRecord): SessionContext {
-  const session = getSessionByScope(
-    job.runtime_id,
-    job.agent_id,
-    job.session_id,
-  );
-  if (!session) {
-    throw Object.assign(new Error(`Session not found for job ${job.id}`), {
-      statusCode: 404,
-      classification: 'env_error',
-      code: 'session_not_found',
-    });
-  }
-  return { ...session, job_id: job.id };
-}
-
-function detectArtifactKind(relPath: string): string {
-  const normalized = relPath.toLowerCase();
-  if (normalized.endsWith('.jsonl') || normalized.endsWith('.log'))
-    return 'log';
-  if (
-    normalized.endsWith('.png') ||
-    normalized.endsWith('.jpg') ||
-    normalized.endsWith('.jpeg') ||
-    normalized.endsWith('.webp')
-  ) {
-    return 'screenshot';
-  }
-  if (
-    normalized.endsWith('.diff') ||
-    normalized.endsWith('.patch') ||
-    normalized.endsWith('.rej')
-  ) {
-    return 'diff';
-  }
-  if (
-    normalized.endsWith('.md') ||
-    normalized.endsWith('.txt') ||
-    normalized.endsWith('.pdf') ||
-    normalized.endsWith('.doc') ||
-    normalized.endsWith('.docx')
-  ) {
-    return 'document';
-  }
-  return 'file';
-}
-
-function walkArtifacts(
-  rootDir: string,
-  relativeDir = '',
-  artifacts: Array<Record<string, unknown>>,
-): void {
-  if (artifacts.length >= MAX_ARTIFACTS) return;
-  const absDir = path.join(rootDir, relativeDir);
-  const entries = fs.readdirSync(absDir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (artifacts.length >= MAX_ARTIFACTS) return;
-    if (entry.name === '.git' || entry.name === 'node_modules') continue;
-
-    const relPath = path.join(relativeDir, entry.name);
-    const absPath = path.join(rootDir, relPath);
-    if (entry.isDirectory()) {
-      walkArtifacts(rootDir, relPath, artifacts);
-      continue;
-    }
-
-    const stat = fs.statSync(absPath);
-    artifacts.push({
-      path: relPath,
-      absolute_path: absPath,
-      size_bytes: stat.size,
-      modified_at: stat.mtime.toISOString(),
-      kind: detectArtifactKind(relPath),
-    });
-  }
-}
-
-function listJobArtifacts(job: JobRecord): Array<Record<string, unknown>> {
-  const session = getJobSession(job);
-  const artifacts: Array<Record<string, unknown>> = [];
-
-  const logPath = getJobLogPath(session);
-  if (fs.existsSync(logPath)) {
-    const stat = fs.statSync(logPath);
-    artifacts.push({
-      path: path.relative(session.workspace_path, logPath),
-      absolute_path: logPath,
-      size_bytes: stat.size,
-      modified_at: stat.mtime.toISOString(),
-      kind: 'log',
-    });
-  }
-
-  if (fs.existsSync(session.workspace_path)) {
-    walkArtifacts(session.workspace_path, '', artifacts);
-
-    if (fs.existsSync(path.join(session.workspace_path, '.git'))) {
-      artifacts.push({
-        path: '__virtual__/git-diff.patch',
-        absolute_path: null,
-        size_bytes: null,
-        modified_at: new Date().toISOString(),
-        kind: 'diff',
-        source: 'git',
-      });
-    }
-  }
-
-  return artifacts.slice(0, MAX_ARTIFACTS);
-}
-
-function readJobLogs(
-  job: JobRecord,
-  offset: number,
-  limit: number,
-): {
-  items: unknown[];
-  has_more: boolean;
-  next_offset: number | null;
-} {
-  const session = getJobSession(job);
-  const logPath = getJobLogPath(session);
-  if (!fs.existsSync(logPath)) {
-    return {
-      items: [],
-      has_more: false,
-      next_offset: null,
-    };
-  }
-
-  const lines = fs
-    .readFileSync(logPath, 'utf-8')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const slice = lines.slice(offset, offset + limit).map((line) => {
-    try {
-      return JSON.parse(line);
-    } catch {
-      return { raw: line };
-    }
-  });
-  const nextOffset = offset + slice.length;
-
-  return {
-    items: slice,
-    has_more: nextOffset < lines.length,
-    next_offset: nextOffset < lines.length ? nextOffset : null,
-  };
-}
-
-function sendVirtualDiff(res: http.ServerResponse, job: JobRecord): void {
-  const session = getJobSession(job);
-  try {
-    const diff = execFileSync(
-      'git',
-      ['-C', session.workspace_path, 'diff', '--patch', '--stat'],
-      {
-        encoding: 'utf-8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      },
-    );
-    writeJson(res, 200, {
-      job_id: job.id,
-      artifact: {
-        path: '__virtual__/git-diff.patch',
-        kind: 'diff',
-        content: diff,
-      },
-    });
-  } catch {
-    writeProtocolError(
-      res,
-      404,
-      'input_error',
-      'artifact_not_found',
-      'Virtual git diff artifact is unavailable',
-    );
-  }
 }
 
 export class HttpChannel implements Channel {
@@ -582,13 +264,13 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── Enrollment endpoints ──
+
       if (pathname === '/api/enroll/status' && req.method === 'GET') {
-        const state = readEnrollmentState(
-          CONTROL_PLANE_RUNTIME_ID || undefined,
-        );
+        const state = readEnrollmentState(CLAW_HOSTNAME || undefined);
         writeJson(res, 200, {
-          runtime_id: state.runtime_id,
-          runtime_fingerprint: state.runtime_fingerprint,
+          claw_id: state.runtime_id,
+          fingerprint: state.runtime_fingerprint,
           trust_state: state.trust_state,
           token_expires_at: state.token_expires_at || null,
           failed_attempts: state.failed_attempts,
@@ -604,7 +286,7 @@ export class HttpChannel implements Channel {
         const ttlMinutes = Number(parsed.ttl_minutes);
         const result = createEnrollmentToken({
           ttlMinutes: Number.isFinite(ttlMinutes) ? ttlMinutes : undefined,
-          runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          runtimeId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 201, result);
         return;
@@ -628,7 +310,7 @@ export class HttpChannel implements Channel {
         const result = verifyEnrollmentToken({
           token,
           runtimeFingerprint,
-          runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          runtimeId: CLAW_HOSTNAME || undefined,
         });
         if (!result.ok) {
           const statusCode =
@@ -656,7 +338,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/revoke' && req.method === 'POST') {
         const state = setTrustState('revoked', {
-          runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          runtimeId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -664,7 +346,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/suspend' && req.method === 'POST') {
         const state = setTrustState('suspended', {
-          runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          runtimeId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -672,288 +354,19 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/reenroll' && req.method === 'POST') {
         const state = setTrustState('discovered_untrusted', {
-          runtimeId: CONTROL_PLANE_RUNTIME_ID || undefined,
+          runtimeId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
       }
 
-      if (pathname === '/runtime/register' && req.method === 'POST') {
-        const actorId = requireApiKey(req);
-        const parsed = await readJsonBody(req);
-        if (!parsed.runtime_id) {
-          writeProtocolError(
-            res,
-            400,
-            'input_error',
-            'runtime_id_required',
-            'runtime_id is required',
-          );
-          return;
-        }
-        const stats = getExecutorRuntimeStats(parsed.runtime_id);
-        const record = upsertRuntimeRegistration({
-          runtime_id: parsed.runtime_id,
-          version: parsed.version,
-          hostname: parsed.hostname,
-          os: parsed.os,
-          capabilities: Array.isArray(parsed.capabilities)
-            ? parsed.capabilities
-            : [],
-          capability_whitelist: Array.isArray(parsed.capability_whitelist)
-            ? parsed.capability_whitelist
-            : undefined,
-          health: parsed.health,
-          busy_slots: parsed.busy_slots ?? stats.busy_slots,
-          total_slots: parsed.total_slots ?? stats.total_slots,
-          last_heartbeat_at: new Date().toISOString(),
-        });
-        appendAuditLog({
-          runtime_id: record.runtime_id,
-          actor_type: 'api_key',
-          actor_id: actorId,
-          action: 'runtime_registered',
-          result: 'ok',
-          machine_hostname: record.hostname || 'unknown',
-          details: {
-            version: record.version,
-            health: record.health,
-            capabilities: record.capabilities,
-          },
-        });
-        writeJson(res, 200, record);
-        return;
-      }
-
-      if (pathname === '/runtime/heartbeat' && req.method === 'POST') {
-        const actorId = requireApiKey(req);
-        const parsed = await readJsonBody(req);
-        if (!parsed.runtime_id) {
-          writeProtocolError(
-            res,
-            400,
-            'input_error',
-            'runtime_id_required',
-            'runtime_id is required',
-          );
-          return;
-        }
-        const stats = getExecutorRuntimeStats(parsed.runtime_id);
-        const record = upsertRuntimeRegistration({
-          runtime_id: parsed.runtime_id,
-          version: parsed.version,
-          hostname: parsed.hostname,
-          os: parsed.os,
-          capabilities: Array.isArray(parsed.capabilities)
-            ? parsed.capabilities
-            : undefined,
-          health: parsed.health,
-          busy_slots: parsed.busy_slots ?? stats.busy_slots,
-          total_slots: parsed.total_slots ?? stats.total_slots,
-          last_heartbeat_at: new Date().toISOString(),
-        });
-        appendAuditLog({
-          runtime_id: record.runtime_id,
-          actor_type: 'api_key',
-          actor_id: actorId,
-          action: 'runtime_heartbeat',
-          result: 'ok',
-          machine_hostname: record.hostname || 'unknown',
-          details: {
-            health: record.health,
-            busy_slots: record.busy_slots,
-            total_slots: record.total_slots,
-          },
-        });
-        writeJson(res, 200, record);
-        return;
-      }
-
-      if (pathname === '/jobs' && req.method === 'POST') {
-        const actorId = requireApiKey(req);
-        const parsed = await readJsonBody(req);
-        const runtimeId =
-          parsed.runtime_id || CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
-        const agentId =
-          typeof parsed.agent_id === 'string' ? parsed.agent_id.trim() : '';
-        const sessionId =
-          typeof parsed.session_id === 'string' ? parsed.session_id.trim() : '';
-        const prompt =
-          typeof parsed.prompt === 'string'
-            ? parsed.prompt
-            : typeof parsed.content === 'string'
-              ? parsed.content
-              : '';
-        if (!agentId || !sessionId || !prompt.trim()) {
-          writeProtocolError(
-            res,
-            400,
-            'input_error',
-            'invalid_job_request',
-            'agent_id, session_id, and prompt are required',
-          );
-          return;
-        }
-
-        const chatJid = buildHttpChatJid(runtimeId, agentId, sessionId);
-        const projects = this.opts.registeredProjects();
-        if (!projects[chatJid] && this.opts.onGroupRegistered) {
-          const group: RegisteredProject = {
-            name: agentId,
-            folder: safeAgentFolder(agentId),
-            runtime_id: runtimeId,
-            agent_id: agentId,
-            trigger: '',
-            added_at: new Date().toISOString(),
-            requiresTrigger: false,
-            isMain: false,
-          };
-          this.opts.onGroupRegistered(chatJid, group);
-        }
-
-        ensureSession({
-          runtime_id: runtimeId,
-          agent_id: agentId,
-          session_id: sessionId,
-          chat_jid: chatJid,
-          channel: 'http',
-          agent_name: agentId,
-          agent_folder: safeAgentFolder(agentId),
-        });
-        this.opts.onChatMetadata(
-          chatJid,
-          new Date().toISOString(),
-          undefined,
-          'http',
-          false,
-        );
-
-        const idempotencyHeader = req.headers['idempotency-key'];
-        const idempotencyKey =
-          typeof parsed.idempotency_key === 'string' && parsed.idempotency_key
-            ? parsed.idempotency_key
-            : typeof idempotencyHeader === 'string'
-              ? idempotencyHeader
-              : undefined;
-
-        const job = submitJob({
-          runtime_id: runtimeId,
-          agent_id: agentId,
-          session_id: sessionId,
-          chat_jid: chatJid,
-          prompt,
-          source: 'api',
-          submitted_by:
-            typeof parsed.submitted_by === 'string' &&
-            parsed.submitted_by.trim()
-              ? parsed.submitted_by.trim()
-              : actorId,
-          submitter_type: 'api_key',
-          idempotency_key: idempotencyKey,
-          required_capabilities: Array.isArray(parsed.required_capabilities)
-            ? parsed.required_capabilities
-            : [],
-          timeout_ms:
-            typeof parsed.timeout_ms === 'number'
-              ? parsed.timeout_ms
-              : undefined,
-          step_timeout_ms:
-            typeof parsed.step_timeout_ms === 'number'
-              ? parsed.step_timeout_ms
-              : undefined,
-          max_retries:
-            typeof parsed.max_retries === 'number'
-              ? parsed.max_retries
-              : undefined,
-          retry_backoff_ms:
-            typeof parsed.retry_backoff_ms === 'number'
-              ? parsed.retry_backoff_ms
-              : undefined,
-          metadata:
-            parsed.metadata && typeof parsed.metadata === 'object'
-              ? parsed.metadata
-              : undefined,
-        });
-
-        activeHttpJobs.set(chatJid, {
-          runtime_id: runtimeId,
-          agent_id: agentId,
-          session_id: sessionId,
-          job_id: job.id,
-        });
-
-        writeJson(res, 202, serializeJob(job));
-        return;
-      }
-
-      const jobMatch = pathname.match(/^\/jobs\/([^/]+)$/);
-      if (jobMatch && req.method === 'GET') {
-        requireApiKey(req);
-        const job = ensureJob(jobMatch[1]);
-        writeJson(res, 200, serializeJob(job));
-        return;
-      }
-
-      const cancelMatch = pathname.match(/^\/jobs\/([^/]+)\/cancel$/);
-      if (cancelMatch && req.method === 'POST') {
-        const actorId = requireApiKey(req);
-        const job = cancelJob(cancelMatch[1], actorId);
-        writeJson(res, 200, serializeJob(job));
-        return;
-      }
-
-      const retryMatch = pathname.match(/^\/jobs\/([^/]+)\/retry$/);
-      if (retryMatch && req.method === 'POST') {
-        const actorId = requireApiKey(req);
-        const job = retryJob(retryMatch[1], actorId);
-        writeJson(res, 202, serializeJob(job));
-        return;
-      }
-
-      const logsMatch = pathname.match(/^\/jobs\/([^/]+)\/logs$/);
-      if (logsMatch && req.method === 'GET') {
-        requireApiKey(req);
-        const job = ensureJob(logsMatch[1]);
-        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-        const limit = parseLimit(url.searchParams.get('limit'), 100, 500);
-        const page = readJobLogs(job, offset, limit);
-        writeJson(res, 200, {
-          job_id: job.id,
-          offset,
-          limit,
-          ...page,
-        });
-        return;
-      }
-
-      const artifactsMatch = pathname.match(/^\/jobs\/([^/]+)\/artifacts$/);
-      if (artifactsMatch && req.method === 'GET') {
-        requireApiKey(req);
-        const job = ensureJob(artifactsMatch[1]);
-        const artifactPath = url.searchParams.get('path');
-        if (artifactPath === '__virtual__/git-diff.patch') {
-          sendVirtualDiff(res, job);
-          return;
-        }
-
-        writeJson(res, 200, {
-          job_id: job.id,
-          items: listJobArtifacts(job),
-        });
-        return;
-      }
+      // ── SSE Stream ──
 
       if (
         pathname.startsWith('/runs/') &&
         pathname.endsWith('/stream') &&
         req.method === 'GET'
       ) {
-        const parts = pathname.split('/');
-        const runId = parts[2];
-        const runtimeId =
-          url.searchParams.get('runtime_id') ||
-          CONTROL_PLANE_RUNTIME_ID ||
-          DEFAULT_RUNTIME_ID;
         const agentId = url.searchParams.get('agent_id');
         const sessionId = url.searchParams.get('session_id');
 
@@ -963,12 +376,12 @@ export class HttpChannel implements Channel {
             400,
             'input_error',
             'missing_scope',
-            'runtime_id, agent_id, and session_id are required',
+            'agent_id and session_id are required',
           );
           return;
         }
 
-        const chatJid = buildHttpChatJid(runtimeId, agentId, sessionId);
+        const chatJid = buildHttpSessionId(agentId, sessionId);
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
@@ -979,10 +392,8 @@ export class HttpChannel implements Channel {
           `data: ${JSON.stringify({
             type: 'connected',
             chat_jid: chatJid,
-            runtime_id: runtimeId,
             agent_id: agentId,
             session_id: sessionId,
-            job_id: runId,
           })}\n\n`,
         );
 
@@ -1002,13 +413,14 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── POST /runs — send a message ──
+
       if (pathname === '/runs' && req.method === 'POST') {
         const parsed = await readJsonBody(req);
         const {
-          runtime_id: rawRuntimeId,
           agent_id: rawAgentId,
           session_id: rawSessionId,
-          job_id: rawJobId,
+          task_id: rawTaskId,
           sender,
           sender_name,
           content,
@@ -1025,8 +437,6 @@ export class HttpChannel implements Channel {
           return;
         }
 
-        const runtimeId =
-          rawRuntimeId || CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
         const agentId =
           typeof rawAgentId === 'string' && rawAgentId.trim()
             ? rawAgentId.trim()
@@ -1035,9 +445,9 @@ export class HttpChannel implements Channel {
           typeof rawSessionId === 'string' && rawSessionId.trim()
             ? rawSessionId.trim()
             : null;
-        const jobId =
-          typeof rawJobId === 'string' && rawJobId.trim()
-            ? rawJobId.trim()
+        const taskId =
+          typeof rawTaskId === 'string' && rawTaskId.trim()
+            ? rawTaskId.trim()
             : randomUUID();
 
         if (!agentId || !sessionId) {
@@ -1046,22 +456,20 @@ export class HttpChannel implements Channel {
             400,
             'input_error',
             'missing_scope',
-            'runtime_id, agent_id, and session_id are required',
+            'agent_id and session_id are required',
           );
           return;
         }
 
-        const chatJid = buildHttpChatJid(runtimeId, agentId, sessionId);
+        const chatJid = buildHttpSessionId(agentId, sessionId);
         const senderId = sender || 'web-user';
         const senderName = sender_name || sender || 'Web User';
         const timestamp = new Date().toISOString();
 
-        const enrollState = readEnrollmentState(
-          CONTROL_PLANE_RUNTIME_ID || undefined,
-        );
+        const enrollState = readEnrollmentState(CLAW_HOSTNAME || undefined);
         if (enrollState.trust_state !== 'trusted') {
           writeJson(res, 403, {
-            error: 'runtime_not_trusted',
+            error: 'claw_not_trusted',
             trust_state: enrollState.trust_state,
           });
           return;
@@ -1069,33 +477,28 @@ export class HttpChannel implements Channel {
 
         const projects = this.opts.registeredProjects();
         if (!projects[chatJid] && this.opts.onGroupRegistered) {
-          const group: RegisteredProject = {
+          const project: RegisteredProject = {
             name: agentId,
-            folder: safeAgentFolder(agentId),
-            runtime_id: runtimeId,
+            folder: agentId,
             agent_id: agentId,
             trigger: '',
             added_at: timestamp,
             requiresTrigger: false,
             isMain: false,
           };
-          this.opts.onGroupRegistered(chatJid, group);
+          this.opts.onGroupRegistered(chatJid, project);
         }
 
         ensureSession({
-          runtime_id: runtimeId,
           agent_id: agentId,
           session_id: sessionId,
-          chat_jid: chatJid,
           channel: 'http',
           agent_name: agentId,
-          agent_folder: safeAgentFolder(agentId),
         });
-        activeHttpJobs.set(chatJid, {
-          runtime_id: runtimeId,
+        activeHttpTasks.set(chatJid, {
           agent_id: agentId,
           session_id: sessionId,
-          job_id: jobId,
+          task_id: taskId,
         });
 
         this.opts.onChatMetadata(chatJid, timestamp, undefined, 'http', false);
@@ -1108,19 +511,17 @@ export class HttpChannel implements Channel {
           content,
           timestamp,
           is_from_me: false,
-          runtime_id: runtimeId,
           agent_id: agentId,
           session_id: sessionId,
-          job_id: jobId,
+          task_id: taskId,
         };
 
         this.opts.onMessage(chatJid, msg);
         writeJson(res, 202, {
           ok: true,
-          runtime_id: runtimeId,
           agent_id: agentId,
           session_id: sessionId,
-          job_id: jobId,
+          task_id: taskId,
           chat_jid: chatJid,
           id: msg.id,
         });
@@ -1128,6 +529,7 @@ export class HttpChannel implements Channel {
       }
 
       // ── Web UI API: Skills ──
+
       if (pathname === '/api/skills' && req.method === 'GET') {
         const registry = new SkillsRegistry(SKILLS_CONFIG);
         const skills = registry.listAvailable();
@@ -1180,34 +582,139 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Web UI API: Jobs ──
-      if (pathname === '/api/jobs' && req.method === 'GET') {
-        const limitParam = url.searchParams.get('limit');
-        const limit = Math.min(
-          Math.max(parseInt(limitParam || '50', 10) || 50, 1),
-          200,
-        );
-        const jobs = listRecentJobs(limit);
-        writeJson(res, 200, { jobs });
+      // ── Web UI API: Agents ──
+
+      if (pathname === '/api/agents' && req.method === 'GET') {
+        const allAgents = getAllAgents();
+        const allSessions = getAllSessions();
+        // Enrich with session counts
+        const agentList = allAgents.map((a) => {
+          const agentSessions = allSessions.filter((s) => s.agent_id === a.agent_id);
+          return {
+            agent_id: a.agent_id,
+            name: a.name,
+            session_count: agentSessions.length,
+            created_at: a.created_at,
+            updated_at: a.updated_at,
+          };
+        });
+        writeJson(res, 200, { agents: agentList });
+        return;
+      }
+
+      if (pathname === '/api/agents' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name) {
+          writeProtocolError(res, 400, 'validation_error', 'name_required', 'Agent name is required');
+          return;
+        }
+        const agentId = name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-');
+        const agent = ensureAgent({ agent_id: agentId, name });
+        writeJson(res, 201, { agent });
+        return;
+      }
+
+      // ── Web UI API: Sessions ──
+
+      if (pathname === '/api/sessions' && req.method === 'GET') {
+        const agentId = url.searchParams.get('agent_id');
+        const sessions = agentId
+          ? getSessionsForAgent(agentId)
+          : getAllSessions();
+        writeJson(res, 200, { sessions });
+        return;
+      }
+
+      if (pathname === '/api/sessions' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        if (!agentId) {
+          writeProtocolError(res, 400, 'validation_error', 'agent_id_required', 'agent_id is required');
+          return;
+        }
+        const sessionId = typeof body.session_id === 'string' && body.session_id.trim()
+          ? body.session_id.trim()
+          : randomUUID();
+        const session = ensureSession({
+          agent_id: agentId,
+          session_id: sessionId,
+          channel: 'web',
+          agent_name: agentId,
+        });
+        writeJson(res, 201, { session });
+        return;
+      }
+
+      // ── Web UI API: Schedules ──
+
+      if (pathname === '/api/schedules' && req.method === 'GET') {
+        const agentId = url.searchParams.get('agent_id');
+        const schedules = agentId
+          ? getSchedulesForAgent(agentId)
+          : getAllSchedules();
+        writeJson(res, 200, { schedules });
+        return;
+      }
+
+      if (pathname === '/api/schedules' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+        const cron = typeof body.cron === 'string' ? body.cron.trim() : '';
+        if (!agentId || !prompt || !cron) {
+          writeProtocolError(res, 400, 'validation_error', 'missing_fields', 'agent_id, prompt, and cron are required');
+          return;
+        }
+        const schedule = createSchedule({
+          agent_id: agentId,
+          prompt,
+          cron,
+        });
+        writeJson(res, 201, { schedule });
+        return;
+      }
+
+      const scheduleToggleMatch = pathname.match(/^\/api\/schedules\/([^/]+)\/toggle$/);
+      if (scheduleToggleMatch && req.method === 'POST') {
+        const id = decodeURIComponent(scheduleToggleMatch[1]);
+        const body = await readJsonBody(req);
+        const newStatus = typeof body.status === 'string' ? body.status : undefined;
+        if (newStatus !== 'active' && newStatus !== 'paused') {
+          writeProtocolError(res, 400, 'validation_error', 'invalid_status', 'status must be active or paused');
+          return;
+        }
+        updateSchedule(id, { status: newStatus });
+        writeJson(res, 200, { ok: true, status: newStatus });
+        return;
+      }
+
+      const scheduleDeleteMatch = pathname.match(/^\/api\/schedules\/([^/]+)$/);
+      if (scheduleDeleteMatch && req.method === 'DELETE') {
+        const id = decodeURIComponent(scheduleDeleteMatch[1]);
+        deleteSchedule(id);
+        writeJson(res, 200, { ok: true });
+        return;
+      }
+
+      // ── Web UI API: Tasks ──
+
+      if (pathname === '/api/tasks' && req.method === 'GET') {
+        const tasks = listActiveTasks();
+        writeJson(res, 200, { tasks });
         return;
       }
 
       // ── Web UI API: Claw ──
+
       if (pathname === '/api/claw' && req.method === 'GET') {
-        const runtimeId = CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
-        const runtime = getRuntime(runtimeId);
-        const enrollment = readEnrollmentState(
-          CONTROL_PLANE_RUNTIME_ID || undefined,
-        );
-        const stats = getExecutorRuntimeStats(runtimeId);
+        const enrollment = readEnrollmentState(CLAW_HOSTNAME || undefined);
+        const stats = getExecutorStats();
         writeJson(res, 200, {
-          runtime_id: runtimeId,
-          default_agent_id: 'default',
-          default_session_id: 'default',
-          runtime: runtime || null,
+          hostname: CLAW_HOSTNAME,
           enrollment: {
             trust_state: enrollment.trust_state,
-            runtime_fingerprint: enrollment.runtime_fingerprint,
+            fingerprint: enrollment.runtime_fingerprint,
             trusted_at: enrollment.trusted_at,
             failed_attempts: enrollment.failed_attempts,
           },
@@ -1217,13 +724,14 @@ export class HttpChannel implements Channel {
       }
 
       // ── Web UI API: Trust Claw ──
+
       if (pathname === '/api/claw/trust' && req.method === 'POST') {
-        const runtimeId = CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
-        const result = setTrustState('trusted', { runtimeId });
+        const result = setTrustState('trusted', {
+          runtimeId: CLAW_HOSTNAME || undefined,
+        });
         writeJson(res, 200, {
           ok: true,
           trust_state: result.trust_state,
-          runtime_id: runtimeId,
         });
         return;
       }
@@ -1252,24 +760,22 @@ export class HttpChannel implements Channel {
     options?: { embeds?: any[] },
   ): Promise<void> {
     if (!text.trim()) return;
-    const session = getSessionByChatJid(jid);
-    const activeJob = activeHttpJobs.get(jid);
+    const session = getSession(jid);
+    const activeTask = activeHttpTasks.get(jid);
     broadcastToChat(jid, {
       type: 'message',
       chat_jid: jid,
-      runtime_id: activeJob?.runtime_id || session?.runtime_id,
-      agent_id: activeJob?.agent_id || session?.agent_id,
-      session_id: activeJob?.session_id || session?.session_id,
-      job_id: activeJob?.job_id,
+      agent_id: activeTask?.agent_id || session?.agent_id,
+      session_id: activeTask?.session_id || session?.session_id,
+      task_id: activeTask?.task_id,
       text,
       embeds: options?.embeds,
     });
     logger.info(
       {
-        runtime_id: activeJob?.runtime_id || session?.runtime_id,
-        agent_id: activeJob?.agent_id || session?.agent_id,
-        session_id: activeJob?.session_id || session?.session_id,
-        job_id: activeJob?.job_id,
+        agent_id: activeTask?.agent_id || session?.agent_id,
+        session_id: activeTask?.session_id || session?.session_id,
+        task_id: activeTask?.task_id,
         chat_jid: jid,
         length: text.length,
       },
@@ -1309,7 +815,7 @@ export class HttpChannel implements Channel {
       }
     }
     sseClients.clear();
-    activeHttpJobs.clear();
+    activeHttpTasks.clear();
     logger.info('HTTP SSE channel disconnected');
   }
 }
