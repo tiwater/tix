@@ -110,7 +110,12 @@ export async function delegateToAgent(
   });
 
   // Poll for completion
-  const result = await pollJobCompletion(job.id, timeoutMs, startMs, opts.signal);
+  const result = await pollJobCompletion(
+    job.id,
+    timeoutMs,
+    startMs,
+    opts.signal,
+  );
 
   logger.info(
     {
