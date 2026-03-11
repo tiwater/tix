@@ -137,7 +137,9 @@ export async function bootstrap(): Promise<void> {
       });
       console.log('  ✅ Discord channel installed');
     } catch {
-      console.error('  ⚠️  Discord skill apply failed — you can retry with: tc skills add discord');
+      console.error(
+        '  ⚠️  Discord skill apply failed — verify your skills directories and run: tc skills list',
+      );
     }
   }
 

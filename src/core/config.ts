@@ -11,16 +11,14 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'TC_CODING_CLI',
-  'TICLAW_RUNTIME_ID',
-  'TICLAW_RUNTIME_CONCURRENCY',
-  'TICLAW_AGENT_CONCURRENCY',
-  'TICLAW_SESSION_CONCURRENCY',
+  'SKILLS_DIRS',
+  'SKILLS_ADMIN_ONLY',
+  'SKILLS_ALLOW_LEVEL3',
+  'SKILLS_AUTO_ENABLE',
   'MIND_ADMIN_USERS',
   'MIND_LOCK_MODE',
   'HTTP_PORT',
   'HTTP_ENABLED',
-  'ACP_ENABLED',
-  'ACP_HUB_URL',
   'ANTHROPIC_API_KEY',
   'OPENROUTER_API_KEY',
   'MINIMAX_API_KEY',
@@ -28,12 +26,6 @@ const envConfig = readEnvFile([
   'CONTROL_PLANE_URL',
   'CONTROL_PLANE_ENROLLMENT_MODE',
   'CONTROL_PLANE_RUNTIME_ID',
-  'RUNTIME_API_KEY',
-  'RUNTIME_CAPABILITY_WHITELIST',
-  'JOB_DEFAULT_TIMEOUT_MS',
-  'JOB_DEFAULT_STEP_TIMEOUT_MS',
-  'JOB_DEFAULT_RETRY_COUNT',
-  'JOB_DEFAULT_RETRY_BACKOFF_MS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -73,6 +65,35 @@ if (!fs.existsSync(TICLAW_HOME)) {
   fs.mkdirSync(TICLAW_HOME, { recursive: true });
 }
 
+function parseBoolean(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  if (value == null || value === '') return fallback;
+  return value === 'true' || value === '1' || value === 'yes';
+}
+
+function expandHomePath(inputPath: string): string {
+  if (inputPath === '~') return HOME_DIR;
+  if (inputPath.startsWith('~/')) {
+    return path.join(HOME_DIR, inputPath.slice(2));
+  }
+  return path.resolve(inputPath);
+}
+
+function parsePathList(
+  value: string | undefined,
+  fallback: string[],
+): string[] {
+  const rawItems = value
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : fallback;
+  return Array.from(new Set(rawItems.map((item) => expandHomePath(item))));
+}
+
 export const MOUNT_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
@@ -90,6 +111,9 @@ export const AGENTS_DIR = (() => {
   return agents;
 })();
 export const DATA_DIR = path.join(TICLAW_HOME, 'data');
+export const SKILLS_HOME = path.join(TICLAW_HOME, 'skills');
+export const SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
+export const SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
 
 /** @deprecated Use AGENTS_DIR. Kept for migration. */
 export const GROUPS_DIR = AGENTS_DIR;
@@ -109,6 +133,41 @@ export const AGENT_MEMORY_FILENAME = 'MEMORY.md';
 export const GROUP_MIND_FILES = AGENT_MIND_FILES;
 /** @deprecated Use AGENT_MEMORY_FILENAME. */
 export const GROUP_MEMORY_FILENAME = AGENT_MEMORY_FILENAME;
+
+export interface SkillsRuntimeConfig {
+  directories: string[];
+  adminOnly: boolean;
+  allowLevel3: boolean;
+  autoEnableOnInstall: boolean;
+  statePath: string;
+  auditLogPath: string;
+}
+
+const defaultSkillDirectories = [
+  path.join(TICLAW_HOME, 'skills'),
+  path.join(process.cwd(), 'skills'),
+];
+
+export const SKILLS_CONFIG: SkillsRuntimeConfig = {
+  directories: parsePathList(
+    process.env.SKILLS_DIRS || envConfig.SKILLS_DIRS,
+    defaultSkillDirectories,
+  ),
+  adminOnly: parseBoolean(
+    process.env.SKILLS_ADMIN_ONLY || envConfig.SKILLS_ADMIN_ONLY,
+    true,
+  ),
+  allowLevel3: parseBoolean(
+    process.env.SKILLS_ALLOW_LEVEL3 || envConfig.SKILLS_ALLOW_LEVEL3,
+    false,
+  ),
+  autoEnableOnInstall: parseBoolean(
+    process.env.SKILLS_AUTO_ENABLE || envConfig.SKILLS_AUTO_ENABLE,
+    false,
+  ),
+  statePath: SKILLS_STATE_PATH,
+  auditLogPath: SKILLS_AUDIT_LOG_PATH,
+};
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'ticlaw-agent:latest';
@@ -149,12 +208,6 @@ export const HTTP_PORT = parseInt(
 export const HTTP_ENABLED =
   (process.env.HTTP_ENABLED ?? envConfig.HTTP_ENABLED ?? 'true') !== 'false';
 
-export const ACP_ENABLED =
-  (process.env.ACP_ENABLED ?? envConfig.ACP_ENABLED ?? 'false') === 'true';
-
-export const ACP_HUB_URL =
-  process.env.ACP_HUB_URL || envConfig.ACP_HUB_URL || '';
-
 // LLM API keys — prefer MiniMax if configured, fall back to Anthropic
 export const ANTHROPIC_API_KEY =
   process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
@@ -181,73 +234,3 @@ export const CONTROL_PLANE_RUNTIME_ID =
   process.env.CONTROL_PLANE_RUNTIME_ID ||
   envConfig.CONTROL_PLANE_RUNTIME_ID ||
   '';
-
-export const RUNTIME_API_KEY =
-  process.env.RUNTIME_API_KEY || envConfig.RUNTIME_API_KEY || '';
-
-export const RUNTIME_CAPABILITY_WHITELIST = (
-  process.env.RUNTIME_CAPABILITY_WHITELIST ||
-  envConfig.RUNTIME_CAPABILITY_WHITELIST ||
-  ''
-)
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean);
-
-export const DEFAULT_RUNTIME_ID =
-  process.env.TICLAW_RUNTIME_ID ||
-  envConfig.TICLAW_RUNTIME_ID ||
-  CONTROL_PLANE_RUNTIME_ID ||
-  'ticlaw-runtime';
-
-function parseConcurrencyLimit(
-  value: string | undefined,
-  fallback: number,
-): number {
-  const parsed = parseInt(value || '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-export const RUNTIME_CONCURRENCY_LIMIT = parseConcurrencyLimit(
-  process.env.TICLAW_RUNTIME_CONCURRENCY ||
-    envConfig.TICLAW_RUNTIME_CONCURRENCY,
-  10,
-);
-
-export const AGENT_CONCURRENCY_LIMIT = parseConcurrencyLimit(
-  process.env.TICLAW_AGENT_CONCURRENCY || envConfig.TICLAW_AGENT_CONCURRENCY,
-  5,
-);
-
-export const SESSION_CONCURRENCY_LIMIT = parseConcurrencyLimit(
-  process.env.TICLAW_SESSION_CONCURRENCY ||
-    envConfig.TICLAW_SESSION_CONCURRENCY,
-  2,
-);
-
-export const JOB_DEFAULT_TIMEOUT_MS = parseConcurrencyLimit(
-  process.env.JOB_DEFAULT_TIMEOUT_MS || envConfig.JOB_DEFAULT_TIMEOUT_MS,
-  30 * 60 * 1000,
-);
-
-export const JOB_DEFAULT_STEP_TIMEOUT_MS = parseConcurrencyLimit(
-  process.env.JOB_DEFAULT_STEP_TIMEOUT_MS ||
-    envConfig.JOB_DEFAULT_STEP_TIMEOUT_MS,
-  5 * 60 * 1000,
-);
-
-export const JOB_DEFAULT_RETRY_COUNT = Math.max(
-  0,
-  parseInt(
-    process.env.JOB_DEFAULT_RETRY_COUNT ||
-      envConfig.JOB_DEFAULT_RETRY_COUNT ||
-      '1',
-    10,
-  ) || 0,
-);
-
-export const JOB_DEFAULT_RETRY_BACKOFF_MS = parseConcurrencyLimit(
-  process.env.JOB_DEFAULT_RETRY_BACKOFF_MS ||
-    envConfig.JOB_DEFAULT_RETRY_BACKOFF_MS,
-  5_000,
-);
