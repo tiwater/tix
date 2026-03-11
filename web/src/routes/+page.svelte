@@ -59,6 +59,8 @@
 
   interface RuntimeInfo {
     runtime_id: string;
+    default_agent_id: string;
+    default_session_id: string;
     runtime: any;
     enrollment: {
       trust_state: string;
@@ -71,7 +73,8 @@
 
   // --- State ---
   let activeTab = $state<Tab>('chat');
-  let chatJid = $state('web:default');
+  let agentId = $state('web-agent');
+  let sessionId = $state('web-session');
   let inputText = $state('');
   let messages = $state<Message[]>([]);
   let mindState = $state<MindState | null>(null);
@@ -97,7 +100,7 @@
     { id: 'chat', icon: '💬', label: 'Chat' },
     { id: 'skills', icon: '🧩', label: 'Skills' },
     { id: 'jobs', icon: '📋', label: 'Jobs' },
-    { id: 'runtime', icon: '⚙️', label: 'Claw' },
+    { id: 'runtime', icon: '🦀', label: 'Claw' },
   ];
 
   // --- Tab switching ---
@@ -111,7 +114,7 @@
   // --- SSE ---
   function connectSSE() {
     if (eventSource) { eventSource.close(); eventSource = null; }
-    const url = `${API_BASE}/runs/${encodeURIComponent(chatJid)}/stream`;
+    const url = `${API_BASE}/runs/web-run/stream?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}`;
     eventSource = new EventSource(url);
 
     eventSource.onopen = () => {
@@ -182,7 +185,12 @@
       const res = await fetch(`${API_BASE}/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_jid: chatJid, sender: 'web-user', content }),
+        body: JSON.stringify({
+          agent_id: agentId,
+          session_id: sessionId,
+          sender: 'web-user',
+          content,
+        }),
       });
       if (!res.ok) {
         messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ POST failed: ${res.status}`, time: '' }];
@@ -208,6 +216,7 @@
 
   async function fetchMessages() {
     try {
+      const chatJid = `web:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
       const res = await fetch(`${API_BASE}/api/messages?chat_jid=${encodeURIComponent(chatJid)}`);
       if (res.ok) { messages = await res.json(); scrollToBottom(); }
     } catch { /* ignore */ }
@@ -215,6 +224,7 @@
 
   async function fetchWorkspaceFiles() {
     try {
+      const chatJid = `web:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
       const res = await fetch(`${API_BASE}/api/workspace?chat_jid=${encodeURIComponent(chatJid)}`);
       if (res.ok) {
         const data = await res.json();
@@ -253,10 +263,28 @@
   async function fetchRuntime() {
     runtimeLoading = true;
     try {
-      const res = await fetch(`${API_BASE}/api/runtime`);
-      if (res.ok) { runtimeInfo = await res.json(); }
+      const res = await fetch(`${API_BASE}/api/claw`);
+      if (res.ok) {
+        runtimeInfo = await res.json();
+        // Auto-discover default agent/session from runtime
+        if (runtimeInfo?.default_agent_id && agentId === 'default') {
+          agentId = runtimeInfo.default_agent_id;
+        }
+        if (runtimeInfo?.default_session_id && sessionId === 'default') {
+          sessionId = runtimeInfo.default_session_id;
+        }
+      }
     } catch { /* ignore */ }
     runtimeLoading = false;
+  }
+
+  async function trustRuntime() {
+    try {
+      const res = await fetch(`${API_BASE}/api/claw/trust`, { method: 'POST' });
+      if (res.ok) {
+        await fetchRuntime();
+      }
+    } catch { /* ignore */ }
   }
 
   async function toggleSkill(name: string, enabled: boolean) {
@@ -268,7 +296,7 @@
   }
 
   function reconnect() {
-    messages = [...messages, { id: `sys-${Date.now()}`, role: 'system', text: `Reconnecting to ${chatJid}…`, time: '' }];
+    messages = [...messages, { id: `sys-${Date.now()}`, role: 'system', text: `Reconnecting…`, time: '' }];
     fetchMessages();
     connectSSE();
   }
@@ -288,6 +316,7 @@
 
   // --- Lifecycle ---
   onMount(async () => {
+    await fetchRuntime();
     fetchMind();
     fetchWorkspaceFiles();
     await fetchMessages();
@@ -488,7 +517,7 @@
     {:else if activeTab === 'runtime'}
       <!-- Runtime View -->
       <div class="tab-header">
-        <span class="tab-header-icon">⚙️</span>
+        <span class="tab-header-icon">🦀</span>
         <h2>Claw</h2>
         <div style="margin-left:auto">
           <button class="btn-sm" onclick={fetchRuntime}>↻ Refresh</button>
@@ -531,6 +560,11 @@
                 {runtimeInfo.enrollment.trust_state}
               </span>
             </div>
+            {#if runtimeInfo.enrollment.trust_state !== 'trusted'}
+              <div style="margin-top:8px">
+                <button class="btn-sm" style="color:var(--green);border-color:var(--green)" onclick={trustRuntime}>🔓 Trust Runtime</button>
+              </div>
+            {/if}
             <div class="runtime-row">
               <span class="runtime-key">Fingerprint</span>
               <span class="runtime-val" style="font-size:11px">{runtimeInfo.enrollment.runtime_fingerprint?.slice(0, 16) || '—'}…</span>
@@ -580,15 +614,23 @@
 
   <!-- Right Sidebar -->
   <aside class="sidebar">
-    <!-- Chat ID -->
+    <!-- Session Config -->
     <div class="sidebar-section">
-      <h3>Chat ID</h3>
-      <input
-        class="chat-id-input"
-        bind:value={chatJid}
-        placeholder="web:default"
-        onchange={reconnect}
-      />
+      <h3>Session</h3>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <input
+          class="chat-id-input"
+          bind:value={agentId}
+          placeholder="web-agent"
+          onchange={reconnect}
+        />
+        <input
+          class="chat-id-input"
+          bind:value={sessionId}
+          placeholder="web-session"
+          onchange={reconnect}
+        />
+      </div>
     </div>
 
     <!-- Mind State -->

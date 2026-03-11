@@ -1192,8 +1192,8 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Web UI API: Runtime ──
-      if (pathname === '/api/runtime' && req.method === 'GET') {
+      // ── Web UI API: Claw ──
+      if (pathname === '/api/claw' && req.method === 'GET') {
         const runtimeId = CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
         const runtime = getRuntime(runtimeId);
         const enrollment = readEnrollmentState(
@@ -1202,6 +1202,8 @@ export class HttpChannel implements Channel {
         const stats = getExecutorRuntimeStats(runtimeId);
         writeJson(res, 200, {
           runtime_id: runtimeId,
+          default_agent_id: 'default',
+          default_session_id: 'default',
           runtime: runtime || null,
           enrollment: {
             trust_state: enrollment.trust_state,
@@ -1210,6 +1212,18 @@ export class HttpChannel implements Channel {
             failed_attempts: enrollment.failed_attempts,
           },
           executor: stats,
+        });
+        return;
+      }
+
+      // ── Web UI API: Trust Claw ──
+      if (pathname === '/api/claw/trust' && req.method === 'POST') {
+        const runtimeId = CONTROL_PLANE_RUNTIME_ID || DEFAULT_RUNTIME_ID;
+        const result = setTrustState('trusted', { runtimeId });
+        writeJson(res, 200, {
+          ok: true,
+          trust_state: result.trust_state,
+          runtime_id: runtimeId,
         });
         return;
       }

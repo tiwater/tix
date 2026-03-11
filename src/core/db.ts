@@ -1105,7 +1105,7 @@ export function ensureSession(input: {
 
   db.prepare(
     `
-    INSERT INTO sessions (
+    INSERT OR REPLACE INTO sessions (
       runtime_id,
       agent_id,
       session_id,
@@ -1119,14 +1119,6 @@ export function ensureSession(input: {
       updated_at
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(runtime_id, agent_id, session_id) DO UPDATE SET
-      chat_jid = excluded.chat_jid,
-      channel = excluded.channel,
-      workspace_path = excluded.workspace_path,
-      memory_path = excluded.memory_path,
-      logs_path = excluded.logs_path,
-      status = excluded.status,
-      updated_at = excluded.updated_at
   `,
   ).run(
     runtimeId,
