@@ -6,11 +6,12 @@ services:
   - type: web
     name: ticlaw-backend
     runtime: node
+    plan: free
     buildCommand: "pnpm install && pnpm run build"
     startCommand: "node dist/index.js"
     envVars:
       - key: NODE_VERSION
-        value: "20.10.0"
+        value: "22"
       - key: TICLAW_HOME
         value: "/opt/render/project/src"
       - key: HTTP_PORT
@@ -26,20 +27,18 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
 
-  # 2. Frontend (Optional Static Site)
-  # If you want to deploy the SvelteKit UI separately as a static site.
-  # Note: Requires SvelteKit adapter-static if choosing type: static.
+  # 2. Frontend (SvelteKit with adapter-node)
   - type: web
     name: ticlaw-frontend
     runtime: node
+    plan: free
     rootDir: web
     buildCommand: "pnpm install && pnpm run build"
-    startCommand: "pnpm run preview" # Adjust based on adapter (e.g. node build/index.js)
+    startCommand: "node build/index.js"
     envVars:
       - key: NODE_VERSION
-        value: "20.10.0"
+        value: "22"
+      - key: PORT
+        value: "10000"
       - key: PUBLIC_BACKEND_URL
-        fromService:
-          name: ticlaw-backend
-          type: web
-          property: host
+        sync: false # Set in Render Dashboard: https://ticlaw-backend.onrender.com
