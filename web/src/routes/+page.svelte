@@ -407,9 +407,15 @@
   async function toggleSkill(name: string, enabled: boolean) {
     const action = enabled ? 'disable' : 'enable';
     try {
-      await fetch(`${API_BASE}/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+        addLog(`⚠️ Skill ${action} failed: ${err.detail || err.message || 'Unknown error'}`);
+      }
       await fetchSkills();
-    } catch { /* ignore */ }
+    } catch (e: any) {
+      addLog(`⚠️ Skill ${action} failed: ${e.message}`);
+    }
   }
 
   // --- Agent/Session/Schedule creation ---
