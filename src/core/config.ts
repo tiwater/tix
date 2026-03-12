@@ -151,7 +151,6 @@ export interface SkillsRuntimeConfig {
 const defaultSkillDirectories = [
   path.join(TICLAW_HOME, 'skills'),
   path.join(process.cwd(), 'skills'),
-  path.join(process.cwd(), 'skills', 'builtins'),
 ];
 
 export const SKILLS_CONFIG: SkillsRuntimeConfig = {
