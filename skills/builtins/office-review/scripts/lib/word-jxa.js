@@ -452,3 +452,234 @@ function addRevision(filePath, paraIndex, oldText, newText) {
   }, null, 2);
 }
 
+// ===========================================================================
+// Document Creation Functions
+// ===========================================================================
+
+/**
+ * Create a new blank Word document.
+ * @param {string} [title] - optional document title
+ * @param {string} [savePath] - optional path to save immediately
+ */
+function createDocument(title, savePath) {
+  const word = getWordApp();
+  word.activate();
+  word.doJavaScript('Documents.Add');
+  const doc = word.activeDocument();
+
+  if (title) {
+    try {
+      word.doJavaScript('ActiveDocument.BuiltInDocumentProperties("Title").Value = "' + (title || '').replace(/"/g, '\\"') + '"');
+    } catch {}
+  }
+
+  if (savePath) {
+    try {
+      word.doJavaScript('ActiveDocument.SaveAs2 FileName:="' + savePath.replace(/"/g, '\\"') + '", FileFormat:=16');
+    } catch {}
+  }
+
+  return JSON.stringify({ ok: true, name: doc.name(), title: title || null, savedTo: savePath || null }, null, 2);
+}
+
+/**
+ * Add a heading to the end of the document.
+ * @param {string|null} filePath
+ * @param {string} text - heading text
+ * @param {number} level - heading level 1-9
+ */
+function addHeading(filePath, text, level) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+  const lvl = Math.max(1, Math.min(9, parseInt(level, 10) || 1));
+  const styleId = -(lvl + 1);
+  const escaped = (text || '').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+
+  word.doJavaScript(
+    'Dim rng\n' +
+    'Set rng = ActiveDocument.Content\n' +
+    'rng.Collapse Direction:=0\n' +
+    'rng.InsertAfter "' + escaped + '" & vbCr\n' +
+    'rng.Style = ActiveDocument.Styles(' + styleId + ')'
+  );
+
+  return JSON.stringify({ ok: true, text: text, level: lvl }, null, 2);
+}
+
+/**
+ * Add a styled paragraph to the end of the document.
+ * @param {string|null} filePath
+ * @param {string} text
+ * @param {string} [style] - style name (default: "Normal")
+ * @param {string} [bold] - "true" for bold
+ * @param {string} [italic] - "true" for italic
+ */
+function addParagraph(filePath, text, style, bold, italic) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+  const escaped = (text || '').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  const styleName = (style || 'Normal').replace(/"/g, '\\"');
+  const isBold = bold === true || bold === 'true';
+  const isItalic = italic === true || italic === 'true';
+
+  let vba = 'Dim rng\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\nrng.InsertAfter "' + escaped + '" & vbCr\nrng.Style = "' + styleName + '"';
+  if (isBold) vba += '\nrng.Bold = True';
+  if (isItalic) vba += '\nrng.Italic = True';
+
+  word.doJavaScript(vba);
+  return JSON.stringify({ ok: true, style: styleName, bold: isBold, italic: isItalic }, null, 2);
+}
+
+/**
+ * Add a table to the end of the document.
+ * @param {string|null} filePath
+ * @param {string} dataJson - JSON: { headers: string[], rows: string[][] }
+ */
+function addTable(filePath, dataJson) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+
+  var data;
+  try { data = JSON.parse(dataJson); } catch {
+    return JSON.stringify({ error: 'Invalid JSON for table data.' });
+  }
+
+  var headers = data.headers || [];
+  var rows = data.rows || [];
+  var numCols = Math.max(headers.length, (rows[0] || []).length, 1);
+  var numRows = rows.length + (headers.length > 0 ? 1 : 0);
+
+  var vba = 'Dim rng\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\nrng.InsertParagraphAfter\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\n';
+  vba += 'Dim tbl\nSet tbl = ActiveDocument.Tables.Add(Range:=rng, NumRows:=' + numRows + ', NumColumns:=' + numCols + ')\ntbl.Borders.Enable = True\n';
+
+  if (headers.length > 0) {
+    for (var c = 0; c < headers.length; c++) {
+      var val = (headers[c] || '').replace(/"/g, '\\"');
+      vba += 'tbl.Cell(1, ' + (c + 1) + ').Range.Text = "' + val + '"\n';
+      vba += 'tbl.Cell(1, ' + (c + 1) + ').Range.Bold = True\n';
+    }
+  }
+
+  var dataStart = headers.length > 0 ? 2 : 1;
+  for (var r = 0; r < rows.length; r++) {
+    for (var c2 = 0; c2 < (rows[r] || []).length && c2 < numCols; c2++) {
+      var cellVal = (rows[r][c2] || '').replace(/"/g, '\\"');
+      vba += 'tbl.Cell(' + (r + dataStart) + ', ' + (c2 + 1) + ').Range.Text = "' + cellVal + '"\n';
+    }
+  }
+
+  try { word.doJavaScript(vba); } catch (e) {
+    return JSON.stringify({ error: 'Table creation failed: ' + String(e) });
+  }
+
+  return JSON.stringify({ ok: true, rows: numRows, columns: numCols, hasHeaders: headers.length > 0 }, null, 2);
+}
+
+/**
+ * Insert an image at the end of the document.
+ * @param {string|null} filePath
+ * @param {string} imagePath - absolute path to the image file
+ * @param {number} [width] - optional width in points
+ * @param {number} [height] - optional height in points
+ */
+function insertImage(filePath, imagePath, width, height) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+  const imgPath = (imagePath || '').replace(/"/g, '\\"');
+
+  var vba = 'Dim rng\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\nrng.InsertParagraphAfter\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\n';
+  vba += 'Dim pic\nSet pic = ActiveDocument.InlineShapes.AddPicture(FileName:="' + imgPath + '", LinkToFile:=False, SaveWithDocument:=True, Range:=rng)\n';
+  if (width) vba += 'pic.Width = ' + parseInt(width, 10) + '\n';
+  if (height) vba += 'pic.Height = ' + parseInt(height, 10) + '\n';
+
+  try { word.doJavaScript(vba); } catch (e) {
+    return JSON.stringify({ error: 'Image insert failed: ' + String(e) });
+  }
+  return JSON.stringify({ ok: true, imagePath: imagePath, width: width || 'auto', height: height || 'auto' }, null, 2);
+}
+
+/**
+ * Add a page or section break.
+ * @param {string|null} filePath
+ * @param {string} [type] - "page" (default) or "section"
+ */
+function addPageBreak(filePath, type) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+  var breakType = (type === 'section') ? 2 : 7;
+  word.doJavaScript('Dim rng\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\nrng.InsertBreak Type:=' + breakType);
+  return JSON.stringify({ ok: true, type: type || 'page' }, null, 2);
+}
+
+/**
+ * Add a table of contents.
+ * @param {string|null} filePath
+ * @param {number} [levels] - heading levels to include (default: 3)
+ */
+function addTableOfContents(filePath, levels) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+  var numLevels = Math.max(1, Math.min(9, parseInt(levels, 10) || 3));
+  word.doJavaScript('Dim rng\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\nrng.InsertParagraphAfter\nSet rng = ActiveDocument.Content\nrng.Collapse Direction:=0\nActiveDocument.TablesOfContents.Add Range:=rng, UseHeadingStyles:=True, UpperHeadingLevel:=1, LowerHeadingLevel:=' + numLevels);
+  return JSON.stringify({ ok: true, levels: numLevels }, null, 2);
+}
+
+/**
+ * Set header or footer text.
+ * @param {string|null} filePath
+ * @param {string} position - "header" or "footer"
+ * @param {string} text
+ */
+function setHeaderFooter(filePath, position, text) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+  var escaped = (text || '').replace(/"/g, '\\"');
+  if (position === 'footer') {
+    word.doJavaScript('ActiveDocument.Sections(1).Footers(1).Range.Text = "' + escaped + '"');
+  } else {
+    word.doJavaScript('ActiveDocument.Sections(1).Headers(1).Range.Text = "' + escaped + '"');
+  }
+  return JSON.stringify({ ok: true, position: position || 'header', text: text }, null, 2);
+}
+
+/**
+ * Save the document.
+ * @param {string|null} filePath
+ * @param {string} [savePath] - path for Save As
+ * @param {string} [format] - "docx" (default) or "pdf"
+ */
+function saveDocument(filePath, savePath, format) {
+  const word = getWordApp();
+  var doc = getDocument(filePath || null);
+  if (savePath) {
+    var fmt = (format === 'pdf') ? 17 : 16;
+    word.doJavaScript('ActiveDocument.SaveAs2 FileName:="' + savePath.replace(/"/g, '\\"') + '", FileFormat:=' + fmt);
+  } else {
+    word.doJavaScript('ActiveDocument.Save');
+  }
+  return JSON.stringify({ ok: true, savedTo: savePath || doc.name(), format: format || 'docx' }, null, 2);
+}
+
+/**
+ * Set document properties (title, author, subject, etc.).
+ * @param {string|null} filePath
+ * @param {string} propsJson - JSON: { title?, author?, subject?, keywords?, company?, category? }
+ */
+function setDocumentProperties(filePath, propsJson) {
+  const word = getWordApp();
+  getDocument(filePath || null);
+  var props;
+  try { props = JSON.parse(propsJson); } catch {
+    return JSON.stringify({ error: 'Invalid JSON for properties.' });
+  }
+
+  var propMap = { title: 'Title', author: 'Author', subject: 'Subject', keywords: 'Keywords', comments: 'Comments', company: 'Company', category: 'Category' };
+  var setProps = [];
+  for (var key in propMap) {
+    if (props[key] !== undefined) {
+      word.doJavaScript('ActiveDocument.BuiltInDocumentProperties("' + propMap[key] + '").Value = "' + String(props[key]).replace(/"/g, '\\"') + '"');
+      setProps.push(key);
+    }
+  }
+  return JSON.stringify({ ok: true, propertiesSet: setProps }, null, 2);
+}

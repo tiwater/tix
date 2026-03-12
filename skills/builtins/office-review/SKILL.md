@@ -1,11 +1,12 @@
 ---
 name: office-review
-description: Review Word documents for consistency using macOS Office Automation (JXA)
-version: 1.1.0
+description: Full Word document automation — read, review, create, and revise documents via macOS JXA
+version: 2.0.0
 requires: []
 install: []
 permissions:
   - read
+  - write
   - execute
   - level 2
 skill_api_version: "1.0.0"
@@ -14,87 +15,147 @@ entry: scripts/word-read-structure.sh
 
 # office-review
 
-Review Word documents against rules and style guidelines, with full access to document structure, styles, and content via macOS Office Automation.
+Full-featured Word document automation for macOS. Read, review, create, and revise `.docx` documents using JXA (JavaScript for Automation) to control Microsoft Word.
 
-## Description
+## Prerequisites
 
-This skill uses **JXA (JavaScript for Automation)** to interact with Microsoft Word on macOS. It provides tools to read document structure, content by section, styles, search for patterns, and read comments — enabling chunked review of very large documents (500+ pages).
+- macOS with **Microsoft Word** installed and running
 
-### Prerequisites
+---
 
-- macOS with Microsoft Word installed
-- Word must be running (the skill controls Word via Automation)
-
-## Tools
+## Reading Tools
 
 ### `word-read-structure` — Document outline
 ```bash
 ./scripts/word-read-structure.sh [file_path]
 ```
 Returns: headings (with levels), page count, word count, paragraph count.
-Use this first to understand the document layout.
 
 ### `word-read-section` — Read paragraphs
 ```bash
-# By paragraph range:
 ./scripts/word-read-section.sh --start 0 --count 50 [--file path.docx]
-
-# By heading title:
 ./scripts/word-read-section.sh --heading "Introduction" [--file path.docx]
 ```
-Returns: paragraphs with index, style name, and text content.
-Use `--count` up to 200 paragraphs per call. Read the doc in chunks.
+Read by range (max 200 per call) or by heading title.
 
 ### `word-read-styles` — Style/font audit
 ```bash
 ./scripts/word-read-styles.sh [file_path]
 ```
-Returns: all styles used with frequency counts and font samples.
-Useful for detecting formatting inconsistencies.
+Returns: all styles with frequency counts and font samples.
 
 ### `word-search` — Find text
 ```bash
-./scripts/word-search.sh "search query" [file_path]
+./scripts/word-search.sh "query" [file_path]
 ```
 Returns: up to 100 matching paragraphs with context.
-Use this to check terminology consistency.
 
 ### `word-get-comments` — Read comments
 ```bash
 ./scripts/word-get-comments.sh [file_path]
 ```
-Returns: all comments with author, date, text, and scope.
+
+---
+
+## Review / Annotation Tools
 
 ### `word-add-comment` — Add review comments
 ```bash
-# Single comment:
-./scripts/word-add-comment.sh --index 42 --text "Inconsistent terminology" [--file path.docx]
-
-# Batch (multiple comments at once):
-./scripts/word-add-comment.sh --batch '[{"paraIndex":42,"commentText":"Fix this"},{"paraIndex":108,"commentText":"Rephrase"}]'
+./scripts/word-add-comment.sh --index 42 --text "Fix this" [--file path.docx]
+./scripts/word-add-comment.sh --batch '[{"paraIndex":42,"commentText":"Fix"}]'
 ```
-Adds comments to specific paragraphs by index. Use batch mode for efficiency.
+Single or batch mode for marking findings.
 
-### `word-add-revision` — Add tracked changes
+### `word-add-revision` — Tracked changes
 ```bash
-./scripts/word-add-revision.sh --index 42 --old "original text" --new "revised text" [--file path.docx]
+./scripts/word-add-revision.sh --index 42 --old "client" --new "customer" [--file path.docx]
 ```
-Enables Track Changes and performs a find-replace within the specified paragraph.
-The change appears as a tracked revision in Word's review mode.
+Find-replace within a paragraph with Track Changes enabled.
 
-## Review Workflow
+---
 
-For a large document consistency review:
+## Document Creation Tools
 
-1. **Read structure** → get the outline and total paragraph count
-2. **Read styles** → identify formatting patterns and inconsistencies
-3. **Read section by section** → chunk through the document (50-100 paragraphs at a time)
-4. **Search for terms** → verify terminology consistency across the document
-5. **Read comments** → check for unresolved review comments
-6. **Add comments** → mark inconsistencies found (use batch mode for efficiency)
-7. **Add revisions** → suggest text changes as tracked revisions
+### `word-create` — New document
+```bash
+./scripts/word-create.sh [--title "My Report"] [--save /path/to/file.docx]
+```
+
+### `word-add-heading` — Add heading
+```bash
+./scripts/word-add-heading.sh --text "Chapter 1" --level 1 [--file path.docx]
+```
+Levels 1-9 supported.
+
+### `word-add-paragraph` — Add styled text
+```bash
+./scripts/word-add-paragraph.sh --text "Content" [--style Normal] [--bold] [--italic] [--file path.docx]
+```
+
+### `word-add-table` — Add table
+```bash
+./scripts/word-add-table.sh --data '{"headers":["Name","Age"],"rows":[["Alice","30"]]}' [--file path.docx]
+```
+Bold headers, bordered cells.
+
+### `word-insert-image` — Insert image
+```bash
+./scripts/word-insert-image.sh --image /path/to/img.png [--width 400] [--height 300] [--file path.docx]
+```
+
+### `word-page-break` — Page/section break
+```bash
+./scripts/word-page-break.sh [--type page|section] [--file path.docx]
+```
+
+### `word-add-toc` — Table of contents
+```bash
+./scripts/word-add-toc.sh [--levels 3] [--file path.docx]
+```
+
+### `word-header-footer` — Header/footer text
+```bash
+./scripts/word-header-footer.sh --position header --text "Report Title" [--file path.docx]
+```
+
+### `word-save` — Save / Save As / Export PDF
+```bash
+./scripts/word-save.sh [--file path.docx]
+./scripts/word-save.sh --save-as /output.docx
+./scripts/word-save.sh --save-as /output.pdf --format pdf
+```
+
+### `word-set-properties` — Document metadata
+```bash
+./scripts/word-set-properties.sh --props '{"title":"Report","author":"TiClaw","company":"Acme"}' [--file path.docx]
+```
+Supports: title, author, subject, keywords, comments, company, category.
+
+---
+
+## Workflows
+
+### Create a structured report
+1. `word-create` → new document
+2. `word-set-properties` → set title/author
+3. `word-header-footer` → set header and footer
+4. `word-add-heading` → chapter titles
+5. `word-add-paragraph` → content
+6. `word-add-table` → data tables
+7. `word-insert-image` → diagrams
+8. `word-add-toc` → auto table of contents
+9. `word-save` → save as .docx or export PDF
+
+### Review a large document
+1. `word-read-structure` → outline
+2. `word-read-styles` → formatting audit
+3. `word-read-section` → read in chunks
+4. `word-search` → check terminology
+5. `word-add-comment` → mark findings (batch)
+6. `word-add-revision` → suggest changes
+7. `word-save` → save reviewed copy
 
 ## Error Codes
 
-- `OFFICE_INPUT_INVALID` — document path missing or unreadable
-- `OFFICE_EXECUTION_FAILED` — JXA script execution error (is Word running?)
+- `OFFICE_INPUT_INVALID` — document/path missing
+- `OFFICE_EXECUTION_FAILED` — JXA error (is Word running?)
