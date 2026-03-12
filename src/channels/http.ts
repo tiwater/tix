@@ -269,7 +269,9 @@ export class HttpChannel implements Channel {
                 mtimeMs: stat.mtimeMs,
               };
             }
-          } catch { /* skip unreadable files */ }
+          } catch {
+            /* skip unreadable files */
+          }
         }
         writeJson(res, 200, { files });
         return;

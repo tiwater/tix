@@ -29,7 +29,6 @@
     content: string;
     mtimeMs: number;
     updatedRecently?: boolean;
-    expanded?: boolean;
   }
 
   interface SkillInfo {
@@ -125,11 +124,11 @@
   let eventSource: EventSource | null = null;
 
   const tabs: { id: Tab; icon: string; label: string }[] = [
+    { id: 'claw', icon: '🦀', label: 'Claw' },
     { id: 'chat', icon: '💬', label: 'Chat' },
     { id: 'sessions', icon: '📂', label: 'Sessions' },
     { id: 'schedules', icon: '⏰', label: 'Schedules' },
     { id: 'skills', icon: '🧩', label: 'Skills' },
-    { id: 'claw', icon: '🦀', label: 'Claw' },
   ];
 
   // --- Tab switching ---
@@ -534,24 +533,12 @@
 </script>
 
 <div class="app">
-  <!-- Header -->
-  <header class="header">
-    <div class="logo">
-      <div class="logo-icon">🐾</div>
-      TiClaw
-    </div>
-    <div class="header-right">
-      <span class="status-label">{sseConnected ? 'Connected' : 'Offline'}</span>
-      <div
-        class="status-dot"
-        class:offline={!sseConnected}
-        title={sseConnected ? 'SSE connected' : 'SSE offline'}
-      ></div>
-    </div>
-  </header>
-
   <!-- Left Nav -->
   <nav class="nav">
+    <div class="nav-logo">
+      <div class="nav-logo-icon">🐾</div>
+      TiClaw
+    </div>
     {#each tabs as tab}
       <button
         class="nav-btn"
@@ -559,10 +546,17 @@
         onclick={() => switchTab(tab.id)}
         title={tab.label}
       >
-        {tab.icon}
-        <span class="nav-tooltip">{tab.label}</span>
+        <span class="nav-btn-icon">{tab.icon}</span>
+        <span class="nav-btn-label">{tab.label}</span>
       </button>
     {/each}
+    <div style="margin-top:auto;display:flex;align-items:center;gap:8px;padding:12px 16px">
+      <div
+        class="nav-status-dot"
+        class:offline={!sseConnected}
+      ></div>
+      <span style="font-size:11px;color:var(--text-dim)">{sseConnected ? 'Connected' : 'Offline'}</span>
+    </div>
   </nav>
 
   <!-- Main Content -->
@@ -990,24 +984,13 @@
       <div class="workspace-files">
         {#each Object.entries(mindFiles) as [fileName, file]}
           <div class="file-card" class:updated={file.updatedRecently}>
-            <div
-              class="file-header"
-              role="button"
-              tabindex="0"
-              onclick={() => file.expanded = !file.expanded}
-              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') file.expanded = !file.expanded; }}
-            >
+            <div class="file-header">
               <strong>{fileName}</strong>
-              <div>
-                {#if file.updatedRecently}
-                  <span class="update-badge">Updated!</span>
-                {/if}
-                <span style="font-size:10px; margin-left:4px; color:var(--text-dim)">{file.expanded ? '▼' : '▶'}</span>
-              </div>
+              {#if file.updatedRecently}
+                <span class="update-badge">Updated!</span>
+              {/if}
             </div>
-            {#if file.expanded}
-              <div class="file-content">{file.content}</div>
-            {/if}
+            <div class="file-content">{file.content}</div>
           </div>
         {/each}
         {#if Object.keys(mindFiles).length === 0}
