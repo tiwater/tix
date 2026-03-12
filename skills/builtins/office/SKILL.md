@@ -1,5 +1,5 @@
 ---
-name: office-review
+name: office
 description: Full Word document automation — read, review, create, and revise documents via macOS JXA
 version: 2.0.0
 requires: []
@@ -13,7 +13,7 @@ skill_api_version: "1.0.0"
 entry: scripts/word-read-structure.sh
 ---
 
-# office-review
+# office
 
 Full-featured Word document automation for macOS. Read, review, create, and revise `.docx` documents using JXA (JavaScript for Automation) to control Microsoft Word.
 
