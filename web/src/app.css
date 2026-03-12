@@ -37,9 +37,13 @@ html, body {
 .app {
   height: 100vh;
   display: grid;
-  grid-template-columns: 180px 1fr 280px;
+  grid-template-columns: 180px 1fr;
   grid-template-rows: 1fr;
   gap: 0;
+}
+
+.app.chat-layout {
+  grid-template-columns: 180px 1fr 280px;
 }
 
 /* ─── Left Nav ─── */

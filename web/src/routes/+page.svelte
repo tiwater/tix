@@ -532,7 +532,7 @@
   onDestroy(() => { disconnectSSE(); });
 </script>
 
-<div class="app">
+<div class="app" class:chat-layout={activeTab === 'chat'}>
   <!-- Left Nav -->
   <nav class="nav">
     <div class="nav-logo">
@@ -927,7 +927,8 @@
     {/if}
   </div>
 
-  <!-- Right Sidebar -->
+  {#if activeTab === 'chat'}
+  <!-- Right Sidebar (Chat only) -->
   <aside class="sidebar">
     <!-- Session Config -->
     <div class="sidebar-section">
@@ -1013,4 +1014,5 @@
       </div>
     </div>
   </aside>
+  {/if}
 </div>
