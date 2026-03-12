@@ -1,6 +1,6 @@
-# Supabase Sync (Robot / Cloud Backup)
+# Supabase Sync (Cloud Backup)
 
-TiClaw supports **sync mode**: local-first operation with continuous background push to Supabase. Connectivity and latency to Supabase do not affect normal operation—the robot always reads/writes locally and syncs asynchronously.
+TiClaw supports **sync mode**: local-first operation with continuous background push to Supabase. Connectivity and latency to Supabase do not affect normal operation—the agent always reads/writes locally and syncs asynchronously.
 
 ## Configuration
 
@@ -40,7 +40,7 @@ If `SUPABASE_SYNC_ENABLED` is not set or not `true`, sync is disabled and TiClaw
 
 - **Pull:** On startup, if Supabase is configured, TiClaw pulls from Supabase before loading local state. If Supabase is unreachable, it continues from the last local copy.
 - **Push:** Debounced (5s) after mind updates, session changes, or group registration. A periodic push runs every 5 minutes to catch group file changes.
-- **Conflict strategy:** Single-device robot: cloud wins on pull. Multi-device: last-write-wins (eventual consistency).
+- **Conflict strategy:** Single-device: cloud wins on pull. Multi-device: last-write-wins (eventual consistency).
 
 ## Supabase Setup
 

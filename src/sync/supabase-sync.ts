@@ -223,7 +223,7 @@ async function pushAgentFiles(supabase: SupabaseClient): Promise<void> {
   }
 }
 
-/** Pull from Supabase into local SQLite and files. Best-effort: if Supabase is unreachable, robot runs from last local copy. */
+/** Pull from Supabase into local SQLite and files. Best-effort: if Supabase is unreachable, agent continues from last local copy. */
 export async function pullFromSupabase(): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) return;
@@ -319,7 +319,7 @@ export async function pullFromSupabase(): Promise<void> {
   } catch (err) {
     logger.warn(
       { err },
-      'Supabase pull failed (robot continues from local copy)',
+      'Supabase pull failed (agent continues from local copy)',
     );
   }
 }

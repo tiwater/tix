@@ -1,7 +1,7 @@
 {
   "name": "ticlaw",
   "version": "1.2.1",
-  "description": "Robot mind builder. Multi-channel, personality & memory evolution, lightweight, secure.",
+  "description": "Mind builder. Multi-channel, personality & memory evolution, lightweight, secure.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -49,5 +49,12 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "protobufjs"
+    ]
   }
 }

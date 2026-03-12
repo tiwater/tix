@@ -1,6 +1,6 @@
 # TiClaw Specification
 
-A robot mind builder with multi-channel support, personality & memory evolution, and physical workspace isolation. Driven by the `@anthropic-ai/claude-agent-sdk`.
+A mind builder with multi-channel support, personality & memory evolution, and physical workspace isolation. Driven by the `@anthropic-ai/claude-agent-sdk`.
 
 ---
 

@@ -138,7 +138,7 @@ function buildSystemPrompt(
   session: SessionContext,
 ): string {
   const base =
-    `You are ${ASSISTANT_NAME} 🦀, a robot mind assistant built with TiClaw.\n` +
+    `You are ${ASSISTANT_NAME} 🦀, a mind assistant built with TiClaw.\n` +
     `Work only inside the provided session workspace directory.\n` +
     `Be concise and helpful.\n` +
     `You can read, edit, run bash commands, and search the workspace.` +
