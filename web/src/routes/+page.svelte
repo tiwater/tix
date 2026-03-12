@@ -6,7 +6,7 @@
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3280';
 
   // --- Types ---
-  type Tab = 'chat' | 'sessions' | 'schedules' | 'skills' | 'claw';
+  type Tab = 'sessions' | 'schedules' | 'skills' | 'claw';
 
   interface Message {
     id: string;
@@ -84,7 +84,8 @@
   }
 
   // --- State ---
-  let activeTab = $state<Tab>('chat');
+  let activeTab = $state<Tab>('sessions');
+  let chatActive = $state(false);
   let agentId = $state('web-agent');
   let sessionId = $state('web-session');
   let inputText = $state('');
@@ -119,17 +120,21 @@
   let inputEl = $state<HTMLTextAreaElement>(null!);
   let eventSource: EventSource | null = null;
 
-  const tabs: { id: Tab; icon: string; label: string }[] = [
-    { id: 'claw', icon: '🦀', label: 'Claw' },
+  const staticTabs: { id: Tab; icon: string; label: string }[] = [
     { id: 'sessions', icon: '🤖', label: 'Agents' },
-    { id: 'chat', icon: '💬', label: 'Chat' },
     { id: 'schedules', icon: '⏰', label: 'Schedules' },
     { id: 'skills', icon: '🧩', label: 'Skills' },
   ];
 
+  const tabs = $derived([
+    { id: 'claw' as Tab, icon: '🦀', label: clawInfo?.hostname || 'Claw' },
+    ...staticTabs,
+  ]);
+
   // --- Tab switching ---
   function switchTab(tab: Tab) {
     activeTab = tab;
+    chatActive = false;
     if (tab === 'skills') fetchSkills();
     if (tab === 'sessions') fetchAgents();
     if (tab === 'schedules') fetchSchedules();
@@ -465,8 +470,13 @@
   function selectSession(sess: SessionInfo) {
     agentId = sess.agent_id;
     sessionId = sess.session_id;
-    activeTab = 'chat';
+    chatActive = true;
     reconnect();
+  }
+
+  function backToAgents() {
+    chatActive = false;
+    disconnectSSE();
   }
 
   function reconnect() {
@@ -498,17 +508,13 @@
     await fetchClaw();
     fetchMind();
     fetchMindFiles();
-    await fetchMessages();
-    if (messages.length === 0) {
-      messages = [{ id: 'welcome', role: 'system', text: '🧠 TiClaw Web Client — type a message to start', time: '' }];
-    }
-    connectSSE();
+    fetchAgents();
   });
 
   onDestroy(() => { disconnectSSE(); });
 </script>
 
-<div class="app" class:chat-layout={activeTab === 'chat'}>
+<div class="app" class:chat-layout={chatActive}>
   <!-- Left Nav -->
   <nav class="nav">
     <div class="nav-logo">
@@ -544,61 +550,65 @@
       </div>
     {/if}
 
-    {#if activeTab === 'chat'}
-      <!-- Chat View -->
-      <div class="messages" bind:this={messagesEl}>
-        {#each messages as msg (msg.id)}
-          {#if msg.role === 'system'}
-            <div class="msg-system">{msg.text}</div>
-          {:else}
-            <div class="msg" class:from-me={msg.role === 'user'}>
-              <div class="avatar {msg.role === 'user' ? 'user' : 'bot'}">
-                {msg.role === 'user' ? '👤' : '🤖'}
-              </div>
-              <div>
-                <div class="bubble" class:streaming-cursor={msg.streaming}>
-                  {msg.text}
+    {#if activeTab === 'sessions'}
+      {#if chatActive}
+        <!-- Chat View (within Agents tab) -->
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">
+          <button class="btn-sm" onclick={backToAgents}>← Agents</button>
+          <span style="font-size:12px;color:var(--text-muted)">{agentId} / {sessionId}</span>
+        </div>
+        <div class="messages" bind:this={messagesEl}>
+          {#each messages as msg (msg.id)}
+            {#if msg.role === 'system'}
+              <div class="msg-system">{msg.text}</div>
+            {:else}
+              <div class="msg" class:from-me={msg.role === 'user'}>
+                <div class="avatar {msg.role === 'user' ? 'user' : 'bot'}">
+                  {msg.role === 'user' ? '👤' : '🤖'}
                 </div>
-                {#if msg.time}
-                  <div class="bubble-meta">{msg.time}</div>
-                {/if}
+                <div>
+                  <div class="bubble" class:streaming-cursor={msg.streaming}>
+                    {msg.text}
+                  </div>
+                  {#if msg.time}
+                    <div class="bubble-meta">{msg.time}</div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          {/each}
+
+          {#if isThinking}
+            <div class="msg">
+              <div class="avatar bot">🤖</div>
+              <div>
+                <div class="bubble thinking">
+                  Thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+                </div>
               </div>
             </div>
           {/if}
-        {/each}
+        </div>
 
-        {#if isThinking}
-          <div class="msg">
-            <div class="avatar bot">🤖</div>
-            <div>
-              <div class="bubble thinking">
-                Thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span>
-              </div>
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <div class="input-area">
-        <textarea
-          class="msg-input"
-          bind:this={inputEl}
-          bind:value={inputText}
-          onkeydown={handleKeydown}
-          placeholder="Type a message… (Enter to send)"
-          rows="1"
-          disabled={sending}
-        ></textarea>
-        <button class="send-btn" onclick={send} disabled={sending || !inputText.trim()} title="Send">
-          {sending ? '⏳' : '➤'}
-        </button>
-      </div>
-
-    {:else if activeTab === 'sessions'}
-      <!-- Sessions View -->
-      <div class="tab-header">
-        <span class="tab-header-icon">📂</span>
-        <h2>Agents & Sessions</h2>
+        <div class="input-area">
+          <textarea
+            class="msg-input"
+            bind:this={inputEl}
+            bind:value={inputText}
+            onkeydown={handleKeydown}
+            placeholder="Type a message… (Enter to send)"
+            rows="1"
+            disabled={sending}
+          ></textarea>
+          <button class="send-btn" onclick={send} disabled={sending || !inputText.trim()} title="Send">
+            {sending ? '⏳' : '➤'}
+          </button>
+        </div>
+      {:else}
+        <!-- Agents & Sessions Browser -->
+        <div class="tab-header">
+          <span class="tab-header-icon">🤖</span>
+          <h2>Agents & Sessions</h2>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="btn-sm btn-accent" onclick={() => { showNewAgent = true; }}>＋ New Agent</button>
           <button class="btn-sm" onclick={fetchAgents}>↻ Refresh</button>
@@ -686,6 +696,7 @@
             </div>
           </div>
         </div>
+      {/if}
       {/if}
 
     {:else if activeTab === 'schedules'}
@@ -878,7 +889,7 @@
     {/if}
   </div>
 
-  {#if activeTab === 'chat'}
+  {#if chatActive}
   <!-- Right Sidebar (Chat only) -->
   <aside class="sidebar">
     <!-- Session Config -->
