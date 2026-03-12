@@ -112,12 +112,8 @@
   // Modals
   let showNewAgent = $state(false);
   let showNewSession = $state(false);
-  let showNewSchedule = $state(false);
   let newAgentName = $state('');
   let newSessionAgentId = $state('');
-  let newScheduleAgentId = $state('');
-  let newSchedulePrompt = $state('');
-  let newScheduleCron = $state('');
 
   let messagesEl = $state<HTMLElement>(null!);
   let inputEl = $state<HTMLTextAreaElement>(null!);
@@ -125,8 +121,8 @@
 
   const tabs: { id: Tab; icon: string; label: string }[] = [
     { id: 'claw', icon: '🦀', label: 'Claw' },
+    { id: 'sessions', icon: '🤖', label: 'Agents' },
     { id: 'chat', icon: '💬', label: 'Chat' },
-    { id: 'sessions', icon: '📂', label: 'Sessions' },
     { id: 'schedules', icon: '⏰', label: 'Schedules' },
     { id: 'skills', icon: '🧩', label: 'Skills' },
   ];
@@ -445,27 +441,7 @@
     } catch { /* ignore */ }
   }
 
-  async function createSchedule_() {
-    if (!newScheduleAgentId || !newSchedulePrompt.trim() || !newScheduleCron.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/schedules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_id: newScheduleAgentId,
-          prompt: newSchedulePrompt.trim(),
-          cron: newScheduleCron.trim(),
-        }),
-      });
-      if (res.ok) {
-        newScheduleAgentId = '';
-        newSchedulePrompt = '';
-        newScheduleCron = '';
-        showNewSchedule = false;
-        await fetchSchedules();
-      }
-    } catch { /* ignore */ }
-  }
+
 
   async function toggleSchedule(id: string, currentStatus: string) {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
@@ -718,7 +694,6 @@
         <span class="tab-header-icon">⏰</span>
         <h2>Schedules</h2>
         <div style="margin-left:auto;display:flex;gap:8px">
-          <button class="btn-sm btn-accent" onclick={() => { showNewSchedule = true; }}>＋ New Schedule</button>
           <button class="btn-sm" onclick={fetchSchedules}>↻ Refresh</button>
         </div>
       </div>
@@ -731,7 +706,7 @@
         {:else if schedules.length === 0}
           <div class="empty-state">
             <div class="empty-state-icon">⏰</div>
-            <div class="empty-state-text">No schedules yet. Create a cron schedule to automate agent tasks.</div>
+            <div class="empty-state-text">No schedules yet. Ask an agent to schedule a task via chat.</div>
           </div>
         {:else}
           <table class="data-table">
@@ -773,31 +748,7 @@
         {/if}
       </div>
 
-      <!-- New Schedule Modal -->
-      {#if showNewSchedule}
-        <div class="modal-overlay" onclick={() => showNewSchedule = false} role="presentation">
-          <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') showNewSchedule = false }}>
-            <h3>Create Schedule</h3>
-            <div class="modal-field">
-              <label for="sched-agent">Agent ID</label>
-              <input id="sched-agent" bind:value={newScheduleAgentId} placeholder="my-agent" />
-            </div>
-            <div class="modal-field">
-              <label for="sched-prompt">Prompt</label>
-              <textarea id="sched-prompt" bind:value={newSchedulePrompt} placeholder="Check for updates and summarize…" rows="3"></textarea>
-            </div>
-            <div class="modal-field">
-              <label for="sched-cron">Cron Expression</label>
-              <input id="sched-cron" bind:value={newScheduleCron} placeholder="0 9 * * *" />
-              <div class="field-hint">e.g. <code>0 9 * * *</code> = every day at 9am</div>
-            </div>
-            <div class="modal-actions">
-              <button class="btn-sm" onclick={() => showNewSchedule = false}>Cancel</button>
-              <button class="btn-sm btn-accent" onclick={createSchedule_} disabled={!newScheduleAgentId || !newSchedulePrompt.trim() || !newScheduleCron.trim()}>Create</button>
-            </div>
-          </div>
-        </div>
-      {/if}
+
 
     {:else if activeTab === 'skills'}
       <!-- Skills View -->
