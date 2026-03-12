@@ -1,6 +1,6 @@
 # 🦀 TiClaw User Guide
 
-Welcome to TiClaw, a robot mind builder. This guide explains how to use the system via your chosen channel (Discord, Feishu, etc.) — from mind evolution to build tasks.
+Welcome to TiClaw, a mind builder. This guide explains how to use the system via your chosen channel (Discord, Feishu, etc.) — from mind evolution to build tasks.
 
 ---
 
@@ -38,11 +38,11 @@ TiClaw is commanded through your channels (Discord, Feishu, etc.). All task-spec
 
 ### 🧠 Mind-first: natural conversation
 
-**Every message you send** (except `/mind` commands) updates the robot's mind. Persona and memory evolve through daily interaction. No special command needed — just talk.
+**Every message you send** (except `/mind` commands) updates the agent's mind. Persona and memory evolve through daily interaction. No special command needed — just talk.
 
 ### 🧠 `/mind` — Mind control plane
 
-**Usage:** Inspect and govern the robot's mind.
+**Usage:** Inspect and govern the agent's mind.
 
 | Subcommand | Description |
 |------------|-------------|
@@ -97,4 +97,4 @@ TiClaw provides three layers of "Live Monitoring":
 
 ---
 
-*TiClaw: Robot mind builder — personality and memory through interaction.*
+*TiClaw: Mind builder — personality and memory through interaction.*

@@ -29,7 +29,6 @@
     content: string;
     mtimeMs: number;
     updatedRecently?: boolean;
-    expanded?: boolean;
   }
 
   interface SkillInfo {
@@ -85,7 +84,7 @@
   }
 
   // --- State ---
-  let activeTab = $state<Tab>('chat');
+  let activeTab = $state<Tab>('sessions');
   let agentId = $state('web-agent');
   let sessionId = $state('web-session');
   let inputText = $state('');
@@ -95,7 +94,7 @@
   let sseLog = $state<string[]>([]);
   let sending = $state(false);
   let isThinking = $state(false);
-  let workspaceFiles = $state<Record<string, WorkspaceFile>>({});
+  let mindFiles = $state<Record<string, WorkspaceFile>>({});
 
   // Tab data
   let skills = $state<SkillInfo[]>([]);
@@ -113,24 +112,24 @@
   // Modals
   let showNewAgent = $state(false);
   let showNewSession = $state(false);
-  let showNewSchedule = $state(false);
   let newAgentName = $state('');
   let newSessionAgentId = $state('');
-  let newScheduleAgentId = $state('');
-  let newSchedulePrompt = $state('');
-  let newScheduleCron = $state('');
 
   let messagesEl = $state<HTMLElement>(null!);
   let inputEl = $state<HTMLTextAreaElement>(null!);
   let eventSource: EventSource | null = null;
 
-  const tabs: { id: Tab; icon: string; label: string }[] = [
+  const staticTabs: { id: Tab; icon: string; label: string }[] = [
+    { id: 'sessions', icon: '🤖', label: 'Agents' },
     { id: 'chat', icon: '💬', label: 'Chat' },
-    { id: 'sessions', icon: '📂', label: 'Sessions' },
     { id: 'schedules', icon: '⏰', label: 'Schedules' },
     { id: 'skills', icon: '🧩', label: 'Skills' },
-    { id: 'claw', icon: '🦀', label: 'Claw' },
   ];
+
+  const tabs = $derived([
+    { id: 'claw' as Tab, icon: '🦀', label: clawInfo?.hostname || 'Claw' },
+    ...staticTabs,
+  ]);
 
   // --- Tab switching ---
   function switchTab(tab: Tab) {
@@ -139,6 +138,7 @@
     if (tab === 'sessions') fetchAgents();
     if (tab === 'schedules') fetchSchedules();
     if (tab === 'claw') fetchClaw();
+    if (tab === 'chat') connectSSE();
   }
 
   // --- SSE ---
@@ -201,7 +201,7 @@
 
         // Final complete message — replace streaming content
         if (data.type === 'message' && data.text) {
-          if (isThinking) { isThinking = false; fetchWorkspaceFiles(); }
+          if (isThinking) { isThinking = false; fetchMindFiles(); }
           if (streamingMessageId) {
             // Replace the streaming message with the final text
             messages = messages.map((m) =>
@@ -211,7 +211,7 @@
           } else {
             pushBotMessage(data.text);
           }
-          fetchWorkspaceFiles();
+          fetchMindFiles();
           return;
         }
       } catch { /* ignore malformed */ }
@@ -322,21 +322,20 @@
     } catch { /* ignore */ }
   }
 
-  async function fetchWorkspaceFiles() {
+  async function fetchMindFiles() {
     try {
-      const chatJid = `web:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
-      const res = await fetch(`${API_BASE}/api/workspace?chat_jid=${encodeURIComponent(chatJid)}`);
+      const res = await fetch(`${API_BASE}/api/mind/files`);
       if (res.ok) {
         const data = await res.json();
         if (data.files) {
           const newFiles = data.files as Record<string, WorkspaceFile>;
           for (const [name, file] of Object.entries(newFiles)) {
-            if (workspaceFiles[name] && file.mtimeMs > workspaceFiles[name].mtimeMs) {
+            if (mindFiles[name] && file.mtimeMs > mindFiles[name].mtimeMs) {
               file.updatedRecently = true;
-              setTimeout(() => { if (workspaceFiles[name]) workspaceFiles[name].updatedRecently = false; }, 5000);
+              setTimeout(() => { if (mindFiles[name]) mindFiles[name].updatedRecently = false; }, 5000);
             }
           }
-          workspaceFiles = newFiles;
+          mindFiles = newFiles;
         }
       }
     } catch { /* ignore */ }
@@ -408,9 +407,15 @@
   async function toggleSkill(name: string, enabled: boolean) {
     const action = enabled ? 'disable' : 'enable';
     try {
-      await fetch(`${API_BASE}/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+        addLog(`⚠️ Skill ${action} failed: ${err.detail || err.message || 'Unknown error'}`);
+      }
       await fetchSkills();
-    } catch { /* ignore */ }
+    } catch (e: any) {
+      addLog(`⚠️ Skill ${action} failed: ${e.message}`);
+    }
   }
 
   // --- Agent/Session/Schedule creation ---
@@ -447,27 +452,7 @@
     } catch { /* ignore */ }
   }
 
-  async function createSchedule_() {
-    if (!newScheduleAgentId || !newSchedulePrompt.trim() || !newScheduleCron.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/schedules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_id: newScheduleAgentId,
-          prompt: newSchedulePrompt.trim(),
-          cron: newScheduleCron.trim(),
-        }),
-      });
-      if (res.ok) {
-        newScheduleAgentId = '';
-        newSchedulePrompt = '';
-        newScheduleCron = '';
-        showNewSchedule = false;
-        await fetchSchedules();
-      }
-    } catch { /* ignore */ }
-  }
+
 
   async function toggleSchedule(id: string, currentStatus: string) {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
@@ -523,36 +508,20 @@
   onMount(async () => {
     await fetchClaw();
     fetchMind();
-    fetchWorkspaceFiles();
-    await fetchMessages();
-    if (messages.length === 0) {
-      messages = [{ id: 'welcome', role: 'system', text: '🧠 TiClaw Web Client — type a message to start', time: '' }];
-    }
-    connectSSE();
+    fetchMindFiles();
+    fetchAgents();
   });
 
   onDestroy(() => { disconnectSSE(); });
 </script>
 
-<div class="app">
-  <!-- Header -->
-  <header class="header">
-    <div class="logo">
-      <div class="logo-icon">🐾</div>
-      TiClaw
-    </div>
-    <div class="header-right">
-      <span class="status-label">{sseConnected ? 'Connected' : 'Offline'}</span>
-      <div
-        class="status-dot"
-        class:offline={!sseConnected}
-        title={sseConnected ? 'SSE connected' : 'SSE offline'}
-      ></div>
-    </div>
-  </header>
-
+<div class="app" class:chat-layout={activeTab === 'chat'}>
   <!-- Left Nav -->
   <nav class="nav">
+    <div class="nav-logo">
+      <div class="nav-logo-icon">🐾</div>
+      TiClaw
+    </div>
     {#each tabs as tab}
       <button
         class="nav-btn"
@@ -560,10 +529,17 @@
         onclick={() => switchTab(tab.id)}
         title={tab.label}
       >
-        {tab.icon}
-        <span class="nav-tooltip">{tab.label}</span>
+        <span class="nav-btn-icon">{tab.icon}</span>
+        <span class="nav-btn-label">{tab.label}</span>
       </button>
     {/each}
+    <div style="margin-top:auto;display:flex;align-items:center;gap:8px;padding:12px 16px">
+      <div
+        class="nav-status-dot"
+        class:offline={!sseConnected}
+      ></div>
+      <span style="font-size:11px;color:var(--text-dim)">{sseConnected ? 'Connected' : 'Offline'}</span>
+    </div>
   </nav>
 
   <!-- Main Content -->
@@ -577,6 +553,16 @@
 
     {#if activeTab === 'chat'}
       <!-- Chat View -->
+      <div class="chat-header">
+        <div class="chat-header-field">
+          <label for="chat-agent">Agent</label>
+          <input id="chat-agent" class="chat-id-input" bind:value={agentId} placeholder="web-agent" onchange={reconnect} />
+        </div>
+        <div class="chat-header-field">
+          <label for="chat-session">Session</label>
+          <input id="chat-session" class="chat-id-input" bind:value={sessionId} placeholder="web-session" onchange={reconnect} />
+        </div>
+      </div>
       <div class="messages" bind:this={messagesEl}>
         {#each messages as msg (msg.id)}
           {#if msg.role === 'system'}
@@ -626,9 +612,9 @@
       </div>
 
     {:else if activeTab === 'sessions'}
-      <!-- Sessions View -->
+      <!-- Agents & Sessions Browser -->
       <div class="tab-header">
-        <span class="tab-header-icon">📂</span>
+        <span class="tab-header-icon">🤖</span>
         <h2>Agents & Sessions</h2>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button class="btn-sm btn-accent" onclick={() => { showNewAgent = true; }}>＋ New Agent</button>
@@ -725,7 +711,6 @@
         <span class="tab-header-icon">⏰</span>
         <h2>Schedules</h2>
         <div style="margin-left:auto;display:flex;gap:8px">
-          <button class="btn-sm btn-accent" onclick={() => { showNewSchedule = true; }}>＋ New Schedule</button>
           <button class="btn-sm" onclick={fetchSchedules}>↻ Refresh</button>
         </div>
       </div>
@@ -738,7 +723,7 @@
         {:else if schedules.length === 0}
           <div class="empty-state">
             <div class="empty-state-icon">⏰</div>
-            <div class="empty-state-text">No schedules yet. Create a cron schedule to automate agent tasks.</div>
+            <div class="empty-state-text">No schedules yet. Ask an agent to schedule a task via chat.</div>
           </div>
         {:else}
           <table class="data-table">
@@ -780,31 +765,7 @@
         {/if}
       </div>
 
-      <!-- New Schedule Modal -->
-      {#if showNewSchedule}
-        <div class="modal-overlay" onclick={() => showNewSchedule = false} role="presentation">
-          <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') showNewSchedule = false }}>
-            <h3>Create Schedule</h3>
-            <div class="modal-field">
-              <label for="sched-agent">Agent ID</label>
-              <input id="sched-agent" bind:value={newScheduleAgentId} placeholder="my-agent" />
-            </div>
-            <div class="modal-field">
-              <label for="sched-prompt">Prompt</label>
-              <textarea id="sched-prompt" bind:value={newSchedulePrompt} placeholder="Check for updates and summarize…" rows="3"></textarea>
-            </div>
-            <div class="modal-field">
-              <label for="sched-cron">Cron Expression</label>
-              <input id="sched-cron" bind:value={newScheduleCron} placeholder="0 9 * * *" />
-              <div class="field-hint">e.g. <code>0 9 * * *</code> = every day at 9am</div>
-            </div>
-            <div class="modal-actions">
-              <button class="btn-sm" onclick={() => showNewSchedule = false}>Cancel</button>
-              <button class="btn-sm btn-accent" onclick={createSchedule_} disabled={!newScheduleAgentId || !newSchedulePrompt.trim() || !newScheduleCron.trim()}>Create</button>
-            </div>
-          </div>
-        </div>
-      {/if}
+
 
     {:else if activeTab === 'skills'}
       <!-- Skills View -->
@@ -815,46 +776,80 @@
           <button class="btn-sm" onclick={fetchSkills}>↻ Refresh</button>
         </div>
       </div>
-      <div class="skills-grid">
-        {#if skillsLoading}
-          <div class="empty-state">
-            <div class="empty-state-icon">⏳</div>
-            <div class="empty-state-text">Loading skills…</div>
-          </div>
-        {:else if skills.length === 0}
-          <div class="empty-state">
-            <div class="empty-state-icon">🧩</div>
-            <div class="empty-state-text">No skills discovered. Add SKILL.md files to your skills directories.</div>
-          </div>
-        {:else}
-          {#each skills as skill}
-            <div class="skill-card">
-              <div class="skill-info">
-                <div class="skill-name">{skill.name}</div>
-                <div class="skill-desc">{skill.description || 'No description'}</div>
-                <div class="skill-meta">
-                  <span class="skill-tag">v{skill.version || '?'}</span>
-                  <span class="skill-tag">L{skill.permissionLevel}</span>
-                  {#if skill.source}
-                    <span class="skill-tag">{skill.source}</span>
-                  {/if}
-                  {#if skill.installed}
-                    <span class="skill-tag" style="color:var(--green)">installed</span>
-                  {/if}
+
+      {#if skillsLoading}
+        <div class="empty-state">
+          <div class="empty-state-icon">⏳</div>
+          <div class="empty-state-text">Loading skills…</div>
+        </div>
+      {:else if skills.length === 0}
+        <div class="empty-state">
+          <div class="empty-state-icon">🧩</div>
+          <div class="empty-state-text">No skills discovered. Add SKILL.md files to your skills directories.</div>
+        </div>
+      {:else}
+        {@const installedSkills = skills.filter(s => s.installed)}
+        {@const availableSkills = skills.filter(s => !s.installed)}
+
+        <!-- Installed Skills -->
+        <div class="skills-section">
+          <h3 class="skills-section-title">Installed</h3>
+          {#if installedSkills.length === 0}
+            <div class="skills-empty-hint">No skills installed yet. Enable one from Available below.</div>
+          {:else}
+            <div class="skills-grid">
+              {#each installedSkills as skill}
+                <div class="skill-card">
+                  <div class="skill-info">
+                    <div class="skill-name">{skill.name}</div>
+                    <div class="skill-desc">{skill.description || 'No description'}</div>
+                    <div class="skill-meta">
+                      <span class="skill-tag">v{skill.version || '?'}</span>
+                      <span class="skill-tag">L{skill.permissionLevel}</span>
+                      {#if skill.source}
+                        <span class="skill-tag">{skill.source}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <label class="toggle">
+                    <input
+                      type="checkbox"
+                      checked={skill.enabled}
+                      onchange={() => toggleSkill(skill.name, skill.enabled)}
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
-              </div>
-              <label class="toggle">
-                <input
-                  type="checkbox"
-                  checked={skill.enabled}
-                  onchange={() => toggleSkill(skill.name, skill.enabled)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
+              {/each}
             </div>
-          {/each}
+          {/if}
+        </div>
+
+        <!-- Available Skills -->
+        {#if availableSkills.length > 0}
+          <div class="skills-section">
+            <h3 class="skills-section-title">Available</h3>
+            <div class="skills-grid">
+              {#each availableSkills as skill}
+                <div class="skill-card skill-card-available">
+                  <div class="skill-info">
+                    <div class="skill-name">{skill.name}</div>
+                    <div class="skill-desc">{skill.description || 'No description'}</div>
+                    <div class="skill-meta">
+                      <span class="skill-tag">v{skill.version || '?'}</span>
+                      <span class="skill-tag">L{skill.permissionLevel}</span>
+                      {#if skill.source}
+                        <span class="skill-tag">{skill.source}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <button class="btn-sm btn-enable" onclick={() => toggleSkill(skill.name, false)}>Enable</button>
+                </div>
+              {/each}
+            </div>
+          </div>
         {/if}
-      </div>
+      {/if}
 
     {:else if activeTab === 'claw'}
       <!-- Claw View -->
@@ -934,34 +929,9 @@
     {/if}
   </div>
 
-  <!-- Right Sidebar -->
+  {#if activeTab === 'chat'}
+  <!-- Right Sidebar (Chat only) -->
   <aside class="sidebar">
-    <!-- Session Config -->
-    <div class="sidebar-section">
-      <h3>Active Session</h3>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <div class="sidebar-field">
-          <label for="sidebar-agent">Agent</label>
-          <input
-            id="sidebar-agent"
-            class="chat-id-input"
-            bind:value={agentId}
-            placeholder="web-agent"
-            onchange={reconnect}
-          />
-        </div>
-        <div class="sidebar-field">
-          <label for="sidebar-session">Session</label>
-          <input
-            id="sidebar-session"
-            class="chat-id-input"
-            bind:value={sessionId}
-            placeholder="web-session"
-            onchange={reconnect}
-          />
-        </div>
-      </div>
-    </div>
 
     <!-- Mind State -->
     <div class="sidebar-section">
@@ -985,37 +955,26 @@
       {/if}
     </div>
 
-    <!-- Workspace Data -->
+    <!-- Mind Files (Personalization) -->
     <div class="sidebar-section">
-      <h3>Workspace Data</h3>
+      <h3>Mind Files</h3>
       <div class="workspace-files">
-        {#each Object.entries(workspaceFiles) as [fileName, file]}
+        {#each Object.entries(mindFiles) as [fileName, file]}
           <div class="file-card" class:updated={file.updatedRecently}>
-            <div
-              class="file-header"
-              role="button"
-              tabindex="0"
-              onclick={() => file.expanded = !file.expanded}
-              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') file.expanded = !file.expanded; }}
-            >
+            <div class="file-header">
               <strong>{fileName}</strong>
-              <div>
-                {#if file.updatedRecently}
-                  <span class="update-badge">Updated!</span>
-                {/if}
-                <span style="font-size:10px; margin-left:4px; color:var(--text-dim)">{file.expanded ? '▼' : '▶'}</span>
-              </div>
+              {#if file.updatedRecently}
+                <span class="update-badge">Updated!</span>
+              {/if}
             </div>
-            {#if file.expanded}
-              <div class="file-content">{file.content}</div>
-            {/if}
+            <div class="file-content">{file.content}</div>
           </div>
         {/each}
-        {#if Object.keys(workspaceFiles).length === 0}
-          <div style="color:var(--text-dim);font-size:11px;padding:6px">No files yet</div>
+        {#if Object.keys(mindFiles).length === 0}
+          <div style="color:var(--text-dim);font-size:11px;padding:6px">No mind files yet</div>
         {/if}
       </div>
-      <button class="btn-sm" onclick={fetchWorkspaceFiles} style="margin-top:6px">↻ refresh</button>
+      <button class="btn-sm" onclick={fetchMindFiles} style="margin-top:6px">↻ refresh</button>
     </div>
 
     <!-- SSE Log -->
@@ -1031,4 +990,5 @@
       </div>
     </div>
   </aside>
+  {/if}
 </div>

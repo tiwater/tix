@@ -1,12 +1,12 @@
 # TiClaw Requirements & Philosophy
 
-This document outlines the foundational requirements and design principles for TiClaw — a robot mind builder designed as a black-box core with a plugin ecosystem.
+This document outlines the foundational requirements and design principles for TiClaw — a mind builder designed as a black-box core with a plugin ecosystem.
 
 ---
 
-## 🎯 The Mission: Robot Mind Builder
+## 🎯 The Mission: Mind Builder
 
-TiClaw is designed to be a **robot mind builder**. It builds personality and memory that evolve through daily interaction, with lock, rollback, and cloud sync for deployment. It can also execute coding tasks when the mind needs to build or fix things.
+TiClaw is designed to be a **mind builder**. It builds personality and memory that evolve through daily interaction, with lock, rollback, and cloud sync for deployment. It can also execute coding tasks when the mind needs to build or fix things.
 
 ---
 
@@ -84,4 +84,4 @@ All transient data, databases, and logs must reside in **`~/ticlaw/`**, keeping 
 
 ---
 
-*TiClaw: Robot mind builder — personality and memory through interaction.*
+*TiClaw: Mind builder — personality and memory through interaction.*

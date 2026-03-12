@@ -31,6 +31,7 @@ import { URL } from 'url';
 
 import {
   ACP_ENABLED,
+  AGENTS_DIR,
   CLAW_HOSTNAME,
   HTTP_ENABLED,
   HTTP_PORT,
@@ -250,6 +251,29 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/mind' && req.method === 'GET') {
         writeJson(res, 200, getMindState());
+        return;
+      }
+
+      // ── Mind Files (personalization: SOUL, MEMORY, IDENTITY, USER) ──
+
+      if (pathname === '/api/mind/files' && req.method === 'GET') {
+        const MIND_FILES = ['SOUL.md', 'MEMORY.md', 'IDENTITY.md', 'USER.md'];
+        const files: Record<string, { content: string; mtimeMs: number }> = {};
+        for (const name of MIND_FILES) {
+          const filePath = path.join(AGENTS_DIR, name);
+          try {
+            if (fs.existsSync(filePath)) {
+              const stat = fs.statSync(filePath);
+              files[name] = {
+                content: fs.readFileSync(filePath, 'utf-8'),
+                mtimeMs: stat.mtimeMs,
+              };
+            }
+          } catch {
+            /* skip unreadable files */
+          }
+        }
+        writeJson(res, 200, { files });
         return;
       }
 
@@ -556,17 +580,18 @@ export class HttpChannel implements Channel {
         const skillName = parts[3];
         const action = parts[4] as 'enable' | 'disable';
         const registry = new SkillsRegistry(SKILLS_CONFIG);
+        const ctx = { actor: 'web-ui', isAdmin: true };
         try {
-          const result =
-            action === 'enable'
-              ? registry.enableSkill(skillName, {
-                  actor: 'web-ui',
-                  isAdmin: true,
-                })
-              : registry.disableSkill(skillName, {
-                  actor: 'web-ui',
-                  isAdmin: true,
-                });
+          let result;
+          if (action === 'enable') {
+            // Auto-install if discovered but not yet installed
+            if (!registry.getInstalled(skillName)) {
+              registry.installSkill(skillName, ctx);
+            }
+            result = registry.enableSkill(skillName, ctx);
+          } else {
+            result = registry.disableSkill(skillName, ctx);
+          }
           writeJson(res, 200, { ok: true, skill: result });
         } catch (err: any) {
           writeProtocolError(

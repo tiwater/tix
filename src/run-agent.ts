@@ -23,8 +23,10 @@ import {
   DEFAULT_LLM_MODEL,
   MINIMAX_API_KEY,
   MINIMAX_BASE_URL,
+  SKILLS_CONFIG,
   agentPaths,
 } from './core/config.js';
+import { SkillsRegistry } from './skills/registry.js';
 import type { RegisteredProject, SessionContext } from './core/types.js';
 
 const LLM_ENV: Record<string, string | undefined> = MINIMAX_API_KEY
@@ -138,7 +140,7 @@ function buildSystemPrompt(
   session: SessionContext,
 ): string {
   const base =
-    `You are ${ASSISTANT_NAME} 🦀, a robot mind assistant built with TiClaw.\n` +
+    `You are ${ASSISTANT_NAME} 🦀, a mind assistant built with TiClaw.\n` +
     `Work only inside the provided session workspace directory.\n` +
     `Be concise and helpful.\n` +
     `You can read, edit, run bash commands, and search the workspace.` +
@@ -146,7 +148,57 @@ function buildSystemPrompt(
     `relevant mind files (SOUL.md, MEMORY.md) in the workspace directory.`;
 
   const mindContext = loadSessionMindContext(group, session);
-  return mindContext ? `${base}\n\n${mindContext}` : base;
+  const skillsContext = loadEnabledSkillsContext();
+
+  const parts = [base];
+  if (mindContext) parts.push(mindContext);
+  if (skillsContext) parts.push(skillsContext);
+  return parts.join('\n\n');
+}
+
+/**
+ * Load enabled skills and format them as system prompt context.
+ * Each skill's SKILL.md is included so the agent knows all available tools.
+ */
+function loadEnabledSkillsContext(): string {
+  try {
+    const registry = new SkillsRegistry(SKILLS_CONFIG);
+    const allSkills = registry.listAvailable();
+    const enabled = allSkills.filter(
+      (s) => s.installed?.enabled && s.skill.directory,
+    );
+
+    if (enabled.length === 0) return '';
+
+    const sections = enabled.map((entry) => {
+      const skill = entry.skill;
+      const skillMdPath = path.join(skill.directory, 'SKILL.md');
+      let skillDoc = '';
+      try {
+        const raw = fs.readFileSync(skillMdPath, 'utf-8');
+        // Strip YAML frontmatter
+        skillDoc = raw.replace(/^---[\s\S]*?---\s*/m, '').trim();
+      } catch {
+        skillDoc = `${skill.name}: ${skill.description || 'No documentation.'}`;
+      }
+
+      return (
+        `### Skill: ${skill.name} (v${skill.version})\n` +
+        `Directory: ${skill.directory}\n\n` +
+        `${skillDoc}`
+      );
+    });
+
+    return (
+      `## Enabled Skills\n\n` +
+      `You have the following skills available. Use the Bash tool to run ` +
+      `the shell scripts listed below. Always use the full path to the script.\n\n` +
+      sections.join('\n\n---\n\n')
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Failed to load skills context for system prompt');
+    return '';
+  }
 }
 
 function serializeEventValue(value: unknown): unknown {

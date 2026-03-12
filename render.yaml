@@ -1,0 +1,45 @@
+# Render Blueprint Specification
+# See: https://render.com/docs/blueprint-spec
+
+services:
+  # 1. Backend Service (TiClaw API & Agent Hub)
+  - type: web
+    name: ticlaw-backend
+    runtime: node
+    buildCommand: "pnpm install && pnpm run build"
+    startCommand: "node dist/index.js"
+    envVars:
+      - key: NODE_VERSION
+        value: "20.10.0"
+      - key: TICLAW_HOME
+        value: "/opt/render/project/src"
+      - key: HTTP_PORT
+        value: "10000"
+      - key: ANTHROPIC_API_KEY
+        sync: false # Set in Render Dashboard
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+  # 2. Frontend (Optional Static Site)
+  # If you want to deploy the SvelteKit UI separately as a static site.
+  # Note: Requires SvelteKit adapter-static if choosing type: static.
+  - type: web
+    name: ticlaw-frontend
+    runtime: node
+    rootDir: web
+    buildCommand: "pnpm install && pnpm run build"
+    startCommand: "pnpm run preview" # Adjust based on adapter (e.g. node build/index.js)
+    envVars:
+      - key: NODE_VERSION
+        value: "20.10.0"
+      - key: PUBLIC_BACKEND_URL
+        fromService:
+          name: ticlaw-backend
+          type: web
+          property: host

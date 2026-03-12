@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>Robot Mind Builder.</b><br>
+  <b>Mind Builder.</b><br>
   Multi-channel, personality & memory evolution, production-ready.
 </p>
 
@@ -13,14 +13,14 @@
   Forked from <a href="https://github.com/qwibitai/nanoclaw">NanoClaw</a>
 </p>
 
-TiClaw is a platform for building robot minds: personality and memory that evolve through daily interaction. Connect via Discord, Feishu, or other channels; the mind forms stable identity and usable memory over time, with lock, rollback, and cloud sync for deployment.
+TiClaw is a platform for building minds: personality and memory that evolve through daily interaction. Connect via Discord, Feishu, or other channels; the mind forms stable identity and usable memory over time, with lock, rollback, and cloud sync for deployment.
 
 ## 🌊 The Vision
 
-TiClaw is a **robot mind builder**. It focuses on:
+TiClaw is a **mind builder**. It focuses on:
 - **Mind System:** Persona and memory evolve through daily conversation; lock for production, rollback when needed.
 - **Multi-Channel:** Discord, Feishu (飞书), and more. One mind, many touchpoints.
-- **Physical Factory:** Isolated workspaces for tasks when the robot needs to build or fix things.
+- **Physical Factory:** Isolated workspaces for tasks when the agent needs to build or fix things.
 - **💻 Workspace Agent:** Built on the `@anthropic-ai/claude-agent-sdk`, capable of native bash, glob, and edit tools inside the factory.
 
 ## 🛠 Core Capabilities
