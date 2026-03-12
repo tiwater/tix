@@ -95,7 +95,7 @@
   let sseLog = $state<string[]>([]);
   let sending = $state(false);
   let isThinking = $state(false);
-  let workspaceFiles = $state<Record<string, WorkspaceFile>>({});
+  let mindFiles = $state<Record<string, WorkspaceFile>>({});
 
   // Tab data
   let skills = $state<SkillInfo[]>([]);
@@ -201,7 +201,7 @@
 
         // Final complete message — replace streaming content
         if (data.type === 'message' && data.text) {
-          if (isThinking) { isThinking = false; fetchWorkspaceFiles(); }
+          if (isThinking) { isThinking = false; fetchMindFiles(); }
           if (streamingMessageId) {
             // Replace the streaming message with the final text
             messages = messages.map((m) =>
@@ -211,7 +211,7 @@
           } else {
             pushBotMessage(data.text);
           }
-          fetchWorkspaceFiles();
+          fetchMindFiles();
           return;
         }
       } catch { /* ignore malformed */ }
@@ -322,21 +322,20 @@
     } catch { /* ignore */ }
   }
 
-  async function fetchWorkspaceFiles() {
+  async function fetchMindFiles() {
     try {
-      const chatJid = `web:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
-      const res = await fetch(`${API_BASE}/api/workspace?chat_jid=${encodeURIComponent(chatJid)}`);
+      const res = await fetch(`${API_BASE}/api/mind/files`);
       if (res.ok) {
         const data = await res.json();
         if (data.files) {
           const newFiles = data.files as Record<string, WorkspaceFile>;
           for (const [name, file] of Object.entries(newFiles)) {
-            if (workspaceFiles[name] && file.mtimeMs > workspaceFiles[name].mtimeMs) {
+            if (mindFiles[name] && file.mtimeMs > mindFiles[name].mtimeMs) {
               file.updatedRecently = true;
-              setTimeout(() => { if (workspaceFiles[name]) workspaceFiles[name].updatedRecently = false; }, 5000);
+              setTimeout(() => { if (mindFiles[name]) mindFiles[name].updatedRecently = false; }, 5000);
             }
           }
-          workspaceFiles = newFiles;
+          mindFiles = newFiles;
         }
       }
     } catch { /* ignore */ }
@@ -523,7 +522,7 @@
   onMount(async () => {
     await fetchClaw();
     fetchMind();
-    fetchWorkspaceFiles();
+    fetchMindFiles();
     await fetchMessages();
     if (messages.length === 0) {
       messages = [{ id: 'welcome', role: 'system', text: '🧠 TiClaw Web Client — type a message to start', time: '' }];
@@ -985,11 +984,11 @@
       {/if}
     </div>
 
-    <!-- Workspace Data -->
+    <!-- Mind Files (Personalization) -->
     <div class="sidebar-section">
-      <h3>Workspace Data</h3>
+      <h3>Mind Files</h3>
       <div class="workspace-files">
-        {#each Object.entries(workspaceFiles) as [fileName, file]}
+        {#each Object.entries(mindFiles) as [fileName, file]}
           <div class="file-card" class:updated={file.updatedRecently}>
             <div
               class="file-header"
@@ -1011,11 +1010,11 @@
             {/if}
           </div>
         {/each}
-        {#if Object.keys(workspaceFiles).length === 0}
-          <div style="color:var(--text-dim);font-size:11px;padding:6px">No files yet</div>
+        {#if Object.keys(mindFiles).length === 0}
+          <div style="color:var(--text-dim);font-size:11px;padding:6px">No mind files yet</div>
         {/if}
       </div>
-      <button class="btn-sm" onclick={fetchWorkspaceFiles} style="margin-top:6px">↻ refresh</button>
+      <button class="btn-sm" onclick={fetchMindFiles} style="margin-top:6px">↻ refresh</button>
     </div>
 
     <!-- SSE Log -->

@@ -298,7 +298,10 @@ export async function runAgent(opts: RunAgentOpts): Promise<void> {
       // Handle streaming text deltas from SDK
       if (msgType === 'stream_event') {
         const event = (msg as any).event;
-        if (event?.type === 'content_block_delta' && event?.delta?.type === 'text_delta') {
+        if (
+          event?.type === 'content_block_delta' &&
+          event?.delta?.type === 'text_delta'
+        ) {
           await onEvent?.({
             phase: 'stream_delta',
             text: event.delta.text,
