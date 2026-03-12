@@ -4,7 +4,7 @@
 services:
   # 1. Backend Service (TiClaw API & Agent Hub)
   - type: web
-    name: ticlaw-backend
+    name: ticlaw
     runtime: node
     plan: free
     buildCommand: "pnpm install && pnpm run build"
@@ -21,7 +21,7 @@ services:
 
   # 2. Frontend (SvelteKit with adapter-node)
   - type: web
-    name: ticlaw-frontend
+    name: ticlaw-ui
     runtime: node
     plan: free
     rootDir: web
@@ -33,4 +33,4 @@ services:
       - key: PORT
         value: "10000"
       - key: PUBLIC_BACKEND_URL
-        sync: false # Set in Render Dashboard: https://ticlaw-backend.onrender.com
+        sync: false # Set in Render Dashboard: https://ticlaw.onrender.com
