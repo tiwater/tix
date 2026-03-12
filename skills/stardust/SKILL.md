@@ -5,8 +5,7 @@ version: 1.0.0
 requires: []
 install: []
 permissions:
-  - read
-  - write
+  - level 1
 skill_api_version: "1.0.0"
 ---
 

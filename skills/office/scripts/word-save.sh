@@ -1,17 +1,15 @@
 #!/bin/bash
-# word-save.sh — Save a Word document (or Save As to a new path/format)
+# word-save.sh — Save a Word document (Save / Save As / Export PDF)
 #
 # Usage:
-#   ./word-save.sh [--file path.docx]
-#   ./word-save.sh --save-as /path/to/output.docx [--file path.docx]
-#   ./word-save.sh --save-as /path/to/output.pdf --format pdf [--file path.docx]
+#   ./word-save.sh [--save-as PATH] [--format docx|pdf] [--file PATH]
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 FILE_PATH=""
 SAVE_AS=""
-FORMAT="docx"
+FORMAT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,11 +20,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-FILE_ARG=$([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null")
-SAVE_ARG=$([ -n "$SAVE_AS" ] && echo "\"$SAVE_AS\"" || echo "null")
-
-osascript -l JavaScript <<JXAEOF
+case "$(uname -s)" in
+  Darwin)
+    FILE_ARG=$([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null")
+    SAVE_ARG=$([ -n "$SAVE_AS" ] && echo "\"$SAVE_AS\"" || echo "null")
+    FORMAT_ARG=$([ -n "$FORMAT" ] && echo "\"$FORMAT\"" || echo "null")
+    osascript -l JavaScript <<JXAEOF
 $(cat "$SCRIPT_DIR/lib/word-jxa.js")
 
-saveDocument($FILE_ARG, $SAVE_ARG, "$FORMAT");
+saveDocument($FILE_ARG, $SAVE_ARG, $FORMAT_ARG);
 JXAEOF
+    ;;
+  *)
+    if [ -z "$FILE_PATH" ]; then
+      echo '{"error": "File path required on this platform (--file PATH)"}' >&2
+      exit 1
+    fi
+    ARGS=("$SCRIPT_DIR/lib/word-docx.py" "saveDocument" "$FILE_PATH")
+    [ -n "$SAVE_AS" ] && ARGS+=("$SAVE_AS") || ARGS+=("null")
+    [ -n "$FORMAT" ] && ARGS+=("$FORMAT") || ARGS+=("null")
+    python3 "${ARGS[@]}"
+    ;;
+esac

@@ -2,7 +2,7 @@
 # word-insert-image.sh — Insert an image into a Word document
 #
 # Usage:
-#   ./word-insert-image.sh --image /path/to/image.png [--width 400] [--height 300] [--file path.docx]
+#   ./word-insert-image.sh --image PATH [--width N] [--height N] [--file PATH]
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -22,14 +22,30 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "$IMAGE_PATH" ] && { echo '{"error":"--image path is required"}' >&2; exit 1; }
+if [ -z "$IMAGE_PATH" ]; then
+  echo '{"error": "Usage: --image PATH [--width N] [--height N] [--file PATH]"}' >&2
+  exit 1
+fi
 
-FILE_ARG=$([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null")
-W_ARG=$([ -n "$WIDTH" ] && echo "$WIDTH" || echo "null")
-H_ARG=$([ -n "$HEIGHT" ] && echo "$HEIGHT" || echo "null")
-
-osascript -l JavaScript <<JXAEOF
+case "$(uname -s)" in
+  Darwin)
+    FILE_ARG=$([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null")
+    WIDTH_ARG=$([ -n "$WIDTH" ] && echo "$WIDTH" || echo "null")
+    HEIGHT_ARG=$([ -n "$HEIGHT" ] && echo "$HEIGHT" || echo "null")
+    osascript -l JavaScript <<JXAEOF
 $(cat "$SCRIPT_DIR/lib/word-jxa.js")
 
-insertImage($FILE_ARG, "$IMAGE_PATH", $W_ARG, $H_ARG);
+insertImage($FILE_ARG, "$IMAGE_PATH", $WIDTH_ARG, $HEIGHT_ARG);
 JXAEOF
+    ;;
+  *)
+    if [ -z "$FILE_PATH" ]; then
+      echo '{"error": "File path required on this platform (--file PATH)"}' >&2
+      exit 1
+    fi
+    ARGS=("$SCRIPT_DIR/lib/word-docx.py" "insertImage" "$FILE_PATH" "$IMAGE_PATH")
+    [ -n "$WIDTH" ] && ARGS+=("$WIDTH") || ARGS+=("null")
+    [ -n "$HEIGHT" ] && ARGS+=("$HEIGHT") || ARGS+=("null")
+    python3 "${ARGS[@]}"
+    ;;
+esac

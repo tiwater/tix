@@ -1,7 +1,7 @@
 ---
 name: office
-description: Full Word document automation — read, review, create, and revise documents via macOS JXA
-version: 2.0.0
+description: Cross-platform Word document automation — read, review, create, and revise .docx documents
+version: 2.1.0
 requires: []
 install: []
 permissions:
@@ -15,11 +15,17 @@ entry: scripts/word-read-structure.sh
 
 # office
 
-Full-featured Word document automation for macOS. Read, review, create, and revise `.docx` documents using JXA (JavaScript for Automation) to control Microsoft Word.
+Cross-platform Word document automation. Read, review, create, and revise `.docx` documents.
 
-## Prerequisites
+## Platform Support
 
-- macOS with **Microsoft Word** installed and running
+| Platform | Backend | Requirements | Limitations |
+|----------|---------|-------------|-------------|
+| **macOS** | JXA → Word | Microsoft Word running | Full support |
+| **Linux** | python-docx | `pip install python-docx` | No comments/revisions, no PDF export, no active document |
+| **Windows** | PowerShell/COM | Microsoft Word installed | Planned (stubs only) |
+
+All tools accept `--file PATH` for explicit file paths. On macOS, omitting `--file` uses the active Word document.
 
 ---
 
@@ -159,3 +165,5 @@ Supports: title, author, subject, keywords, comments, company, category.
 
 - `OFFICE_INPUT_INVALID` — document/path missing
 - `OFFICE_EXECUTION_FAILED` — JXA error (is Word running?)
+- On Linux/Windows: comments and revisions require Microsoft Word
+- On Linux: PDF export requires Word or external converter

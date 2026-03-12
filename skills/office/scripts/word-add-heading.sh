@@ -2,7 +2,7 @@
 # word-add-heading.sh — Add a heading to a Word document
 #
 # Usage:
-#   ./word-add-heading.sh --text "Chapter 1" [--level 1] [--file path.docx]
+#   ./word-add-heading.sh --text "Heading text" [--level N] [--file PATH]
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -20,12 +20,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "$TEXT" ] && { echo '{"error":"--text is required"}' >&2; exit 1; }
+if [ -z "$TEXT" ]; then
+  echo '{"error": "Usage: --text \"Heading\" [--level N] [--file PATH]"}' >&2
+  exit 1
+fi
 
-FILE_ARG=$([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null")
-
-osascript -l JavaScript <<JXAEOF
+case "$(uname -s)" in
+  Darwin)
+    FILE_ARG=$([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null")
+    osascript -l JavaScript <<JXAEOF
 $(cat "$SCRIPT_DIR/lib/word-jxa.js")
 
 addHeading($FILE_ARG, "$TEXT", $LEVEL);
 JXAEOF
+    ;;
+  *)
+    if [ -z "$FILE_PATH" ]; then
+      echo '{"error": "File path required on this platform (--file PATH)"}' >&2
+      exit 1
+    fi
+    python3 "$SCRIPT_DIR/lib/word-docx.py" addHeading "$FILE_PATH" "$TEXT" "$LEVEL"
+    ;;
+esac

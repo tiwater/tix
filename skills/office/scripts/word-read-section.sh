@@ -6,7 +6,7 @@
 #   ./word-read-section.sh [--file PATH] [--heading "Section Title"]
 #
 # Options:
-#   --file PATH       Path to .docx file (default: active document)
+#   --file PATH       Path to .docx file (default: active document, macOS only)
 #   --start N         Starting paragraph index (default: 0)
 #   --count N         Number of paragraphs to read (default: 50, max: 200)
 #   --heading TEXT    Read all paragraphs under this heading
@@ -29,16 +29,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [ -n "$HEADING" ]; then
-  osascript -l JavaScript <<JXAEOF
+case "$(uname -s)" in
+  Darwin)
+    FILE_ARG=$([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null")
+    if [ -n "$HEADING" ]; then
+      osascript -l JavaScript <<JXAEOF
 $(cat "$SCRIPT_DIR/lib/word-jxa.js")
 
-readByHeading($([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null"), "$HEADING");
+readByHeading($FILE_ARG, "$HEADING");
 JXAEOF
-else
-  osascript -l JavaScript <<JXAEOF
+    else
+      osascript -l JavaScript <<JXAEOF
 $(cat "$SCRIPT_DIR/lib/word-jxa.js")
 
-readSection($([ -n "$FILE_PATH" ] && echo "\"$FILE_PATH\"" || echo "null"), $START, $COUNT);
+readSection($FILE_ARG, $START, $COUNT);
 JXAEOF
-fi
+    fi
+    ;;
+  *)
+    if [ -z "$FILE_PATH" ]; then
+      echo '{"error": "File path required on this platform"}' >&2
+      exit 1
+    fi
+    if [ -n "$HEADING" ]; then
+      python3 "$SCRIPT_DIR/lib/word-docx.py" readByHeading "$FILE_PATH" "$HEADING"
+    else
+      python3 "$SCRIPT_DIR/lib/word-docx.py" readSection "$FILE_PATH" "$START" "$COUNT"
+    fi
+    ;;
+esac
