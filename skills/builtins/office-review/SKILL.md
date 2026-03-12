@@ -65,6 +65,23 @@ Use this to check terminology consistency.
 ```
 Returns: all comments with author, date, text, and scope.
 
+### `word-add-comment` — Add review comments
+```bash
+# Single comment:
+./scripts/word-add-comment.sh --index 42 --text "Inconsistent terminology" [--file path.docx]
+
+# Batch (multiple comments at once):
+./scripts/word-add-comment.sh --batch '[{"paraIndex":42,"commentText":"Fix this"},{"paraIndex":108,"commentText":"Rephrase"}]'
+```
+Adds comments to specific paragraphs by index. Use batch mode for efficiency.
+
+### `word-add-revision` — Add tracked changes
+```bash
+./scripts/word-add-revision.sh --index 42 --old "original text" --new "revised text" [--file path.docx]
+```
+Enables Track Changes and performs a find-replace within the specified paragraph.
+The change appears as a tracked revision in Word's review mode.
+
 ## Review Workflow
 
 For a large document consistency review:
@@ -74,6 +91,8 @@ For a large document consistency review:
 3. **Read section by section** → chunk through the document (50-100 paragraphs at a time)
 4. **Search for terms** → verify terminology consistency across the document
 5. **Read comments** → check for unresolved review comments
+6. **Add comments** → mark inconsistencies found (use batch mode for efficiency)
+7. **Add revisions** → suggest text changes as tracked revisions
 
 ## Error Codes
 

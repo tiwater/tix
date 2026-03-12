@@ -290,3 +290,165 @@ function getComments(filePath) {
     comments,
   }, null, 2);
 }
+
+/**
+ * Add a comment to a specific paragraph.
+ * @param {string|null} filePath - path to .docx or null for active doc
+ * @param {number} paraIndex - paragraph index to attach the comment to
+ * @param {string} commentText - the comment text
+ * @param {string} [author] - optional author name (default: "TiClaw Review")
+ */
+function addComment(filePath, paraIndex, commentText, author) {
+  const word = getWordApp();
+  const doc = getDocument(filePath || null);
+  const paragraphs = doc.paragraphs();
+  const total = paragraphs.length;
+  const idx = parseInt(paraIndex, 10);
+
+  if (isNaN(idx) || idx < 0 || idx >= total) {
+    return JSON.stringify({ error: `Paragraph index ${paraIndex} out of range (0-${total - 1}).` });
+  }
+
+  const para = paragraphs[idx];
+  const range = para.textObject;
+
+  // Add comment via Word's make command
+  const comment = word.Comment({
+    commentText: commentText || '',
+  });
+  doc.comments.push(comment);
+
+  // Attach to paragraph range — Word JXA uses makeCommentBy
+  try {
+    word.createNewComment(range, {
+      commentText: commentText || '',
+    });
+  } catch {
+    // Fallback: use the Word object model directly
+    try {
+      const paraRange = doc.createRange({
+        start: para.startOfContent(),
+        end: para.endOfContent(),
+      });
+      paraRange.addComment({ commentText: commentText || '' });
+    } catch {
+      // Final fallback: use the paragraphs content range
+      word.doJavaScript(`
+        var para = ActiveDocument.Paragraphs(${idx + 1});
+        ActiveDocument.Comments.Add(para.Range, "${(commentText || '').replace(/"/g, '\\"')}");
+      `);
+    }
+  }
+
+  return JSON.stringify({
+    ok: true,
+    paragraphIndex: idx,
+    commentText: commentText,
+    paragraphPreview: para.content().trim().substring(0, 100),
+  }, null, 2);
+}
+
+/**
+ * Batch add multiple comments at once.
+ * @param {string|null} filePath
+ * @param {string} itemsJson - JSON array of {paraIndex, commentText}
+ */
+function addCommentsBatch(filePath, itemsJson) {
+  const word = getWordApp();
+  const doc = getDocument(filePath || null);
+  const paragraphs = doc.paragraphs();
+  const total = paragraphs.length;
+
+  let items;
+  try { items = JSON.parse(itemsJson); } catch {
+    return JSON.stringify({ error: 'Invalid JSON for items.' });
+  }
+
+  const results = [];
+  for (const item of items) {
+    const idx = parseInt(item.paraIndex, 10);
+    if (isNaN(idx) || idx < 0 || idx >= total) {
+      results.push({ paraIndex: idx, ok: false, error: 'out of range' });
+      continue;
+    }
+
+    try {
+      word.doJavaScript(`
+        var para = ActiveDocument.Paragraphs(${idx + 1});
+        ActiveDocument.Comments.Add(para.Range, "${(item.commentText || '').replace(/"/g, '\\"').replace(/\n/g, '\\n')}");
+      `);
+      results.push({ paraIndex: idx, ok: true });
+    } catch (e) {
+      results.push({ paraIndex: idx, ok: false, error: String(e) });
+    }
+  }
+
+  return JSON.stringify({
+    total: items.length,
+    succeeded: results.filter(r => r.ok).length,
+    failed: results.filter(r => !r.ok).length,
+    results,
+  }, null, 2);
+}
+
+/**
+ * Enable tracked changes (revisions) in the document.
+ */
+function enableTrackedChanges(filePath) {
+  const word = getWordApp();
+  const doc = getDocument(filePath || null);
+
+  try {
+    word.doJavaScript('ActiveDocument.TrackRevisions = true;');
+  } catch {
+    // Some versions need different API
+  }
+
+  return JSON.stringify({ ok: true, message: 'Track changes enabled.' });
+}
+
+/**
+ * Replace text in a paragraph as a tracked change (revision).
+ * Requires tracked changes to be enabled.
+ * @param {string|null} filePath
+ * @param {number} paraIndex - paragraph to modify
+ * @param {string} oldText - text to find within the paragraph
+ * @param {string} newText - replacement text
+ */
+function addRevision(filePath, paraIndex, oldText, newText) {
+  const word = getWordApp();
+  const doc = getDocument(filePath || null);
+  const paragraphs = doc.paragraphs();
+  const total = paragraphs.length;
+  const idx = parseInt(paraIndex, 10);
+
+  if (isNaN(idx) || idx < 0 || idx >= total) {
+    return JSON.stringify({ error: `Paragraph index ${paraIndex} out of range (0-${total - 1}).` });
+  }
+
+  // Enable track changes
+  try {
+    word.doJavaScript('ActiveDocument.TrackRevisions = true;');
+  } catch {}
+
+  const escapedOld = (oldText || '').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  const escapedNew = (newText || '').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+
+  try {
+    word.doJavaScript(`
+      var para = ActiveDocument.Paragraphs(${idx + 1});
+      var rng = para.Range;
+      rng.Find.Execute("${escapedOld}", false, false, false, false, false, true, 0, false, "${escapedNew}", 2);
+    `);
+  } catch (e) {
+    return JSON.stringify({ error: `Revision failed: ${String(e)}` });
+  }
+
+  return JSON.stringify({
+    ok: true,
+    paragraphIndex: idx,
+    oldText,
+    newText,
+  }, null, 2);
+}
+
