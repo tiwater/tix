@@ -525,6 +525,52 @@ html, body {
   border-color: var(--accent);
 }
 
+.skills-section {
+  margin-bottom: 20px;
+}
+
+.skills-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.skills-empty-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+.skill-card-available {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.skill-card-available:hover {
+  opacity: 1;
+}
+
+.btn-enable {
+  background: var(--green, #22c55e);
+  color: #fff;
+  border: none;
+  padding: 5px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+.btn-enable:hover {
+  opacity: 0.85;
+}
+
 .skill-info {
   display: flex;
   flex-direction: column;

@@ -776,46 +776,80 @@
           <button class="btn-sm" onclick={fetchSkills}>↻ Refresh</button>
         </div>
       </div>
-      <div class="skills-grid">
-        {#if skillsLoading}
-          <div class="empty-state">
-            <div class="empty-state-icon">⏳</div>
-            <div class="empty-state-text">Loading skills…</div>
-          </div>
-        {:else if skills.length === 0}
-          <div class="empty-state">
-            <div class="empty-state-icon">🧩</div>
-            <div class="empty-state-text">No skills discovered. Add SKILL.md files to your skills directories.</div>
-          </div>
-        {:else}
-          {#each skills as skill}
-            <div class="skill-card">
-              <div class="skill-info">
-                <div class="skill-name">{skill.name}</div>
-                <div class="skill-desc">{skill.description || 'No description'}</div>
-                <div class="skill-meta">
-                  <span class="skill-tag">v{skill.version || '?'}</span>
-                  <span class="skill-tag">L{skill.permissionLevel}</span>
-                  {#if skill.source}
-                    <span class="skill-tag">{skill.source}</span>
-                  {/if}
-                  {#if skill.installed}
-                    <span class="skill-tag" style="color:var(--green)">installed</span>
-                  {/if}
+
+      {#if skillsLoading}
+        <div class="empty-state">
+          <div class="empty-state-icon">⏳</div>
+          <div class="empty-state-text">Loading skills…</div>
+        </div>
+      {:else if skills.length === 0}
+        <div class="empty-state">
+          <div class="empty-state-icon">🧩</div>
+          <div class="empty-state-text">No skills discovered. Add SKILL.md files to your skills directories.</div>
+        </div>
+      {:else}
+        {@const installedSkills = skills.filter(s => s.installed)}
+        {@const availableSkills = skills.filter(s => !s.installed)}
+
+        <!-- Installed Skills -->
+        <div class="skills-section">
+          <h3 class="skills-section-title">Installed</h3>
+          {#if installedSkills.length === 0}
+            <div class="skills-empty-hint">No skills installed yet. Enable one from Available below.</div>
+          {:else}
+            <div class="skills-grid">
+              {#each installedSkills as skill}
+                <div class="skill-card">
+                  <div class="skill-info">
+                    <div class="skill-name">{skill.name}</div>
+                    <div class="skill-desc">{skill.description || 'No description'}</div>
+                    <div class="skill-meta">
+                      <span class="skill-tag">v{skill.version || '?'}</span>
+                      <span class="skill-tag">L{skill.permissionLevel}</span>
+                      {#if skill.source}
+                        <span class="skill-tag">{skill.source}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <label class="toggle">
+                    <input
+                      type="checkbox"
+                      checked={skill.enabled}
+                      onchange={() => toggleSkill(skill.name, skill.enabled)}
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
-              </div>
-              <label class="toggle">
-                <input
-                  type="checkbox"
-                  checked={skill.enabled}
-                  onchange={() => toggleSkill(skill.name, skill.enabled)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
+              {/each}
             </div>
-          {/each}
+          {/if}
+        </div>
+
+        <!-- Available Skills -->
+        {#if availableSkills.length > 0}
+          <div class="skills-section">
+            <h3 class="skills-section-title">Available</h3>
+            <div class="skills-grid">
+              {#each availableSkills as skill}
+                <div class="skill-card skill-card-available">
+                  <div class="skill-info">
+                    <div class="skill-name">{skill.name}</div>
+                    <div class="skill-desc">{skill.description || 'No description'}</div>
+                    <div class="skill-meta">
+                      <span class="skill-tag">v{skill.version || '?'}</span>
+                      <span class="skill-tag">L{skill.permissionLevel}</span>
+                      {#if skill.source}
+                        <span class="skill-tag">{skill.source}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <button class="btn-sm btn-enable" onclick={() => toggleSkill(skill.name, false)}>Enable</button>
+                </div>
+              {/each}
+            </div>
+          </div>
         {/if}
-      </div>
+      {/if}
 
     {:else if activeTab === 'claw'}
       <!-- Claw View -->
