@@ -18,12 +18,6 @@ services:
         value: "10000"
       - key: ANTHROPIC_API_KEY
         sync: false # Set in Render Dashboard
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: MINIMAX_API_KEY
-        sync: false
       - key: OPENROUTER_API_KEY
         sync: false
 
