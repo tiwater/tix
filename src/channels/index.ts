@@ -14,6 +14,9 @@ import './acp.js';
 // http / SSE (web UI)
 import './http.js';
 
+// hub-client
+import './hub-client.js';
+
 // gmail
 
 // slack

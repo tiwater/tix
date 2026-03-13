@@ -32,13 +32,27 @@ TiClaw is a **mind builder**. It focuses on:
 - **🚀 PR Pipeline:** Seamless transition from "Issue Solved" to "PR Created" with automated context-aware descriptions (when configured).
 - **🔐 TOFU Enrollment:** Runtime-generated one-time token + out-of-band pairing, with fingerprint binding and trust-state enforcement.
 
+## 📂 Structure & Workspaces (The "Brain vs. Hands")
+
+TiClaw separates an agent's internal logic ("Brain") from its operational workspace ("Hands"):
+
+-   **The Brain (Logic/Persona):** `~/.ticlaw/agents/[agent_id]/`
+    -   `SOUL.md`: Personality and behavioral core.
+    -   `IDENTITY.md`: Fixed identity and background.
+    -   `USER.md`: Known user preferences and context.
+    -   `MEMORY.md`: Long-term facts and preferences.
+    -   `agent-config.json`: Agent-specific settings (e.g., custom `workspace` path).
+    -   `logs/`: Local session metadata and logs.
+
+-   **The Hands (Operations/Workspace):** Each agent operates in its own dedicated directory (e.g., `~/workspace-dev/`). All file operations, git clones, and task executions are confined to this workspace to prevent cluttering the "Brain" and cross-contamination between agents.
+
 ## 🚀 Quick Start
 
 ```bash
 git clone https://github.com/tiwater/ticlaw.git
 cd ticlaw
 pnpm install
-# Setup config: ~/ticlaw/config.yaml (channels: discord/feishu, llm, etc.)
+# Setup config: ~/.ticlaw/config.yaml (channels: discord/feishu, llm, etc.)
 pnpm start
 ```
 
@@ -71,6 +85,29 @@ TiClaw operates on a **Command -> Factory -> Relay** loop:
 5.  **Delivery:** PR is submitted to GitHub.
 
 For a complete guide on how to operate the system, see the [User Guide](docs/USER_GUIDE.md).
+
+## Configuration
+
+TiClaw uses a local configuration file `~/.ticlaw/config.yaml` to manage its settings, including upstream hub connections.
+
+### Hub Client Mode
+
+If you want TiClaw to connect to a central Hub (Gateway), configure the following in `~/.ticlaw/config.yaml`:
+
+```yaml
+hub_url: "ws://your-hub-gateway.com"
+trust_token: "your-enrollment-token"
+reporting_interval: 60000
+```
+
+- `hub_url`: The WebSocket URL of the central gateway.
+- `trust_token`: (Optional) An enrollment token to automatically trust the claw on the hub.
+- `reporting_interval`: (Optional) How often (in ms) to report status to the hub. Default is 60000.
+
+Environment variables can also be used to override these settings:
+- `HUB_URL`
+- `HUB_TRUST_TOKEN`
+- `HUB_REPORTING_INTERVAL`
 
 ## Enrollment (TOFU + Out-of-Band Verification)
 

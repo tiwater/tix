@@ -66,7 +66,7 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 
 // Absolute paths for TiClaw data management
 const HOME_DIR = process.env.HOME || os.homedir();
-export const TICLAW_HOME = path.join(HOME_DIR, 'ticlaw');
+export const TICLAW_HOME = path.join(HOME_DIR, '.ticlaw');
 
 // Ensure base directory exists
 if (!fs.existsSync(TICLAW_HOME)) {
@@ -78,7 +78,7 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return value === 'true' || value === '1' || value === 'yes';
 }
 
-function expandHomePath(inputPath: string): string {
+export function expandHomePath(inputPath: string): string {
   if (inputPath === '~') return HOME_DIR;
   if (inputPath.startsWith('~/')) {
     return path.join(HOME_DIR, inputPath.slice(2));
@@ -100,28 +100,20 @@ function parsePathList(
 }
 
 export const MOUNT_ALLOWLIST_PATH = path.join(
-  HOME_DIR,
-  '.config',
-  'ticlaw',
+  TICLAW_HOME,
   'mount-allowlist.json',
 );
 export const STORE_DIR = path.join(TICLAW_HOME, 'store');
-export const AGENTS_DIR = (() => {
-  const agents = path.join(TICLAW_HOME, 'agents');
-  const groups = path.join(TICLAW_HOME, 'groups');
-  if (!fs.existsSync(agents) && fs.existsSync(groups)) {
-    fs.renameSync(groups, agents);
-  }
-  if (!fs.existsSync(agents)) fs.mkdirSync(agents, { recursive: true });
-  return agents;
-})();
+export const AGENTS_DIR = path.join(TICLAW_HOME, 'agents');
+
+if (!fs.existsSync(AGENTS_DIR)) {
+  fs.mkdirSync(AGENTS_DIR, { recursive: true });
+}
+
 export const DATA_DIR = path.join(TICLAW_HOME, 'data');
 export const SKILLS_HOME = path.join(TICLAW_HOME, 'skills');
 export const SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
 export const SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
-
-/** @deprecated Use AGENTS_DIR. Kept for migration. */
-export const GROUPS_DIR = AGENTS_DIR;
 
 /** OpenClaw-compatible mind files (boot-md order). Evolved through conversation. */
 export const AGENT_MIND_FILES = [
@@ -133,11 +125,6 @@ export const AGENT_MIND_FILES = [
 
 /** Legacy: single memory file (pre–OpenClaw split). Kept for migration. */
 export const AGENT_MEMORY_FILENAME = 'MEMORY.md';
-
-/** @deprecated Use AGENT_MIND_FILES. */
-export const GROUP_MIND_FILES = AGENT_MIND_FILES;
-/** @deprecated Use AGENT_MEMORY_FILENAME. */
-export const GROUP_MEMORY_FILENAME = AGENT_MEMORY_FILENAME;
 
 export interface SkillsRuntimeConfig {
   directories: string[];
@@ -293,10 +280,25 @@ export const TASK_DEFAULT_RETRY_BACKOFF_MS = parseInt(
 // --- Convention-based agent paths ---
 export function agentPaths(agentId: string) {
   const base = path.join(AGENTS_DIR, agentId);
+  const configPath = path.join(base, 'agent-config.json');
+
+  let workspace = path.join(base, 'workspace');
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config.workspace) {
+        workspace = expandHomePath(config.workspace);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     base,
-    config: path.join(base, 'config'),
-    workspace: path.join(base, 'workspace'),
+    config: configPath,
+    workspace,
     logs: path.join(base, 'logs'),
+    brain: base,
   };
 }

@@ -166,16 +166,18 @@ describe('Production Gate: TOFU Enrollment', () => {
   });
 
   it('generates enrollment token and verifies it', () => {
-    const runtimeId = 'rt-enroll-test';
-    const created = createEnrollmentToken({ runtimeId });
+    const clawId = 'rt-enroll-test';
+    const created = createEnrollmentToken({ clawId });
 
     expect(created.token).toBeTruthy();
-    expect(created.runtime_id).toBe(runtimeId);
+    // Use the normalized clawId from the state to ensure consistency
+    const state = readEnrollmentState(clawId);
+    expect(created.claw_id).toBe(state.claw_id);
 
     const result = verifyEnrollmentToken({
       token: created.token,
-      runtimeFingerprint: created.runtime_fingerprint,
-      runtimeId,
+      clawFingerprint: created.claw_fingerprint,
+      clawId: created.claw_id,
     });
     expect(result.ok).toBe(true);
     expect(result.code).toBe('ok');
@@ -184,29 +186,29 @@ describe('Production Gate: TOFU Enrollment', () => {
   });
 
   it('rejects incorrect token', () => {
-    const runtimeId = 'rt-enroll-bad';
-    createEnrollmentToken({ runtimeId });
+    const clawId = 'rt-enroll-bad';
+    createEnrollmentToken({ clawId });
 
     const result = verifyEnrollmentToken({
       token: 'wrong-token',
-      runtimeFingerprint: 'wrong-fingerprint',
-      runtimeId,
+      clawFingerprint: 'wrong-fingerprint',
+      clawId,
     });
     expect(result.ok).toBe(false);
     expect(result.state.failed_attempts).toBeGreaterThan(0);
   });
 
   it('revokes enrollment via setTrustState', () => {
-    const runtimeId = 'rt-enroll-revoke';
-    const created = createEnrollmentToken({ runtimeId });
+    const clawId = 'rt-enroll-revoke';
+    const created = createEnrollmentToken({ clawId });
     verifyEnrollmentToken({
       token: created.token,
-      runtimeFingerprint: created.runtime_fingerprint,
-      runtimeId,
+      clawFingerprint: created.claw_fingerprint,
+      clawId,
     });
 
-    setTrustState('revoked', { runtimeId });
-    const revoked = readEnrollmentState(runtimeId);
+    setTrustState('revoked', { clawId });
+    const revoked = readEnrollmentState(clawId);
     expect(revoked.trust_state).toBe('revoked');
   });
 });

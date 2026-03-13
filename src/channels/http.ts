@@ -28,6 +28,7 @@ import http from 'http';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { URL } from 'url';
+import { WebSocketServer, WebSocket } from 'ws';
 
 import {
   ACP_ENABLED,
@@ -73,28 +74,35 @@ import type {
   SessionContext,
 } from '../core/types.js';
 
+import { app } from '../core/app.js';
+
 const WEB_JID_PREFIX = 'web:';
 
-const sseClients = new Map<string, Set<http.ServerResponse>>();
-const activeHttpTasks = new Map<
-  string,
-  {
-    agent_id: string;
-    session_id: string;
-    task_id: string;
+const sseClients = new Map<string, Set<http.ServerResponse | WebSocket>>();
+
+// Hook into global app and dispatcher
+app.on('broadcast', (data: { chatJid: string, event: object }) => {
+  if (data.chatJid.startsWith(WEB_JID_PREFIX)) {
+    broadcastToChat(data.chatJid, data.event);
   }
->();
+});
+
+app.on('send', async (data: { jid: string, text: string }) => {
+  if (data.jid.startsWith(WEB_JID_PREFIX)) {
+    broadcastToChat(data.jid, { type: 'message', chat_jid: data.jid, text: data.text });
+  }
+});
 
 function buildHttpSessionId(agentId: string, sessionId: string): string {
   return `${WEB_JID_PREFIX}${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
 }
 
-function addClient(chatJid: string, res: http.ServerResponse): void {
+function addClient(chatJid: string, res: http.ServerResponse | WebSocket): void {
   if (!sseClients.has(chatJid)) sseClients.set(chatJid, new Set());
   sseClients.get(chatJid)!.add(res);
 }
 
-function removeClient(chatJid: string, res: http.ServerResponse): void {
+function removeClient(chatJid: string, res: http.ServerResponse | WebSocket): void {
   sseClients.get(chatJid)?.delete(res);
 }
 
@@ -102,11 +110,17 @@ export function broadcastToChat(chatJid: string, event: object): void {
   const clients = sseClients.get(chatJid);
   if (!clients || clients.size === 0) return;
   const payload = `data: ${JSON.stringify(event)}\n\n`;
-  for (const res of clients) {
+  const wsPayload = JSON.stringify(event);
+
+  for (const client of clients) {
     try {
-      res.write(payload);
+      if (client instanceof http.ServerResponse) {
+        client.write(payload);
+      } else {
+        client.send(wsPayload);
+      }
     } catch {
-      clients.delete(res);
+      clients.delete(client);
     }
   }
 }
@@ -199,6 +213,7 @@ export class HttpChannel implements Channel {
   name = 'http';
 
   private server: http.Server | null = null;
+  private wss: WebSocketServer | null = null;
   private opts: ChannelOpts;
   private _connected = false;
 
@@ -211,16 +226,93 @@ export class HttpChannel implements Channel {
       void this.handleRequest(req, res);
     });
 
+    this.wss = new WebSocketServer({ server: this.server });
+    this.wss.on('connection', (ws, req) => {
+      this.handleWebSocket(ws, req);
+    });
+
     await new Promise<void>((resolve, reject) => {
       this.server!.listen(HTTP_PORT, () => resolve());
       this.server!.on('error', reject);
     });
 
     this._connected = true;
-    logger.info({ port: HTTP_PORT }, 'HTTP SSE channel listening');
+    logger.info({ port: HTTP_PORT }, 'HTTP/WS channel listening');
     console.log(
-      `\n  HTTP SSE: http://localhost:${HTTP_PORT}/runs/{id}/stream\n`,
+      `\n  HTTP SSE: http://localhost:${HTTP_PORT}/runs/{id}/stream\n  WebSocket: ws://localhost:${HTTP_PORT}/\n`,
     );
+  }
+
+  private handleWebSocket(ws: WebSocket, _req: http.IncomingMessage): void {
+    let chatJid: string | null = null;
+
+    ws.on('message', async (data) => {
+      try {
+        const payload = JSON.parse(data.toString());
+        const { type, agent_id, session_id, content, sender, sender_name } = payload;
+
+        if (type === 'auth') {
+          if (!agent_id || !session_id) {
+            ws.send(JSON.stringify({ type: 'error', message: 'agent_id and session_id required' }));
+            return;
+          }
+          chatJid = buildHttpSessionId(agent_id, session_id);
+          
+          // Check trust status
+          const enrollState = readEnrollmentState(CLAW_HOSTNAME || undefined);
+          if (enrollState.trust_state !== 'trusted') {
+             ws.send(JSON.stringify({ type: 'error', error: 'claw_not_trusted', trust_state: enrollState.trust_state }));
+             return;
+          }
+
+          addClient(chatJid, ws);
+          ws.send(JSON.stringify({ type: 'authenticated', chat_jid: chatJid }));
+          return;
+        }
+
+        if (type === 'message') {
+          if (!chatJid) {
+            ws.send(JSON.stringify({ type: 'error', message: 'not authenticated' }));
+            return;
+          }
+
+          if (!content) return;
+
+          const taskId = payload.task_id || randomUUID();
+          const timestamp = new Date().toISOString();
+
+          // Ensure session and project
+          ensureSession({
+            agent_id,
+            session_id,
+            channel: 'http',
+            agent_name: agent_id,
+          });
+
+          const msg: NewMessage = {
+            id: `ws-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            chat_jid: chatJid,
+            sender: sender || 'ws-user',
+            sender_name: sender_name || 'WS User',
+            content,
+            timestamp,
+            is_from_me: false,
+            agent_id,
+            session_id,
+            task_id: taskId,
+          };
+
+          this.opts.onMessage(chatJid, msg);
+          ws.send(JSON.stringify({ type: 'accepted', id: msg.id, task_id: taskId }));
+        }
+      } catch (err) {
+        logger.error({ err }, 'WS message handling failed');
+      }
+    });
+
+    ws.on('close', () => {
+      if (chatJid) removeClient(chatJid, ws);
+    });
   }
 
   private async handleRequest(
@@ -254,13 +346,15 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Mind Files (personalization: SOUL, MEMORY, IDENTITY, USER) ──
+      // ── Mind Files (SOUL, MEMORY, IDENTITY, USER) ──
 
       if (pathname === '/api/mind/files' && req.method === 'GET') {
+        const agentId = url.searchParams.get('agent_id');
+        const baseDir = agentId ? agentPaths(agentId).base : AGENTS_DIR;
         const MIND_FILES = ['SOUL.md', 'MEMORY.md', 'IDENTITY.md', 'USER.md'];
         const files: Record<string, { content: string; mtimeMs: number }> = {};
         for (const name of MIND_FILES) {
-          const filePath = path.join(AGENTS_DIR, name);
+          const filePath = path.join(baseDir, name);
           try {
             if (fs.existsSync(filePath)) {
               const stat = fs.statSync(filePath);
@@ -291,8 +385,8 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/enroll/status' && req.method === 'GET') {
         const state = readEnrollmentState(CLAW_HOSTNAME || undefined);
         writeJson(res, 200, {
-          claw_id: state.runtime_id,
-          fingerprint: state.runtime_fingerprint,
+          claw_id: state.claw_id,
+          fingerprint: state.claw_fingerprint,
           trust_state: state.trust_state,
           token_expires_at: state.token_expires_at || null,
           failed_attempts: state.failed_attempts,
@@ -308,7 +402,7 @@ export class HttpChannel implements Channel {
         const ttlMinutes = Number(parsed.ttl_minutes);
         const result = createEnrollmentToken({
           ttlMinutes: Number.isFinite(ttlMinutes) ? ttlMinutes : undefined,
-          runtimeId: CLAW_HOSTNAME || undefined,
+          clawId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 201, result);
         return;
@@ -317,22 +411,22 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/enroll/verify' && req.method === 'POST') {
         const parsed = await readJsonBody(req);
         const token = parsed.token;
-        const runtimeFingerprint = parsed.runtime_fingerprint;
-        if (!token || !runtimeFingerprint) {
+        const clawFingerprint = parsed.claw_fingerprint;
+        if (!token || !clawFingerprint) {
           writeProtocolError(
             res,
             400,
             'input_error',
             'bad_request',
-            'token and runtime_fingerprint are required',
+            'token and claw_fingerprint are required',
           );
           return;
         }
 
         const result = verifyEnrollmentToken({
           token,
-          runtimeFingerprint,
-          runtimeId: CLAW_HOSTNAME || undefined,
+          clawFingerprint,
+          clawId: CLAW_HOSTNAME || undefined,
         });
         if (!result.ok) {
           const statusCode =
@@ -360,7 +454,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/revoke' && req.method === 'POST') {
         const state = setTrustState('revoked', {
-          runtimeId: CLAW_HOSTNAME || undefined,
+          clawId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -368,7 +462,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/suspend' && req.method === 'POST') {
         const state = setTrustState('suspended', {
-          runtimeId: CLAW_HOSTNAME || undefined,
+          clawId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -376,7 +470,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/reenroll' && req.method === 'POST') {
         const state = setTrustState('discovered_untrusted', {
-          runtimeId: CLAW_HOSTNAME || undefined,
+          clawId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -517,11 +611,6 @@ export class HttpChannel implements Channel {
           channel: 'http',
           agent_name: agentId,
         });
-        activeHttpTasks.set(chatJid, {
-          agent_id: agentId,
-          session_id: sessionId,
-          task_id: taskId,
-        });
 
         this.opts.onChatMetadata(chatJid, timestamp, undefined, 'http', false);
 
@@ -538,7 +627,9 @@ export class HttpChannel implements Channel {
           task_id: taskId,
         };
 
-        this.opts.onMessage(chatJid, msg);
+        // Dispatch through our centralized global architecture
+        void app.dispatcher.dispatch(chatJid, msg);
+
         writeJson(res, 202, {
           ok: true,
           agent_id: agentId,
@@ -803,7 +894,7 @@ export class HttpChannel implements Channel {
           hostname: CLAW_HOSTNAME,
           enrollment: {
             trust_state: enrollment.trust_state,
-            fingerprint: enrollment.runtime_fingerprint,
+            fingerprint: enrollment.claw_fingerprint,
             trusted_at: enrollment.trusted_at,
             failed_attempts: enrollment.failed_attempts,
           },
@@ -816,7 +907,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/claw/trust' && req.method === 'POST') {
         const result = setTrustState('trusted', {
-          runtimeId: CLAW_HOSTNAME || undefined,
+          clawId: CLAW_HOSTNAME || undefined,
         });
         writeJson(res, 200, {
           ok: true,
@@ -850,21 +941,18 @@ export class HttpChannel implements Channel {
   ): Promise<void> {
     if (!text.trim()) return;
     const session = getSession(jid);
-    const activeTask = activeHttpTasks.get(jid);
     broadcastToChat(jid, {
       type: 'message',
       chat_jid: jid,
-      agent_id: activeTask?.agent_id || session?.agent_id,
-      session_id: activeTask?.session_id || session?.session_id,
-      task_id: activeTask?.task_id,
+      agent_id: session?.agent_id,
+      session_id: session?.session_id,
       text,
       embeds: options?.embeds,
     });
     logger.info(
       {
-        agent_id: activeTask?.agent_id || session?.agent_id,
-        session_id: activeTask?.session_id || session?.session_id,
-        task_id: activeTask?.task_id,
+        agent_id: session?.agent_id,
+        session_id: session?.session_id,
         chat_jid: jid,
         length: text.length,
       },
@@ -897,14 +985,17 @@ export class HttpChannel implements Channel {
     for (const clients of sseClients.values()) {
       for (const res of clients) {
         try {
-          res.end();
+          if (res instanceof http.ServerResponse) {
+            res.end();
+          } else {
+            res.close();
+          }
         } catch {
           /* ignore */
         }
       }
     }
     sseClients.clear();
-    activeHttpTasks.clear();
     logger.info('HTTP SSE channel disconnected');
   }
 }

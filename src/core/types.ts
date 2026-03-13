@@ -60,6 +60,24 @@ export interface SessionContext extends SessionRecord {
   task_id: string;
 }
 
+export type RunnerStatus = 'idle' | 'busy' | 'interrupted' | 'error';
+
+export interface RunnerActivity {
+  phase: string;
+  action?: string;
+  target?: string;
+  elapsed_ms?: number;
+}
+
+export interface RunnerState {
+  status: RunnerStatus;
+  agent_id: string;
+  session_id: string;
+  task_id?: string;
+  activity: RunnerActivity;
+  recent_logs: string[];
+}
+
 export type TaskStatus =
   | 'queued'
   | 'running'

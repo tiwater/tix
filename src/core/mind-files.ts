@@ -6,7 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { AGENTS_DIR, AGENT_MIND_FILES } from './config.js';
+import { AGENTS_DIR, AGENT_MIND_FILES, agentPaths } from './config.js';
 import { getMindState } from './db.js';
 import { scheduleSupabasePush } from '../sync/supabase-sync.js';
 import type { MindPersona } from './types.js';
@@ -36,16 +36,17 @@ function personaToSoul(persona: MindPersona): string {
  * Sync mind state (persona, memory_summary) to OpenClaw files.
  * Called after persona or memory evolves through conversation.
  */
-export function syncMindStateToFiles(): void {
+export function syncMindStateToFiles(agentId?: string): void {
   const state = getMindState();
-  if (!fs.existsSync(AGENTS_DIR)) fs.mkdirSync(AGENTS_DIR, { recursive: true });
+  const baseDir = agentId ? agentPaths(agentId).base : AGENTS_DIR;
+  if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
 
   const soul = personaToSoul(state.persona);
-  fs.writeFileSync(path.join(AGENTS_DIR, 'SOUL.md'), soul, 'utf-8');
+  fs.writeFileSync(path.join(baseDir, 'SOUL.md'), soul, 'utf-8');
 
   if (state.memory_summary?.trim()) {
     const memory = `# MEMORY\n\nLong-term facts and preferences (evolved through conversation).\n\n${state.memory_summary.trim()}\n`;
-    fs.writeFileSync(path.join(AGENTS_DIR, 'MEMORY.md'), memory, 'utf-8');
+    fs.writeFileSync(path.join(baseDir, 'MEMORY.md'), memory, 'utf-8');
   }
 
   scheduleSupabasePush();
@@ -55,8 +56,8 @@ export function syncMindStateToFiles(): void {
  * Load OpenClaw mind context for a group (boot-md order: SOUL, IDENTITY, USER, MEMORY).
  * Returns combined markdown for agent system prompt.
  */
-export function loadGroupMindContext(groupFolder?: string): string {
-  const baseDir = groupFolder ? path.join(AGENTS_DIR, groupFolder) : AGENTS_DIR;
+export function loadGroupMindContext(agentId?: string): string {
+  const baseDir = agentId ? agentPaths(agentId).base : AGENTS_DIR;
   if (!fs.existsSync(baseDir)) return '';
 
   const parts: string[] = [];

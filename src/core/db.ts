@@ -228,7 +228,15 @@ function createSchema(database: Database.Database): void {
 }
 
 export function initDatabase(): void {
+  const oldDbPath = path.join(DATA_DIR, '..', 'store', 'messages.db');
   const dbPath = path.join(STORE_DIR, 'messages.db');
+
+  if (!fs.existsSync(dbPath) && fs.existsSync(oldDbPath)) {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    fs.copyFileSync(oldDbPath, dbPath);
+    logger.info({ oldDbPath, dbPath }, 'Migrated legacy database to new location');
+  }
+
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   db = new Database(dbPath);

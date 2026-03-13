@@ -196,7 +196,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
           const e = readEnrollmentState(CLAW_HOSTNAME || undefined);
           await sendFn(
             chatJid,
-            `🔐 Enrollment status\n- claw: ${e.runtime_id}\n- fingerprint: ${e.runtime_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
+            `🔐 Enrollment status\n- claw: ${e.claw_id}\n- fingerprint: ${e.claw_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
           );
           return true;
         }
@@ -210,8 +210,8 @@ async function processMessages(chatJid: string): Promise<boolean> {
           const e = readEnrollmentState(CLAW_HOSTNAME || undefined);
           const result = verifyEnrollmentToken({
             token,
-            runtimeFingerprint: e.runtime_fingerprint,
-            runtimeId: CLAW_HOSTNAME || undefined,
+            clawFingerprint: e.claw_fingerprint,
+            clawId: CLAW_HOSTNAME || undefined,
           });
 
           if (result.ok) {

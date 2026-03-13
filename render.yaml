@@ -14,10 +14,18 @@ services:
         value: "22"
       - key: TICLAW_HOME
         value: "/opt/render/project/src"
+      - key: CLAW_HOSTNAME
+        sync: false
       - key: HTTP_PORT
         value: "10000"
       - key: OPENROUTER_API_KEY
         sync: false # Set in Render Dashboard
+      - key: HUB_URL
+        sync: false # Set in Render Dashboard for Hub Client Mode
+      - key: HUB_TRUST_TOKEN
+        sync: false # Set in Render Dashboard for Hub Client Mode
+      - key: HUB_REPORTING_INTERVAL
+        value: "60000"
 
   # 2. Frontend (SvelteKit with adapter-node)
   - type: web
