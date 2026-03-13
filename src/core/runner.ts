@@ -21,21 +21,30 @@ const require = createRequire(import.meta.url);
 
 /**
  * Find the built-in Claude Agent SDK CLI executable.
+ * Uses require.resolve to follow pnpm symlinks reliably.
  */
 function getClaudeCliPath(): string {
-  // SDK requires a path ending with .js/.mjs/.ts/.tsx to use node mode
-  // Use the flat node_modules path after npm install
-  const cliPath = path.join(process.cwd(), 'node_modules/@anthropic-ai/claude-agent-sdk/cli.js');
-  console.log('[DEBUG getClaudeCliPath] cwd:', process.cwd());
-  console.log('[DEBUG getClaudeCliPath] cliPath:', cliPath);
-  console.log('[DEBUG getClaudeCliPath] exists:', fs.existsSync(cliPath));
   try {
-    fs.accessSync(cliPath, fs.constants.X_OK);
-    console.log('[DEBUG getClaudeCliPath] X_OK check passed');
+    // Resolve the SDK's main entry, then find cli.js adjacent to it
+    const sdkEntry = require.resolve('@anthropic-ai/claude-agent-sdk');
+    const sdkDir = path.dirname(sdkEntry);
+    const cliPath = path.join(sdkDir, 'cli.js');
+    if (fs.existsSync(cliPath)) {
+      logger.debug({ cliPath }, 'Claude CLI found via require.resolve');
+      return cliPath;
+    }
   } catch (e: any) {
-    console.log('[DEBUG getClaudeCliPath] X_OK check failed:', e.message);
+    logger.debug({ err: e.message }, 'require.resolve fallback failed');
   }
-  if (fs.existsSync(cliPath)) return cliPath;
+
+  // Fallback: try cwd-relative (works in flat node_modules)
+  const cwdPath = path.join(process.cwd(), 'node_modules/@anthropic-ai/claude-agent-sdk/cli.js');
+  if (fs.existsSync(cwdPath)) {
+    logger.debug({ cliPath: cwdPath }, 'Claude CLI found via cwd fallback');
+    return cwdPath;
+  }
+
+  logger.error('Claude Agent SDK cli.js not found');
   return '';
 }
 
@@ -88,7 +97,7 @@ export class AgentRunner {
     }
 
     const paths = agentPaths(this.state.agent_id);
-    this.initBrain(paths.base);
+    this.initBrain(paths.base, paths.workspace);
 
     logger.info({ agent_id: this.state.agent_id, task_id: this.state.task_id }, 'AgentRunner: Starting task loop');
     await this.notifyState();
@@ -178,9 +187,12 @@ export class AgentRunner {
   /**
    * Initializes the "Brain" directory structure and essential files.
    */
-  private initBrain(baseDir: string): void {
+  private initBrain(baseDir: string, workspaceDir: string): void {
     if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
     
+    // Ensure workspace directory exists (SDK spawns cli.js with this as cwd)
+    if (!fs.existsSync(workspaceDir)) fs.mkdirSync(workspaceDir, { recursive: true });
+
     // Ensure memory journal directory exists
     const memoryDir = path.join(baseDir, 'memory');
     if (!fs.existsSync(memoryDir)) fs.mkdirSync(memoryDir, { recursive: true });

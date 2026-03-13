@@ -36,6 +36,7 @@ async function testEndToEnd() {
     sender: 'user',
     sender_name: 'User',
     content: '请先 sleep 10 秒，然后告诉我你现在在做什么。',
+    timestamp: new Date().toISOString(),
     agent_id: agentId,
     session_id: 'session-123'
   };
@@ -51,6 +52,7 @@ async function testEndToEnd() {
       sender: 'user',
       sender_name: 'User',
       content: 'STOP',
+      timestamp: new Date().toISOString(),
       agent_id: agentId,
       session_id: 'session-123'
     };

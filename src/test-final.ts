@@ -37,6 +37,7 @@ async function testFinalEndToEnd() {
     sender: 'user',
     sender_name: 'Architect',
     content: '请告诉我你当前的大脑目录下有哪些文件，并确认 memory/ 目录是否已创建。',
+    timestamp: new Date().toISOString(),
     agent_id: agentId,
     session_id: 'final-session-999'
   };
