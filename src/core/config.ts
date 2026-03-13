@@ -212,8 +212,12 @@ export const MINIMAX_BASE_URL =
   envConfig.MINIMAX_BASE_URL ||
   'https://api.minimax.io/anthropic';
 
-/** Default model name. Uses MiniMax-M2.5 when MINIMAX_API_KEY is set, else undefined (claude-code default). */
-export const DEFAULT_LLM_MODEL = MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined;
+/** Default model name. Priority: MiniMax > OpenRouter (full name) > Claude default. */
+export const DEFAULT_LLM_MODEL = MINIMAX_API_KEY
+  ? 'MiniMax-M2.5'
+  : OPENROUTER_API_KEY && !ANTHROPIC_API_KEY
+    ? 'claude-sonnet-4-20250514'
+    : undefined;
 
 // Claw identity — derived from hostname, not configurable
 export const CLAW_HOSTNAME = os.hostname() || 'ticlaw-local';
@@ -282,7 +286,7 @@ export function agentPaths(agentId: string) {
   const base = path.join(AGENTS_DIR, agentId);
   const configPath = path.join(base, 'agent-config.json');
 
-  let workspace = path.join(base, 'workspace');
+  let workspace = path.join(HOME_DIR, `workspace-${agentId}`);
   if (fs.existsSync(configPath)) {
     try {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
