@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { Query, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Query, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { logger } from './logger.js';
 import {
   AGENT_MIND_FILES,
@@ -14,7 +14,7 @@ import {
   agentPaths,
   TICLAW_HOME,
 } from './config.js';
-import { getSession } from './db.js';
+import { getSession } from './store.js';
 import { createRequire } from 'module';
 import { SkillsRegistry } from '../skills/registry.js';
 import type {
@@ -23,40 +23,197 @@ import type {
   RunnerStatus,
   RunnerActivity,
 } from './types.js';
+import { randomUUID, type UUID } from 'crypto';
 
 const require = createRequire(import.meta.url);
 
-/**
- * Find the built-in Claude Agent SDK CLI executable.
- * Uses require.resolve to follow pnpm symlinks reliably.
- */
+// ── Cached CLI path (resolved once) ──
+let _cachedCliPath: string | null = null;
+
 function getClaudeCliPath(): string {
+  if (_cachedCliPath !== null) return _cachedCliPath;
+
   try {
-    // Resolve the SDK's main entry, then find cli.js adjacent to it
     const sdkEntry = require.resolve('@anthropic-ai/claude-agent-sdk');
     const sdkDir = path.dirname(sdkEntry);
     const cliPath = path.join(sdkDir, 'cli.js');
     if (fs.existsSync(cliPath)) {
-      logger.debug({ cliPath }, 'Claude CLI found via require.resolve');
+      logger.debug({ cliPath }, 'Claude CLI found (cached)');
+      _cachedCliPath = cliPath;
       return cliPath;
     }
   } catch (e: any) {
     logger.debug({ err: e.message }, 'require.resolve fallback failed');
   }
 
-  // Fallback: try cwd-relative (works in flat node_modules)
   const cwdPath = path.join(
     process.cwd(),
     'node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
   );
   if (fs.existsSync(cwdPath)) {
-    logger.debug({ cliPath: cwdPath }, 'Claude CLI found via cwd fallback');
+    logger.debug({ cliPath: cwdPath }, 'Claude CLI found via cwd (cached)');
+    _cachedCliPath = cwdPath;
     return cwdPath;
   }
 
   logger.error('Claude Agent SDK cli.js not found');
+  _cachedCliPath = '';
   return '';
 }
+
+// ── Cached system prompts (per agent, invalidated by mtime) ──
+const _promptCache = new Map<string, { prompt: string; mtimeKey: string }>();
+
+function getPromptMtimeKey(baseDir: string): string {
+  let key = '';
+  for (const filename of AGENT_MIND_FILES) {
+    const p = path.join(baseDir, filename);
+    try {
+      const stat = fs.statSync(p);
+      key += `${filename}:${stat.mtimeMs};`;
+    } catch {
+      key += `${filename}:0;`;
+    }
+  }
+  const memoryDir = path.join(baseDir, 'memory');
+  try {
+    const stat = fs.statSync(memoryDir);
+    key += `memory:${stat.mtimeMs}`;
+  } catch {
+    key += 'memory:0';
+  }
+  return key;
+}
+
+// ══════════════════════════════════════════════════════════════
+// Warm Session Pool — keeps SDK subprocesses alive between msgs
+// ══════════════════════════════════════════════════════════════
+
+interface WarmSession {
+  query: Query;
+  agentId: string;
+  sessionId: string;
+  createdAt: number;
+  lastUsedAt: number;
+  /** Whether the background output loop is still running. */
+  alive: boolean;
+}
+
+/**
+ * Handlers for the currently-active run on a warm session.
+ * Set before sending a message; cleared when 'result' is received.
+ */
+interface ActiveHandler {
+  onEvent: (event: any, elapsed: number) => Promise<void>;
+  onResult: (event: any) => void;
+  startTime: number;
+  textParts: string[];
+  resolve: () => void;
+  reject: (err: Error) => void;
+}
+
+const warmSessions = new Map<string, WarmSession>();
+const activeHandlers = new Map<string, ActiveHandler>();
+
+// TTL: close idle sessions after 10 minutes
+const WARM_SESSION_TTL = 10 * 60 * 1000;
+
+// Periodic cleanup of idle sessions
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, session] of warmSessions) {
+    if (now - session.lastUsedAt > WARM_SESSION_TTL) {
+      logger.info({ key }, 'Closing idle warm session');
+      try { session.query.close(); } catch {}
+      warmSessions.delete(key);
+      activeHandlers.delete(key);
+    }
+  }
+}, 60_000);
+
+function buildSessionKey(agentId: string, sessionId: string): string {
+  return `${agentId}:${sessionId}`;
+}
+
+function buildQueryOptions(
+  systemPrompt: string,
+  workspace: string,
+  agentId: string,
+  sessionId: string,
+  taskId: string,
+) {
+  const cliPath = getClaudeCliPath();
+  return {
+    systemPrompt,
+    cwd: workspace,
+    allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
+    permissionMode: 'acceptEdits' as const,
+    model: DEFAULT_LLM_MODEL,
+    settingSources: [] as any[],
+    includePartialMessages: true,
+    pathToClaudeCodeExecutable: cliPath,
+    persistSession: false,
+    env: {
+      ...process.env,
+      ...(LLM_API_KEY && !ANTHROPIC_API_KEY
+        ? {
+            ANTHROPIC_API_KEY: LLM_API_KEY,
+            ...(LLM_BASE_URL ? { ANTHROPIC_BASE_URL: LLM_BASE_URL } : {}),
+          }
+        : {
+            ANTHROPIC_API_KEY: ANTHROPIC_API_KEY || '',
+          }),
+      TICLAW_AGENT_ID: agentId,
+      TICLAW_SESSION_ID: sessionId,
+      TICLAW_TASK_ID: taskId,
+    } as Record<string, string>,
+  };
+}
+
+/**
+ * Start the background output loop for a warm session.
+ * Reads from the query's async iterable and dispatches to the active handler.
+ */
+function startOutputLoop(key: string, warm: WarmSession): void {
+  (async () => {
+    try {
+      for await (const msg of warm.query) {
+        const handler = activeHandlers.get(key);
+        if (!handler) continue; // No active run — skip (shouldn't happen)
+
+        const event = msg as any;
+        await handler.onEvent(event, Date.now() - handler.startTime);
+
+        if (event.type === 'assistant') {
+          const blocks = event.message?.content || [];
+          for (const block of blocks) {
+            if (block.type === 'text' && block.text) {
+              handler.textParts.push(block.text);
+            }
+          }
+        }
+
+        if (event.type === 'result') {
+          handler.onResult(event);
+        }
+      }
+    } catch (err: any) {
+      logger.debug({ key, err: err.message }, 'Warm session output loop ended');
+      const handler = activeHandlers.get(key);
+      if (handler) {
+        handler.reject(err);
+        activeHandlers.delete(key);
+      }
+    } finally {
+      warm.alive = false;
+      warmSessions.delete(key);
+    }
+  })();
+}
+
+// ══════════════════════════════════════════════════════════════
+// AgentRunner — Public API (unchanged interface)
+// ══════════════════════════════════════════════════════════════
 
 export interface RunnerEvents {
   onStateChange?: (state: RunnerState) => void | Promise<void>;
@@ -65,7 +222,10 @@ export interface RunnerEvents {
 
 /**
  * AgentRunner: The refined functional "Body" of a TiClaw Agent.
- * Coalesces persona management (Brain) and task execution (Hands).
+ * Keeps SDK subprocesses alive between messages for faster responses.
+ *
+ * - First message: spawns subprocess with the real prompt (cold start)
+ * - Subsequent messages: reuses the warm subprocess via streamInput()
  */
 export class AgentRunner {
   private state: RunnerState;
@@ -89,6 +249,7 @@ export class AgentRunner {
 
   /**
    * Primary entry point: Executes a user message through the Agent Loop.
+   * First call spawns the subprocess; subsequent calls reuse it via streamInput().
    */
   async run(message: string, taskId?: string): Promise<void> {
     if (this.state.status === 'busy') {
@@ -117,75 +278,101 @@ export class AgentRunner {
     );
     await this.notifyState();
 
+    const key = buildSessionKey(this.state.agent_id, this.state.session_id);
+
     try {
       const systemPrompt = this.preparePrompt(paths.base);
-      const start = Date.now();
-      const textParts: string[] = [];
+      const warm = warmSessions.get(key);
+      const isWarm = warm?.alive === true;
 
-      const cliPath = getClaudeCliPath();
-
-      const agentQuery = query({
-        prompt: message,
-        options: {
-          systemPrompt,
-          cwd: paths.workspace,
-          allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
-          permissionMode: 'acceptEdits',
-          model: DEFAULT_LLM_MODEL,
-          settingSources: [], // Prevent ~/.claude/settings.json from overriding our env config
-          includePartialMessages: true,
-          pathToClaudeCodeExecutable: cliPath, // Fix: Explicitly set the path
-          env: {
-            ...process.env,
-            // Use config.yaml llm.api_key + llm.base_url when no direct Anthropic key
-            ...(LLM_API_KEY && !ANTHROPIC_API_KEY
-              ? {
-                  ANTHROPIC_API_KEY: LLM_API_KEY,
-                  ...(LLM_BASE_URL ? { ANTHROPIC_BASE_URL: LLM_BASE_URL } : {}),
-                }
-              : {
-                  ANTHROPIC_API_KEY: ANTHROPIC_API_KEY || '',
-                }),
-            TICLAW_AGENT_ID: this.state.agent_id,
-            TICLAW_SESSION_ID: this.state.session_id,
-            TICLAW_TASK_ID: this.state.task_id!,
-          } as Record<string, string>,
-        },
+      // Set up result handler BEFORE sending message
+      const resultPromise = new Promise<void>((resolve, reject) => {
+        const handler: ActiveHandler = {
+          startTime: Date.now(),
+          textParts: [],
+          resolve,
+          reject,
+          onEvent: async (event: any, elapsed: number) => {
+            await this.handleExecutorEvent(event, elapsed);
+          },
+          onResult: (event: any) => {
+            const finalText =
+              event.result?.trim() || handler.textParts.join('\n').trim() || '(done)';
+            this.events.onReply?.(finalText);
+            this.consolidateMemory(paths.base, finalText);
+            activeHandlers.delete(key);
+            resolve();
+          },
+        };
+        activeHandlers.set(key, handler);
       });
 
       // Handle AbortSignal
-      const abortQuery = () => {
-        try {
-          (agentQuery as Query).close();
-        } catch {}
+      const abortHandler = () => {
+        const handler = activeHandlers.get(key);
+        if (handler) {
+          activeHandlers.delete(key);
+          handler.reject(new Error('aborted'));
+        }
       };
-      this.controller.signal.addEventListener('abort', abortQuery, {
+      this.controller.signal.addEventListener('abort', abortHandler, {
         once: true,
       });
 
-      for await (const msg of agentQuery) {
-        if (this.controller.signal.aborted) break;
+      if (isWarm) {
+        // ── Warm path: reuse existing subprocess via streamInput() ──
+        logger.info({ key }, 'AgentRunner: Warm path — reusing subprocess');
+        warm!.lastUsedAt = Date.now();
 
-        const event = msg as any;
-        await this.handleExecutorEvent(event, Date.now() - start);
+        const userMsg: SDKUserMessage = {
+          type: 'user',
+          message: { role: 'user', content: message },
+          parent_tool_use_id: null,
+          session_id: warm!.sessionId,
+          uuid: randomUUID() as UUID,
+        };
+        await warm!.query.streamInput((async function* () {
+          yield userMsg;
+        })());
+      } else {
+        // ── Cold path: spawn new subprocess with the actual message ──
+        logger.info({ key }, 'AgentRunner: Cold start — spawning subprocess');
 
-        if (event.type === 'assistant') {
-          const blocks = event.message?.content || [];
-          for (const block of blocks) {
-            if (block.type === 'text' && block.text) {
-              textParts.push(block.text);
-            }
-          }
+        // Clean up stale session if any
+        if (warm) {
+          try { warm.query.close(); } catch {}
+          warmSessions.delete(key);
         }
 
-        if (event.type === 'result') {
-          const finalText =
-            event.result?.trim() || textParts.join('\n').trim() || '(done)';
-          await this.events.onReply?.(finalText);
-          // Consolidate memory after successful completion
-          await this.consolidateMemory(paths.base, finalText);
-        }
+        const opts = buildQueryOptions(
+          systemPrompt,
+          paths.workspace,
+          this.state.agent_id,
+          this.state.session_id,
+          this.state.task_id!,
+        );
+
+        const agentQuery = query({
+          prompt: message,
+          options: opts,
+        });
+
+        const newWarm: WarmSession = {
+          query: agentQuery as Query,
+          agentId: this.state.agent_id,
+          sessionId: this.state.session_id,
+          createdAt: Date.now(),
+          lastUsedAt: Date.now(),
+          alive: true,
+        };
+        warmSessions.set(key, newWarm);
+
+        // Start the output loop (runs in background, survives this run() call)
+        startOutputLoop(key, newWarm);
       }
+
+      // Wait for the result
+      await resultPromise;
 
       this.state.status = 'idle';
       this.state.activity = { phase: 'done' };
@@ -200,6 +387,13 @@ export class AgentRunner {
           { err, agent_id: this.state.agent_id },
           'AgentRunner: Loop failed',
         );
+        // Clean up broken warm session
+        const warm = warmSessions.get(key);
+        if (warm) {
+          try { warm.query.close(); } catch {}
+          warmSessions.delete(key);
+          activeHandlers.delete(key);
+        }
       }
     } finally {
       this.controller = null;
@@ -221,16 +415,12 @@ export class AgentRunner {
    */
   private initBrain(baseDir: string, workspaceDir: string): void {
     if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
-
-    // Ensure workspace directory exists (SDK spawns cli.js with this as cwd)
     if (!fs.existsSync(workspaceDir))
       fs.mkdirSync(workspaceDir, { recursive: true });
 
-    // Ensure memory journal directory exists
     const memoryDir = path.join(baseDir, 'memory');
     if (!fs.existsSync(memoryDir)) fs.mkdirSync(memoryDir, { recursive: true });
 
-    // Bootstrap basic mind files if missing
     for (const filename of AGENT_MIND_FILES) {
       const p = path.join(baseDir, filename);
       if (!fs.existsSync(p)) {
@@ -244,16 +434,21 @@ export class AgentRunner {
   }
 
   /**
-   * Builds the system prompt by aggregating all "Brain" Markdown files.
-   * Implements chronological memory by reading recent journal fragments.
+   * Builds the system prompt with caching (invalidated by mtime).
    */
   private preparePrompt(baseDir: string): string {
+    const mtimeKey = getPromptMtimeKey(baseDir);
+    const cached = _promptCache.get(this.state.agent_id);
+    if (cached && cached.mtimeKey === mtimeKey) {
+      logger.debug({ agent_id: this.state.agent_id }, 'Using cached system prompt');
+      return cached.prompt;
+    }
+
     const parts: string[] = [
       `You are ${ASSISTANT_NAME}. Work strictly within your assigned workspace.`,
       `Your core persona and memory are defined in the following Markdown files.`,
     ];
 
-    // 1. Core Mind Files (SOUL, IDENTITY, etc.)
     for (const filename of AGENT_MIND_FILES) {
       const p = path.join(baseDir, filename);
       if (fs.existsSync(p)) {
@@ -262,7 +457,6 @@ export class AgentRunner {
       }
     }
 
-    // 2. Chronological Memory Fragments (Recent Journal)
     const memoryDir = path.join(baseDir, 'memory');
     if (fs.existsSync(memoryDir)) {
       const journals = fs
@@ -270,7 +464,7 @@ export class AgentRunner {
         .filter((f) => f.endsWith('.md'))
         .sort()
         .reverse()
-        .slice(0, 3); // Load last 3 days
+        .slice(0, 3);
 
       if (journals.length > 0) {
         parts.push('## Recent Journal (Chronological Memory)');
@@ -283,7 +477,9 @@ export class AgentRunner {
       }
     }
 
-    return parts.join('\n\n---\n\n');
+    const prompt = parts.join('\n\n---\n\n');
+    _promptCache.set(this.state.agent_id, { prompt, mtimeKey });
+    return prompt;
   }
 
   /**
@@ -312,7 +508,6 @@ export class AgentRunner {
       this.state.activity.target = event.event.delta.text;
     }
 
-    // JSON Stream Logging
     const logLine = `[${this.state.activity.phase}] ${this.state.activity.action || ''}`;
     this.state.recent_logs.push(logLine);
     if (this.state.recent_logs.length > 15) this.state.recent_logs.shift();

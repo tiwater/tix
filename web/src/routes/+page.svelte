@@ -3,7 +3,7 @@
   import '../app.css';
 
   // --- Types ---
-  type Tab = 'chat' | 'sessions' | 'schedules' | 'skills' | 'claw';
+  type Tab = 'chat' | 'sessions' | 'schedules' | 'skills' | 'node';
 
   interface Message {
     id: string;
@@ -65,7 +65,7 @@
     created_at: string;
   }
 
-  interface ClawInfo {
+  interface NodeInfo {
     hostname: string;
     enrollment: {
       trust_state: string;
@@ -98,13 +98,13 @@
   let agents = $state<AgentInfo[]>([]);
   let sessions = $state<SessionInfo[]>([]);
   let schedules = $state<ScheduleInfo[]>([]);
-  let clawInfo = $state<ClawInfo | null>(null);
+  let nodeInfo = $state<NodeInfo | null>(null);
   let selectedAgentId = $state<string | null>(null);
 
   let skillsLoading = $state(false);
   let agentsLoading = $state(false);
   let schedulesLoading = $state(false);
-  let clawLoading = $state(false);
+  let nodeLoading = $state(false);
 
   // Modals
   let showNewAgent = $state(false);
@@ -124,7 +124,7 @@
   ];
 
   const tabs = $derived([
-    { id: 'claw' as Tab, icon: '🦀', label: clawInfo?.hostname || 'Claw' },
+    { id: 'node' as Tab, icon: '🦀', label: nodeInfo?.hostname || 'Node' },
     ...staticTabs,
   ]);
 
@@ -134,13 +134,16 @@
     if (tab === 'skills') fetchSkills();
     if (tab === 'sessions') fetchAgents();
     if (tab === 'schedules') fetchSchedules();
-    if (tab === 'claw') fetchClaw();
+    if (tab === 'node') fetchNode();
     if (tab === 'chat') connectSSE();
   }
 
   // --- SSE ---
   function connectSSE() {
-    if (eventSource) { eventSource.close(); eventSource = null; }
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
     const url = `/runs/web-run/stream?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}`;
     eventSource = new EventSource(url);
 
@@ -152,45 +155,63 @@
 
     async function fetchMessageHistory() {
       try {
-        const res = await fetch(`/api/messages?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}&limit=50`);
+        const res = await fetch(
+          `/api/messages?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}&limit=50`,
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (data.messages && data.messages.length > 0) {
           const history = data.messages.map((m: any) => ({
             id: m.id || `hist-${Math.random().toString(36).slice(2)}`,
-            role: m.role === 'bot' ? 'bot' : (m.role === 'user' ? 'user' : 'system'),
+            role:
+              m.role === 'bot' ? 'bot' : m.role === 'user' ? 'user' : 'system',
             text: m.text || '',
             time: m.time || '',
           }));
           // Prepend history before the welcome message, replacing welcome
-          messages = [...history, ...messages.filter((m) => m.id !== 'welcome')];
+          messages = [
+            ...history,
+            ...messages.filter((m) => m.id !== 'welcome'),
+          ];
           scrollToBottom();
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     eventSource.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
-        if (data.type === 'connected') { addLog(`Stream ready: ${data.chat_jid}`); return; }
+        if (data.type === 'connected') {
+          addLog(`Stream ready: ${data.chat_jid}`);
+          return;
+        }
 
         // Streaming: handle token-level stream_delta events
         if (data.type === 'stream_delta' && data.text) {
-          if (isThinking) { isThinking = false; }
+          if (isThinking) {
+            isThinking = false;
+          }
 
           // Append to existing streaming message or create a new one
           if (streamingMessageId) {
             messages = messages.map((m) =>
-              m.id === streamingMessageId ? { ...m, text: m.text + data.text } : m
+              m.id === streamingMessageId
+                ? { ...m, text: m.text + data.text }
+                : m,
             );
           } else {
             streamingMessageId = `bot-${Date.now()}`;
-            messages = [...messages, {
-              id: streamingMessageId,
-              role: 'bot',
-              text: data.text,
-              time: new Date().toLocaleTimeString(),
-            }];
+            messages = [
+              ...messages,
+              {
+                id: streamingMessageId,
+                role: 'bot',
+                text: data.text,
+                time: new Date().toLocaleTimeString(),
+              },
+            ];
           }
           scrollToBottom();
           return;
@@ -202,20 +223,27 @@
           data.activity?.action === 'speaking' &&
           data.activity?.target
         ) {
-          if (isThinking) { isThinking = false; }
+          if (isThinking) {
+            isThinking = false;
+          }
 
           if (streamingMessageId) {
             messages = messages.map((m) =>
-              m.id === streamingMessageId ? { ...m, text: m.text + data.activity.target } : m
+              m.id === streamingMessageId
+                ? { ...m, text: m.text + data.activity.target }
+                : m,
             );
           } else {
             streamingMessageId = `bot-${Date.now()}`;
-            messages = [...messages, {
-              id: streamingMessageId,
-              role: 'bot',
-              text: data.activity.target,
-              time: new Date().toLocaleTimeString(),
-            }];
+            messages = [
+              ...messages,
+              {
+                id: streamingMessageId,
+                role: 'bot',
+                text: data.activity.target,
+                time: new Date().toLocaleTimeString(),
+              },
+            ];
           }
           scrollToBottom();
           return;
@@ -223,11 +251,14 @@
 
         // Final complete message — replace streaming content
         if (data.type === 'message' && data.text) {
-          if (isThinking) { isThinking = false; fetchMindFiles(); }
+          if (isThinking) {
+            isThinking = false;
+            fetchMindFiles();
+          }
           if (streamingMessageId) {
             // Replace the streaming message with the final text
             messages = messages.map((m) =>
-              m.id === streamingMessageId ? { ...m, text: data.text } : m
+              m.id === streamingMessageId ? { ...m, text: data.text } : m,
             );
             streamingMessageId = null;
           } else {
@@ -236,7 +267,9 @@
           fetchMindFiles();
           return;
         }
-      } catch { /* ignore malformed */ }
+      } catch {
+        /* ignore malformed */
+      }
     };
 
     eventSource.onerror = () => {
@@ -259,12 +292,15 @@
   let streamingMessageId: string | null = $state(null);
 
   function pushBotMessage(text: string) {
-    messages = [...messages, {
-      id: `bot-${Date.now()}`,
-      role: 'bot',
-      text,
-      time: new Date().toLocaleTimeString(),
-    }];
+    messages = [
+      ...messages,
+      {
+        id: `bot-${Date.now()}`,
+        role: 'bot',
+        text,
+        time: new Date().toLocaleTimeString(),
+      },
+    ];
     scrollToBottom();
   }
 
@@ -278,12 +314,15 @@
     const content = inputText.trim();
     if (!content || sending) return;
 
-    messages = [...messages, {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      text: content,
-      time: new Date().toLocaleTimeString(),
-    }];
+    messages = [
+      ...messages,
+      {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        text: content,
+        time: new Date().toLocaleTimeString(),
+      },
+    ];
     inputText = '';
     scrollToBottom();
     sending = true;
@@ -305,21 +344,61 @@
         if (res.status === 403) {
           try {
             const errData = await res.json();
-            if (errData.error === 'claw_not_trusted') {
-              messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `🔒 Claw is not trusted (${errData.trust_state}). Go to the Claw tab and click "Trust this Claw" to enable messaging.`, time: '' }];
+            if (errData.error === 'node_not_trusted') {
+              messages = [
+                ...messages,
+                {
+                  id: `err-${Date.now()}`,
+                  role: 'system',
+                  text: `🔒 Node is not trusted (${errData.trust_state}). Go to the Node tab and click "Trust this Node" to enable messaging.`,
+                  time: '',
+                },
+              ];
             } else {
-              messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ Forbidden: ${errData.error || res.status}`, time: '' }];
+              messages = [
+                ...messages,
+                {
+                  id: `err-${Date.now()}`,
+                  role: 'system',
+                  text: `⚠️ Forbidden: ${errData.error || res.status}`,
+                  time: '',
+                },
+              ];
             }
           } catch {
-            messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ POST failed: ${res.status}`, time: '' }];
+            messages = [
+              ...messages,
+              {
+                id: `err-${Date.now()}`,
+                role: 'system',
+                text: `⚠️ POST failed: ${res.status}`,
+                time: '',
+              },
+            ];
           }
         } else {
-          messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ POST failed: ${res.status}`, time: '' }];
+          messages = [
+            ...messages,
+            {
+              id: `err-${Date.now()}`,
+              role: 'system',
+              text: `⚠️ POST failed: ${res.status}`,
+              time: '',
+            },
+          ];
         }
       }
     } catch (e: any) {
       isThinking = false;
-      messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ ${e.message}`, time: '' }];
+      messages = [
+        ...messages,
+        {
+          id: `err-${Date.now()}`,
+          role: 'system',
+          text: `⚠️ ${e.message}`,
+          time: '',
+        },
+      ];
     } finally {
       sending = false;
       await tick();
@@ -328,20 +407,35 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
   }
 
   // --- Fetch data ---
   async function fetchMind() {
-    try { const res = await fetch(`/api/mind`); mindState = await res.json(); } catch { /* ignore */ }
+    try {
+      const res = await fetch(`/api/mind`);
+      mindState = await res.json();
+    } catch {
+      /* ignore */
+    }
   }
 
   async function fetchMessages() {
     try {
       const chatJid = `web:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
-      const res = await fetch(`/api/messages?chat_jid=${encodeURIComponent(chatJid)}`);
-      if (res.ok) { messages = await res.json(); scrollToBottom(); }
-    } catch { /* ignore */ }
+      const res = await fetch(
+        `/api/messages?chat_jid=${encodeURIComponent(chatJid)}`,
+      );
+      if (res.ok) {
+        messages = await res.json();
+        scrollToBottom();
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function fetchMindFiles() {
@@ -354,21 +448,30 @@
           for (const [name, file] of Object.entries(newFiles)) {
             if (mindFiles[name] && file.mtimeMs > mindFiles[name].mtimeMs) {
               file.updatedRecently = true;
-              setTimeout(() => { if (mindFiles[name]) mindFiles[name].updatedRecently = false; }, 5000);
+              setTimeout(() => {
+                if (mindFiles[name]) mindFiles[name].updatedRecently = false;
+              }, 5000);
             }
           }
           mindFiles = newFiles;
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function fetchSkills() {
     skillsLoading = true;
     try {
       const res = await fetch(`/api/skills`);
-      if (res.ok) { const data = await res.json(); skills = data.skills || []; }
-    } catch { /* ignore */ }
+      if (res.ok) {
+        const data = await res.json();
+        skills = data.skills || [];
+      }
+    } catch {
+      /* ignore */
+    }
     skillsLoading = false;
   }
 
@@ -380,19 +483,25 @@
         const data = await res.json();
         agents = data.agents || [];
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     agentsLoading = false;
   }
 
   async function fetchSessionsForAgent(agId: string) {
     selectedAgentId = agId;
     try {
-      const res = await fetch(`/api/sessions?agent_id=${encodeURIComponent(agId)}`);
+      const res = await fetch(
+        `/api/sessions?agent_id=${encodeURIComponent(agId)}`,
+      );
       if (res.ok) {
         const data = await res.json();
         sessions = data.sessions || [];
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function fetchSchedules() {
@@ -403,36 +512,49 @@
         const data = await res.json();
         schedules = data.schedules || [];
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     schedulesLoading = false;
   }
 
-  async function fetchClaw() {
-    clawLoading = true;
+  async function fetchNode() {
+    nodeLoading = true;
     try {
-      const res = await fetch(`/api/claw`);
-      if (res.ok) { clawInfo = await res.json(); }
-    } catch { /* ignore */ }
-    clawLoading = false;
+      const res = await fetch(`/api/node`);
+      if (res.ok) {
+        nodeInfo = await res.json();
+      }
+    } catch {
+      /* ignore */
+    }
+    nodeLoading = false;
   }
 
-  async function trustClaw() {
+  async function trustNode() {
     try {
-      const res = await fetch(`/api/claw/trust`, { method: 'POST' });
+      const res = await fetch(`/api/node/trust`, { method: 'POST' });
       if (res.ok) {
-        await fetchClaw();
-        addLog('Claw trusted ✓');
+        await fetchNode();
+        addLog('Node trusted ✓');
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function toggleSkill(name: string, enabled: boolean) {
     const action = enabled ? 'disable' : 'enable';
     try {
-      const res = await fetch(`/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      const res = await fetch(
+        `/api/skills/${encodeURIComponent(name)}/${action}`,
+        { method: 'POST' },
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-        addLog(`⚠️ Skill ${action} failed: ${err.detail || err.message || 'Unknown error'}`);
+        addLog(
+          `⚠️ Skill ${action} failed: ${err.detail || err.message || 'Unknown error'}`,
+        );
       }
       await fetchSkills();
     } catch (e: any) {
@@ -454,7 +576,9 @@
         showNewAgent = false;
         await fetchAgents();
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function createSession() {
@@ -471,10 +595,10 @@
         newSessionAgentId = '';
         await fetchSessionsForAgent(aid);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
-
-
 
   async function toggleSchedule(id: string, currentStatus: string) {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
@@ -485,26 +609,37 @@
         body: JSON.stringify({ status: newStatus }),
       });
       await fetchSchedules();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function removeSchedule(id: string) {
     try {
-      await fetch(`/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await fetch(`/api/schedules/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
       await fetchSchedules();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   function selectSession(sess: SessionInfo) {
     agentId = sess.agent_id;
     sessionId = sess.session_id;
+    // Clear previous session state
+    messages = [];
+    streamingMessageId = null;
+    isThinking = false;
     activeTab = 'chat';
-    reconnect();
+    connectSSE();
   }
 
   function reconnect() {
-    messages = [...messages, { id: `sys-${Date.now()}`, role: 'system', text: `Reconnecting…`, time: '' }];
-    fetchMessages();
+    messages = [];
+    streamingMessageId = null;
+    isThinking = false;
     connectSSE();
   }
 
@@ -513,7 +648,9 @@
     try {
       const d = new Date(iso);
       return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
-    } catch { return iso; }
+    } catch {
+      return iso;
+    }
   }
 
   function formatShortDate(iso: string | null): string {
@@ -521,29 +658,31 @@
     try {
       const d = new Date(iso);
       const now = new Date();
-      if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString();
-      return `${d.getMonth()+1}/${d.getDate()} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
-    } catch { return iso; }
+      if (d.toDateString() === now.toDateString())
+        return d.toLocaleTimeString();
+      return `${d.getMonth() + 1}/${d.getDate()} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+    } catch {
+      return iso;
+    }
   }
 
   // --- Lifecycle ---
   onMount(async () => {
-    await fetchClaw();
+    await fetchNode();
     fetchMind();
     fetchMindFiles();
     fetchAgents();
   });
 
-  onDestroy(() => { disconnectSSE(); });
+  onDestroy(() => {
+    disconnectSSE();
+  });
 </script>
 
 <div class="app" class:chat-layout={activeTab === 'chat'}>
   <!-- Left Nav -->
   <nav class="nav">
-    <div class="nav-logo">
-      <div class="nav-logo-icon">🐾</div>
-      TiClaw
-    </div>
+    <div class="nav-logo">TiClaw DevUI</div>
     {#each tabs as tab}
       <button
         class="nav-btn"
@@ -555,21 +694,27 @@
         <span class="nav-btn-label">{tab.label}</span>
       </button>
     {/each}
-    <div style="margin-top:auto;display:flex;align-items:center;gap:8px;padding:12px 16px">
-      <div
-        class="nav-status-dot"
-        class:offline={!sseConnected}
-      ></div>
-      <span style="font-size:11px;color:var(--text-dim)">{sseConnected ? 'Connected' : 'Offline'}</span>
+    <div
+      style="margin-top:auto;display:flex;align-items:center;gap:8px;padding:12px 16px"
+    >
+      <div class="nav-status-dot" class:offline={!sseConnected}></div>
+      <span style="font-size:11px;color:var(--text-dim)"
+        >{sseConnected ? 'Connected' : 'Offline'}</span
+      >
     </div>
   </nav>
 
   <!-- Main Content -->
   <div class="main-content">
-    {#if clawInfo && clawInfo.enrollment.trust_state !== 'trusted'}
+    {#if nodeInfo && nodeInfo.enrollment.trust_state !== 'trusted'}
       <div class="trust-banner">
-        <span>🔒 This claw is not trusted ({clawInfo.enrollment.trust_state}). Messaging is disabled.</span>
-        <button class="btn-sm btn-accent" onclick={trustClaw}>🔓 Trust this Claw</button>
+        <span
+          >🔒 This node is not trusted ({nodeInfo.enrollment.trust_state}).
+          Messaging is disabled.</span
+        >
+        <button class="btn-sm btn-accent" onclick={trustNode}
+          >🔓 Trust this Node</button
+        >
       </div>
     {/if}
 
@@ -578,11 +723,23 @@
       <div class="chat-header">
         <div class="chat-header-field">
           <label for="chat-agent">Agent</label>
-          <input id="chat-agent" class="chat-id-input" bind:value={agentId} placeholder="web-agent" onchange={reconnect} />
+          <input
+            id="chat-agent"
+            class="chat-id-input"
+            bind:value={agentId}
+            placeholder="web-agent"
+            onchange={reconnect}
+          />
         </div>
         <div class="chat-header-field">
           <label for="chat-session">Session</label>
-          <input id="chat-session" class="chat-id-input" bind:value={sessionId} placeholder="web-session" onchange={reconnect} />
+          <input
+            id="chat-session"
+            class="chat-id-input"
+            bind:value={sessionId}
+            placeholder="web-session"
+            onchange={reconnect}
+          />
         </div>
       </div>
       <div class="messages" bind:this={messagesEl}>
@@ -611,7 +768,9 @@
             <div class="avatar bot">🤖</div>
             <div>
               <div class="bubble thinking">
-                Thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+                Thinking<span class="dots"
+                  ><span>.</span><span>.</span><span>.</span></span
+                >
               </div>
             </div>
           </div>
@@ -628,18 +787,27 @@
           rows="1"
           disabled={sending}
         ></textarea>
-        <button class="send-btn" onclick={send} disabled={sending || !inputText.trim()} title="Send">
+        <button
+          class="send-btn"
+          onclick={send}
+          disabled={sending || !inputText.trim()}
+          title="Send"
+        >
           {sending ? '⏳' : '➤'}
         </button>
       </div>
-
     {:else if activeTab === 'sessions'}
       <!-- Agents & Sessions Browser -->
       <div class="tab-header">
         <span class="tab-header-icon">🤖</span>
         <h2>Agents & Sessions</h2>
         <div style="margin-left:auto;display:flex;gap:8px">
-          <button class="btn-sm btn-accent" onclick={() => { showNewAgent = true; }}>＋ New Agent</button>
+          <button
+            class="btn-sm btn-accent"
+            onclick={() => {
+              showNewAgent = true;
+            }}>＋ New Agent</button
+          >
           <button class="btn-sm" onclick={fetchAgents}>↻ Refresh</button>
         </div>
       </div>
@@ -660,7 +828,11 @@
                 onclick={() => fetchSessionsForAgent(agent.agent_id)}
               >
                 <div class="agent-name">{agent.agent_id}</div>
-                <div class="agent-meta">{agent.session_count} session{agent.session_count !== 1 ? 's' : ''}</div>
+                <div class="agent-meta">
+                  {agent.session_count} session{agent.session_count !== 1
+                    ? 's'
+                    : ''}
+                </div>
               </button>
             {/each}
           {/if}
@@ -671,18 +843,32 @@
           {#if selectedAgentId}
             <div class="panel-title">
               Sessions for <strong>{selectedAgentId}</strong>
-              <button class="btn-sm btn-accent" style="margin-left:auto" onclick={() => { newSessionAgentId = selectedAgentId || ''; showNewSession = true; }}>＋ New Session</button>
+              <button
+                class="btn-sm btn-accent"
+                style="margin-left:auto"
+                onclick={() => {
+                  newSessionAgentId = selectedAgentId || '';
+                  showNewSession = true;
+                }}>＋ New Session</button
+              >
             </div>
             {#if sessions.length === 0}
-              <div class="empty-state-sm">No sessions. Create one to start chatting.</div>
+              <div class="empty-state-sm">
+                No sessions. Create one to start chatting.
+              </div>
             {:else}
               {#each sessions as sess}
-                <button class="session-item" onclick={() => selectSession(sess)}>
+                <button
+                  class="session-item"
+                  onclick={() => selectSession(sess)}
+                >
                   <div class="session-id">{sess.session_id.slice(0, 12)}…</div>
                   <div class="session-meta">
                     <span class="badge small {sess.status}">{sess.status}</span>
                     <span class="session-channel">{sess.channel}</span>
-                    <span class="session-time">{formatShortDate(sess.updated_at)}</span>
+                    <span class="session-time"
+                      >{formatShortDate(sess.updated_at)}</span
+                    >
                   </div>
                 </button>
               {/each}
@@ -695,16 +881,41 @@
 
       <!-- New Agent Modal -->
       {#if showNewAgent}
-        <div class="modal-overlay" onclick={() => showNewAgent = false} role="presentation">
-          <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') showNewAgent = false }}>
+        <div
+          class="modal-overlay"
+          onclick={() => (showNewAgent = false)}
+          role="presentation"
+        >
+          <div
+            class="modal"
+            onclick={(e) => e.stopPropagation()}
+            role="dialog"
+            tabindex="-1"
+            onkeydown={(e) => {
+              if (e.key === 'Escape') showNewAgent = false;
+            }}
+          >
             <h3>Create New Agent</h3>
             <div class="modal-field">
               <label for="new-agent-name">Agent Name</label>
-              <input id="new-agent-name" bind:value={newAgentName} placeholder="my-agent" onkeydown={(e) => { if (e.key === 'Enter') createAgent() }} />
+              <input
+                id="new-agent-name"
+                bind:value={newAgentName}
+                placeholder="my-agent"
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') createAgent();
+                }}
+              />
             </div>
             <div class="modal-actions">
-              <button class="btn-sm" onclick={() => showNewAgent = false}>Cancel</button>
-              <button class="btn-sm btn-accent" onclick={createAgent} disabled={!newAgentName.trim()}>Create</button>
+              <button class="btn-sm" onclick={() => (showNewAgent = false)}
+                >Cancel</button
+              >
+              <button
+                class="btn-sm btn-accent"
+                onclick={createAgent}
+                disabled={!newAgentName.trim()}>Create</button
+              >
             </div>
           </div>
         </div>
@@ -712,21 +923,42 @@
 
       <!-- New Session Modal -->
       {#if showNewSession}
-        <div class="modal-overlay" onclick={() => showNewSession = false} role="presentation">
-          <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') showNewSession = false }}>
+        <div
+          class="modal-overlay"
+          onclick={() => (showNewSession = false)}
+          role="presentation"
+        >
+          <div
+            class="modal"
+            onclick={(e) => e.stopPropagation()}
+            role="dialog"
+            tabindex="-1"
+            onkeydown={(e) => {
+              if (e.key === 'Escape') showNewSession = false;
+            }}
+          >
             <h3>Create New Session</h3>
             <div class="modal-field">
               <label for="new-session-agent">Agent</label>
-              <input id="new-session-agent" bind:value={newSessionAgentId} placeholder="agent-id" />
+              <input
+                id="new-session-agent"
+                bind:value={newSessionAgentId}
+                placeholder="agent-id"
+              />
             </div>
             <div class="modal-actions">
-              <button class="btn-sm" onclick={() => showNewSession = false}>Cancel</button>
-              <button class="btn-sm btn-accent" onclick={createSession} disabled={!newSessionAgentId}>Create</button>
+              <button class="btn-sm" onclick={() => (showNewSession = false)}
+                >Cancel</button
+              >
+              <button
+                class="btn-sm btn-accent"
+                onclick={createSession}
+                disabled={!newSessionAgentId}>Create</button
+              >
             </div>
           </div>
         </div>
       {/if}
-
     {:else if activeTab === 'schedules'}
       <!-- Schedules View -->
       <div class="tab-header">
@@ -745,7 +977,9 @@
         {:else if schedules.length === 0}
           <div class="empty-state">
             <div class="empty-state-icon">⏰</div>
-            <div class="empty-state-text">No schedules yet. Ask an agent to schedule a task via chat.</div>
+            <div class="empty-state-text">
+              No schedules yet. Ask an agent to schedule a task via chat.
+            </div>
           </div>
         {:else}
           <table class="data-table">
@@ -768,16 +1002,28 @@
                       {sched.status}
                     </span>
                   </td>
-                  <td style="font-size:12px;color:var(--text-muted)">{sched.agent_id}</td>
+                  <td style="font-size:12px;color:var(--text-muted)"
+                    >{sched.agent_id}</td
+                  >
                   <td><code class="cron-code">{sched.cron}</code></td>
-                  <td class="prompt-cell" title={sched.prompt}>{sched.prompt}</td>
+                  <td class="prompt-cell" title={sched.prompt}
+                    >{sched.prompt}</td
+                  >
                   <td class="time-cell">{formatShortDate(sched.next_run)}</td>
                   <td>
                     <div style="display:flex;gap:4px">
-                      <button class="btn-icon" title={sched.status === 'active' ? 'Pause' : 'Resume'} onclick={() => toggleSchedule(sched.id, sched.status)}>
+                      <button
+                        class="btn-icon"
+                        title={sched.status === 'active' ? 'Pause' : 'Resume'}
+                        onclick={() => toggleSchedule(sched.id, sched.status)}
+                      >
                         {sched.status === 'active' ? '⏸' : '▶'}
                       </button>
-                      <button class="btn-icon btn-danger" title="Delete" onclick={() => removeSchedule(sched.id)}>🗑</button>
+                      <button
+                        class="btn-icon btn-danger"
+                        title="Delete"
+                        onclick={() => removeSchedule(sched.id)}>🗑</button
+                      >
                     </div>
                   </td>
                 </tr>
@@ -786,9 +1032,6 @@
           </table>
         {/if}
       </div>
-
-
-
     {:else if activeTab === 'skills'}
       <!-- Skills View -->
       <div class="tab-header">
@@ -807,24 +1050,30 @@
       {:else if skills.length === 0}
         <div class="empty-state">
           <div class="empty-state-icon">🧩</div>
-          <div class="empty-state-text">No skills discovered. Add SKILL.md files to your skills directories.</div>
+          <div class="empty-state-text">
+            No skills discovered. Add SKILL.md files to your skills directories.
+          </div>
         </div>
       {:else}
-        {@const installedSkills = skills.filter(s => s.installed)}
-        {@const availableSkills = skills.filter(s => !s.installed)}
+        {@const installedSkills = skills.filter((s) => s.installed)}
+        {@const availableSkills = skills.filter((s) => !s.installed)}
 
         <!-- Installed Skills -->
         <div class="skills-section">
           <h3 class="skills-section-title">Installed</h3>
           {#if installedSkills.length === 0}
-            <div class="skills-empty-hint">No skills installed yet. Enable one from Available below.</div>
+            <div class="skills-empty-hint">
+              No skills installed yet. Enable one from Available below.
+            </div>
           {:else}
             <div class="skills-grid">
               {#each installedSkills as skill}
                 <div class="skill-card">
                   <div class="skill-info">
                     <div class="skill-name">{skill.name}</div>
-                    <div class="skill-desc">{skill.description || 'No description'}</div>
+                    <div class="skill-desc">
+                      {skill.description || 'No description'}
+                    </div>
                     <div class="skill-meta">
                       <span class="skill-tag">v{skill.version || '?'}</span>
                       <span class="skill-tag">L{skill.permissionLevel}</span>
@@ -856,7 +1105,9 @@
                 <div class="skill-card skill-card-available">
                   <div class="skill-info">
                     <div class="skill-name">{skill.name}</div>
-                    <div class="skill-desc">{skill.description || 'No description'}</div>
+                    <div class="skill-desc">
+                      {skill.description || 'No description'}
+                    </div>
                     <div class="skill-meta">
                       <span class="skill-tag">v{skill.version || '?'}</span>
                       <span class="skill-tag">L{skill.permissionLevel}</span>
@@ -865,35 +1116,38 @@
                       {/if}
                     </div>
                   </div>
-                  <button class="btn-sm btn-enable" onclick={() => toggleSkill(skill.name, false)}>Enable</button>
+                  <button
+                    class="btn-sm btn-enable"
+                    onclick={() => toggleSkill(skill.name, false)}
+                    >Enable</button
+                  >
                 </div>
               {/each}
             </div>
           </div>
         {/if}
       {/if}
-
-    {:else if activeTab === 'claw'}
-      <!-- Claw View -->
+    {:else if activeTab === 'node'}
+      <!-- Node View -->
       <div class="tab-header">
         <span class="tab-header-icon">🦀</span>
-        <h2>Claw</h2>
+        <h2>Node</h2>
         <div style="margin-left:auto">
-          <button class="btn-sm" onclick={fetchClaw}>↻ Refresh</button>
+          <button class="btn-sm" onclick={fetchNode}>↻ Refresh</button>
         </div>
       </div>
       <div class="runtime-content">
-        {#if clawLoading}
+        {#if nodeLoading}
           <div class="empty-state">
             <div class="empty-state-icon">⏳</div>
-            <div class="empty-state-text">Loading claw info…</div>
+            <div class="empty-state-text">Loading node info…</div>
           </div>
-        {:else if clawInfo}
+        {:else if nodeInfo}
           <div class="runtime-card">
             <h3>Identity</h3>
             <div class="runtime-row">
               <span class="runtime-key">Hostname</span>
-              <span class="runtime-val">{clawInfo.hostname || '—'}</span>
+              <span class="runtime-val">{nodeInfo.hostname || '—'}</span>
             </div>
           </div>
 
@@ -901,41 +1155,55 @@
             <h3>Enrollment</h3>
             <div class="runtime-row">
               <span class="runtime-key">Trust State</span>
-              <span class="badge {clawInfo.enrollment.trust_state}">
-                {clawInfo.enrollment.trust_state}
+              <span class="badge {nodeInfo.enrollment.trust_state}">
+                {nodeInfo.enrollment.trust_state}
               </span>
             </div>
-            {#if clawInfo.enrollment.trust_state !== 'trusted'}
+            {#if nodeInfo.enrollment.trust_state !== 'trusted'}
               <div style="margin-top:8px">
-                <button class="btn-sm" style="color:var(--green);border-color:var(--green)" onclick={trustClaw}>🔓 Trust this Claw</button>
+                <button
+                  class="btn-sm"
+                  style="color:var(--green);border-color:var(--green)"
+                  onclick={trustNode}>🔓 Trust this Node</button
+                >
               </div>
             {/if}
             <div class="runtime-row">
               <span class="runtime-key">Fingerprint</span>
-              <span class="runtime-val" style="font-size:11px">{clawInfo.enrollment.fingerprint?.slice(0, 16) || '—'}…</span>
+              <span class="runtime-val" style="font-size:11px"
+                >{nodeInfo.enrollment.fingerprint?.slice(0, 16) || '—'}…</span
+              >
             </div>
-            {#if clawInfo.enrollment.trusted_at}
+            {#if nodeInfo.enrollment.trusted_at}
               <div class="runtime-row">
                 <span class="runtime-key">Trusted At</span>
-                <span class="runtime-val" style="font-size:12px">{formatDate(clawInfo.enrollment.trusted_at)}</span>
+                <span class="runtime-val" style="font-size:12px"
+                  >{formatDate(nodeInfo.enrollment.trusted_at)}</span
+                >
               </div>
             {/if}
           </div>
 
-          {#if clawInfo.executor}
+          {#if nodeInfo.executor}
             <div class="runtime-card">
               <h3>Executor</h3>
               <div class="stats-row">
                 <div class="stat-card">
-                  <div class="stat-value">{clawInfo.executor.active_tasks ?? 0}</div>
+                  <div class="stat-value">
+                    {nodeInfo.executor.active_tasks ?? 0}
+                  </div>
                   <div class="stat-label">Active</div>
                 </div>
                 <div class="stat-card">
-                  <div class="stat-value">{clawInfo.executor.queued_tasks ?? 0}</div>
+                  <div class="stat-value">
+                    {nodeInfo.executor.queued_tasks ?? 0}
+                  </div>
                   <div class="stat-label">Queued</div>
                 </div>
                 <div class="stat-card">
-                  <div class="stat-value">{clawInfo.executor.total_slots ?? 0}</div>
+                  <div class="stat-value">
+                    {nodeInfo.executor.total_slots ?? 0}
+                  </div>
                   <div class="stat-label">Slots</div>
                 </div>
               </div>
@@ -944,7 +1212,7 @@
         {:else}
           <div class="empty-state">
             <div class="empty-state-icon">⚙️</div>
-            <div class="empty-state-text">No claw data available</div>
+            <div class="empty-state-text">No node data available</div>
           </div>
         {/if}
       </div>
@@ -952,65 +1220,70 @@
   </div>
 
   {#if activeTab === 'chat'}
-  <!-- Right Sidebar (Chat only) -->
-  <aside class="sidebar">
-
-    <!-- Mind State -->
-    <div class="sidebar-section">
-      <h3>Mind State</h3>
-      {#if mindState}
-        <div class="mind-card">
-          <div class="mind-row">
-            <span class="mind-label">lifecycle</span>
-            <span class="badge {mindState.lifecycle}">{mindState.lifecycle}</span>
-          </div>
-          <div class="mind-row">
-            <span class="mind-label">version</span>
-            <span style="font-size:12px">v{mindState.version}</span>
-          </div>
-          <button class="btn-sm" onclick={fetchMind}>↻ refresh</button>
-        </div>
-      {:else}
-        <div class="mind-card" style="color:var(--text-muted);font-size:12px">
-          Loading…
-        </div>
-      {/if}
-    </div>
-
-    <!-- Mind Files (Personalization) -->
-    <div class="sidebar-section">
-      <h3>Mind Files</h3>
-      <div class="workspace-files">
-        {#each Object.entries(mindFiles) as [fileName, file]}
-          <div class="file-card" class:updated={file.updatedRecently}>
-            <div class="file-header">
-              <strong>{fileName}</strong>
-              {#if file.updatedRecently}
-                <span class="update-badge">Updated!</span>
-              {/if}
+    <!-- Right Sidebar (Chat only) -->
+    <aside class="sidebar">
+      <!-- Mind State -->
+      <div class="sidebar-section">
+        <h3>Mind State</h3>
+        {#if mindState}
+          <div class="mind-card">
+            <div class="mind-row">
+              <span class="mind-label">lifecycle</span>
+              <span class="badge {mindState.lifecycle}"
+                >{mindState.lifecycle}</span
+              >
             </div>
-            <div class="file-content">{file.content}</div>
+            <div class="mind-row">
+              <span class="mind-label">version</span>
+              <span style="font-size:12px">v{mindState.version}</span>
+            </div>
+            <button class="btn-sm" onclick={fetchMind}>↻ refresh</button>
           </div>
-        {/each}
-        {#if Object.keys(mindFiles).length === 0}
-          <div style="color:var(--text-dim);font-size:11px;padding:6px">No mind files yet</div>
+        {:else}
+          <div class="mind-card" style="color:var(--text-muted);font-size:12px">
+            Loading…
+          </div>
         {/if}
       </div>
-      <button class="btn-sm" onclick={fetchMindFiles} style="margin-top:6px">↻ refresh</button>
-    </div>
 
-    <!-- SSE Log -->
-    <div class="sidebar-section">
-      <h3>SSE Log</h3>
-      <div class="sse-log">
-        {#each sseLog as entry}
-          <div>{entry}</div>
-        {/each}
-        {#if sseLog.length === 0}
-          <span style="opacity:.4">waiting…</span>
-        {/if}
+      <!-- Mind Files (Personalization) -->
+      <div class="sidebar-section">
+        <h3>Mind Files</h3>
+        <div class="workspace-files">
+          {#each Object.entries(mindFiles) as [fileName, file]}
+            <div class="file-card" class:updated={file.updatedRecently}>
+              <div class="file-header">
+                <strong>{fileName}</strong>
+                {#if file.updatedRecently}
+                  <span class="update-badge">Updated!</span>
+                {/if}
+              </div>
+              <div class="file-content">{file.content}</div>
+            </div>
+          {/each}
+          {#if Object.keys(mindFiles).length === 0}
+            <div style="color:var(--text-dim);font-size:11px;padding:6px">
+              No mind files yet
+            </div>
+          {/if}
+        </div>
+        <button class="btn-sm" onclick={fetchMindFiles} style="margin-top:6px"
+          >↻ refresh</button
+        >
       </div>
-    </div>
-  </aside>
+
+      <!-- SSE Log -->
+      <div class="sidebar-section">
+        <h3>SSE Log</h3>
+        <div class="sse-log">
+          {#each sseLog as entry}
+            <div>{entry}</div>
+          {/each}
+          {#if sseLog.length === 0}
+            <span style="opacity:.4">waiting…</span>
+          {/if}
+        </div>
+      </div>
+    </aside>
   {/if}
 </div>

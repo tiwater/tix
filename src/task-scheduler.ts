@@ -9,7 +9,7 @@ import {
   getScheduleById,
   updateSchedule,
   updateScheduleAfterRun,
-} from './core/db.js';
+} from './core/store.js';
 import { logger } from './core/logger.js';
 import { SCHEDULER_POLL_INTERVAL, TIMEZONE } from './core/config.js';
 import { submitScheduleTask } from './task-executor.js';

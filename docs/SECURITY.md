@@ -1,123 +1,121 @@
 # TiClaw Security Model
 
-## Trust Model
-
-| Entity | Trust Level | Rationale |
-|--------|-------------|-----------|
-| Main group | Trusted | Private self-chat, admin control |
-| Non-main groups | Untrusted | Other users may be malicious |
-| Container agents | Sandboxed | Isolated execution environment |
-| WhatsApp messages | User input | Potential prompt injection |
-
-## Security Boundaries
-
-### 1. Container Isolation (Primary Boundary)
-
-Agents execute in containers (lightweight Linux VMs), providing:
-- **Process isolation** - Container processes cannot affect the host
-- **Filesystem isolation** - Only explicitly mounted directories are visible
-- **Non-root execution** - Runs as unprivileged `node` user (uid 1000)
-- **Ephemeral containers** - Fresh environment per invocation (`--rm`)
-
-This is the primary security boundary. Rather than relying on application-level permission checks, the attack surface is limited by what's mounted.
-
-### 2. Mount Security
-
-**External Allowlist** - Mount permissions stored at `~/.config/ticlaw/mount-allowlist.json`, which is:
-- Outside project root
-- Never mounted into containers
-- Cannot be modified by agents
-
-**Default Blocked Patterns:**
-```
-.ssh, .gnupg, .aws, .azure, .gcloud, .kube, .docker,
-credentials, .env, .netrc, .npmrc, id_rsa, id_ed25519,
-private_key, .secret
-```
-
-**Protections:**
-- Symlink resolution before validation (prevents traversal attacks)
-- Container path validation (rejects `..` and absolute paths)
-- `nonMainReadOnly` option forces read-only for non-main groups
-
-**Read-Only Project Root:**
-
-The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, `.claude/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
-
-### 3. Session Isolation
-
-Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
-- Groups cannot see other groups' conversation history
-- Session data includes full message history and file contents read
-- Prevents cross-group information disclosure
-
-### 4. IPC Authorization
-
-Messages and task operations are verified against group identity:
-
-| Operation | Main Group | Non-Main Group |
-|-----------|------------|----------------|
-| Send message to own chat | ✓ | ✓ |
-| Send message to other chats | ✓ | ✗ |
-| Schedule task for self | ✓ | ✓ |
-| Schedule task for others | ✓ | ✗ |
-| View all tasks | ✓ | Own only |
-| Manage other groups | ✓ | ✗ |
-
-### 5. Credential Handling
-
-**Mounted Credentials:**
-- Agent CLI auth tokens (filtered from `.env`, read-only)
-
-**NOT Mounted:**
-- WhatsApp session (`store/auth/`) - host only
-- Mount allowlist - external, never mounted
-- Any credentials matching blocked patterns
-
-**Credential Filtering:**
-Only these environment variables are exposed to containers:
-```typescript
-const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY'];
-```
-
-> **Note:** Agent CLI credentials are mounted so the agent can authenticate. This means the agent itself can discover these credentials via Bash or file operations. Ideally, the CLI would authenticate without exposing credentials to the agent's execution environment. **PRs welcome** if you have ideas for credential isolation.
-
-## Privilege Comparison
-
-| Capability | Main Group | Non-Main Group |
-|------------|------------|----------------|
-| Project root access | `/workspace/project` (ro) | None |
-| Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
-| Global memory | Implicit via project | `/workspace/global` (ro) |
-| Additional mounts | Configurable | Read-only unless allowed |
-| Network access | Unrestricted | Unrestricted |
-| MCP tools | All | All |
-
-## Security Architecture Diagram
+## Trust Boundaries
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        UNTRUSTED ZONE                             │
-│  WhatsApp Messages (potentially malicious)                        │
-└────────────────────────────────┬─────────────────────────────────┘
-                                 │
-                                 ▼ Trigger check, input escaping
-┌──────────────────────────────────────────────────────────────────┐
-│                     HOST PROCESS (TRUSTED)                        │
-│  • Message routing                                                │
-│  • IPC authorization                                              │
-│  • Mount validation (external allowlist)                          │
-│  • Container lifecycle                                            │
-│  • Credential filtering                                           │
-└────────────────────────────────┬─────────────────────────────────┘
-                                 │
-                                 ▼ Explicit mounts only
-┌──────────────────────────────────────────────────────────────────┐
-│                CONTAINER (ISOLATED/SANDBOXED)                     │
-│  • Agent execution                                                │
-│  • Bash commands (sandboxed)                                      │
-│  • File operations (limited to mounts)                            │
-│  • Network access (unrestricted)                                  │
-│  • Cannot modify security config                                  │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    UNTRUSTED ZONE                       │
+│  Inbound messages (Discord, Feishu, DingTalk, Web)     │
+└────────────────────────┬────────────────────────────────┘
+                         │ Trigger check, message routing
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                NODE (TiClaw Instance)                   │
+│  • Channel adapters (message I/O)                      │
+│  • Message loop + trigger matching                     │
+│  • Agent runner (Claude SDK)                           │
+│  • Filesystem store (~/.ticlaw/)                       │
+│  • Enrollment state machine                            │
+└────────────────────────┬────────────────────────────────┘
+                         │ WebSocket (outbound)
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                HUB (Public-Facing)                      │
+│  • WebSocket server (accepts node connections)         │
+│  • HTTP relay (proxies requests to active node)        │
+│  • SSE bridge (streams responses to web clients)       │
+│  • Web UI static files                                 │
+└─────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Node Enrollment & Trust
+
+Nodes identify themselves via a hardware-derived fingerprint and go through a trust lifecycle before they can process requests from the hub.
+
+### Trust States
+
+| State | Description |
+|-------|-------------|
+| `discovered_untrusted` | Node registered but not yet verified |
+| `pending_verification` | Enrollment token generated, awaiting verification |
+| `trusted` | Fully operational |
+| `suspended` | Temporarily disabled |
+| `revoked` | Permanently disabled |
+
+### Enrollment Flow
+
+1. Node derives its fingerprint: `SHA-256(hostname|platform|arch)` → base64url
+2. Node generates a time-limited enrollment token (default: 20 min TTL)
+3. Operator verifies the token via web UI or `/enroll verify <token>` command
+4. On success, the node transitions to `trusted`
+
+### Rate Limiting
+
+- Maximum **5 failed verification attempts** before freeze
+- **15-minute freeze period** after exceeding limit
+- Failed attempt counter resets on successful verification
+
+### Storage
+
+Enrollment state is persisted at `~/.ticlaw/security/enrollment-state.json`, containing:
+- `node_id` and `node_fingerprint`
+- `trust_state`
+- Token hashes (never plaintext)
+- Attempt counters and freeze timestamps
+
+---
+
+## Hub Authentication
+
+When a node connects to the hub, it sends an `enroll` or `auth` message containing:
+- `node_id` — unique identifier
+- `node_fingerprint` — hardware fingerprint
+
+The hub tracks all connected nodes by WebSocket connection and only relays requests to nodes marked as `trusted`.
+
+---
+
+## Data Security
+
+### Filesystem Isolation
+All TiClaw data resides under `~/.ticlaw/`:
+- Agent mind files, session data, and messages are isolated per agent directory
+- No cross-agent data access at the application level
+- Router state, enrollment state, and registered groups stored as separate JSON files
+
+### Credential Handling
+- LLM API keys are read from environment variables or `.env` files
+- Keys are passed to the agent runner process but not persisted in the store
+- Hub trust tokens are configured via environment variables (`HUB_TRUST_TOKEN`)
+
+### Token Security
+- Enrollment tokens are hashed with SHA-256 + random salt before storage
+- Plaintext tokens are never persisted
+- Tokens have configurable TTL (default: 20 minutes, max: 30 minutes)
+
+---
+
+## Channel Security
+
+| Channel | Trust Level | Notes |
+|---------|-------------|-------|
+| Web UI (HTTP/SSE) | Local/Hub-proxied | No built-in auth; relies on hub-level access control |
+| Discord | Platform-authenticated | Bot token required; trigger pattern prevents unintended activation |
+| Feishu | Platform-authenticated | App credentials required; long connection mode |
+| DingTalk | Platform-authenticated | Stream SDK with app credentials |
+| Hub Client | Token-authenticated | WebSocket with enrollment verification |
+
+---
+
+## Concurrency Controls
+
+- **Per-channel mutex**: Only one agent run per chat at a time (`activeAgentLocks`)
+- **Global concurrency limit**: Configurable max concurrent agent runs (`CONCURRENCY_LIMIT`, default: 5)
+- **Agent-level limit**: Max concurrent runs per agent (`AGENT_CONCURRENCY_LIMIT`, default: 3)
+- **Session-level limit**: Max concurrent runs per session (`SESSION_CONCURRENCY_LIMIT`, default: 1)
+
+---
+
+*Last Updated: March 2026*

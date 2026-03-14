@@ -19,19 +19,12 @@ import {
   getAllRegisteredProjects,
   getAllRouterState,
   getAllSessions,
-  getMindState,
-  listMindPackages,
   setRegisteredProject,
   setRouterState,
-  syncUpsertMindPackage,
-  updateMindState,
-} from '../core/db.js';
-import { syncMindStateToFiles } from '../core/mind-files.js';
+} from '../core/store.js';
 import { readEnvFile } from '../core/env.js';
 import { logger } from '../core/logger.js';
 import type {
-  MindPackage,
-  MindState,
   RegisteredProject,
 } from '../core/types.js';
 
@@ -93,38 +86,7 @@ export async function pushToSupabase(): Promise<void> {
   if (!supabase) return;
 
   try {
-    // 1. Mind state
-    const mindState = getMindState();
-    await supabase.from('mind_state').upsert(
-      {
-        id: mindState.id,
-        version: mindState.version,
-        lifecycle: mindState.lifecycle,
-        persona_json: JSON.stringify(mindState.persona),
-        memory_summary: mindState.memory_summary,
-        updated_at: mindState.updated_at,
-      },
-      { onConflict: 'id' },
-    );
-
-    // 2. Mind packages
-    const packages = listMindPackages(100);
-    if (packages.length > 0) {
-      await supabase.from('mind_packages').upsert(
-        packages.map((p) => ({
-          id: p.id,
-          version: p.version,
-          lifecycle: p.lifecycle,
-          persona_json: JSON.stringify(p.persona),
-          memory_summary: p.memory_summary,
-          changelog: p.changelog,
-          created_at: p.created_at,
-        })),
-        { onConflict: 'id' },
-      );
-    }
-
-    // 3. Sessions
+    // 1. Sessions
     const sessionRows = getAllSessions().map((session) => ({
       agent_id: session.agent_id,
       session_id: session.session_id,
@@ -229,41 +191,7 @@ export async function pullFromSupabase(): Promise<void> {
   if (!supabase) return;
 
   try {
-    // 1. Mind state (cloud wins)
-    const { data: mindRows } = await supabase.from('mind_state').select('*');
-    if (mindRows && mindRows.length > 0) {
-      const row = mindRows[0];
-      updateMindState({
-        version: row.version,
-        lifecycle: row.lifecycle,
-        persona: JSON.parse(row.persona_json || '{}'),
-        memory_summary: row.memory_summary || '',
-      });
-      syncMindStateToFiles();
-    }
-
-    // 2. Mind packages
-    const { data: pkgRows } = await supabase
-      .from('mind_packages')
-      .select('*')
-      .order('version', { ascending: false })
-      .limit(100);
-    if (pkgRows && pkgRows.length > 0) {
-      for (const row of pkgRows) {
-        const pkg: MindPackage = {
-          id: row.id,
-          version: row.version,
-          lifecycle: row.lifecycle,
-          persona: JSON.parse(row.persona_json || '{}'),
-          memory_summary: row.memory_summary,
-          changelog: row.changelog,
-          created_at: row.created_at,
-        };
-        syncUpsertMindPackage(pkg);
-      }
-    }
-
-    // 3. Sessions
+    // 1. Sessions
     const { data: sessionRows } = await supabase.from('sessions').select('*');
     if (sessionRows) {
       for (const row of sessionRows) {

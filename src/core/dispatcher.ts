@@ -1,6 +1,6 @@
 import { AgentRunner } from './runner.js';
 import { logger } from './logger.js';
-import { getSession, ensureSession } from './db.js';
+import { getSession, ensureSession } from './store.js';
 import type { NewMessage, RunnerState } from './types.js';
 
 export interface DispatcherDependencies {

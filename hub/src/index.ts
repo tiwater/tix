@@ -1,5 +1,5 @@
 /**
- * TiClaw Hub — WebSocket server that accepts inbound claw connections.
+ * TiClaw Hub — WebSocket server that accepts inbound node connections.
  *
  * Standalone package — no ticlaw core dependencies.
  * Ticos/Supen can `import { attachHub } from '@ticlaw/hub'` to embed.
@@ -8,9 +8,9 @@
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 
-export interface ClawInfo {
-  claw_id: string;
-  claw_fingerprint: string;
+export interface NodeInfo {
+  node_id: string;
+  node_fingerprint: string;
   trusted: boolean;
 }
 
@@ -34,39 +34,39 @@ export interface HubOptions {
 
 // ── State ──
 
-const claws = new Map<WebSocket, ClawInfo>();
+const nodes = new Map<WebSocket, NodeInfo>();
 const pendingRequests = new Map<string, PendingRequest>();
 const sseClients = new Map<string, Set<http.ServerResponse>>();
 let requestIdCounter = 0;
 
 // ── Public API ──
 
-export function listClaws(): ClawInfo[] {
-  return Array.from(claws.values());
+export function listNodes(): NodeInfo[] {
+  return Array.from(nodes.values());
 }
 
-export function getActiveClaw(): WebSocket | null {
-  for (const [ws, info] of claws) {
+export function getActiveNode(): WebSocket | null {
+  for (const [ws, info] of nodes) {
     if (info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
 }
 
-export function relayToClaw(
+export function relayToNode(
   method: string,
   path: string,
   body?: unknown,
   timeoutMs = 15000,
 ): Promise<RelayResult> {
   return new Promise((resolve) => {
-    const claw = getActiveClaw();
-    if (!claw) {
+    const node = getActiveNode();
+    if (!node) {
       resolve({
         status: 503,
         headers: {},
         body: {
-          error: 'no_claw_connected',
-          message: 'No claw is currently connected to this hub',
+          error: 'no_node_connected',
+          message: 'No node is currently connected to this hub',
         },
       });
       return;
@@ -78,54 +78,54 @@ export function relayToClaw(
       resolve({
         status: 504,
         headers: {},
-        body: { error: 'timeout', message: 'Claw did not respond in time' },
+        body: { error: 'timeout', message: 'Node did not respond in time' },
       });
     }, timeoutMs);
 
     pendingRequests.set(reqId, { resolve, timer });
-    claw.send(
+    node.send(
       JSON.stringify({ type: 'api_request', request_id: reqId, method, path, body }),
     );
   });
 }
 
-// ── Claw message handler ──
+// ── Node message handler ──
 
-function handleClawMessage(
+function handleNodeMessage(
   ws: WebSocket,
   msg: Record<string, unknown>,
   log: HubOptions['logger'],
 ): void {
   switch (msg.type) {
     case 'enroll': {
-      const claw_id = msg.claw_id as string;
-      const claw_fingerprint = msg.claw_fingerprint as string;
-      claws.set(ws, { claw_id, claw_fingerprint, trusted: true });
-      log?.info?.(`[hub] Claw enrolled: ${claw_id}`);
+      const node_id = msg.node_id as string;
+      const node_fingerprint = msg.node_fingerprint as string;
+      nodes.set(ws, { node_id, node_fingerprint, trusted: true });
+      log?.info?.(`[hub] Node enrolled: ${node_id}`);
       ws.send(
         JSON.stringify({
           type: 'enrollment_result',
           ok: true,
-          claw_id,
-          claw_fingerprint,
+          node_id,
+          node_fingerprint,
         }),
       );
       break;
     }
 
     case 'auth': {
-      const claw_id = msg.claw_id as string;
-      const claw_fingerprint = msg.claw_fingerprint as string;
-      claws.set(ws, { claw_id, claw_fingerprint, trusted: true });
-      log?.info?.(`[hub] Claw authenticated: ${claw_id}`);
+      const node_id = msg.node_id as string;
+      const node_fingerprint = msg.node_fingerprint as string;
+      nodes.set(ws, { node_id, node_fingerprint, trusted: true });
+      log?.info?.(`[hub] Node authenticated: ${node_id}`);
       ws.send(JSON.stringify({ type: 'auth_result', ok: true }));
       break;
     }
 
     case 'report': {
-      const info = claws.get(ws);
+      const info = nodes.get(ws);
       if (info) {
-        log?.debug?.(`[hub] Report from ${info.claw_id}: ${msg.status}`);
+        log?.debug?.(`[hub] Report from ${info.node_id}: ${msg.status}`);
       }
       break;
     }
@@ -169,10 +169,10 @@ function handleSSERelay(
   res: http.ServerResponse,
   url: URL,
 ): void {
-  const claw = getActiveClaw();
-  if (!claw) {
+  const node = getActiveNode();
+  if (!node) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'no_claw_connected' }));
+    res.end(JSON.stringify({ error: 'no_node_connected' }));
     return;
   }
 
@@ -189,7 +189,7 @@ function handleSSERelay(
   sseClients.get(streamKey)!.add(res);
 
   const reqId = `hub-sse-${++requestIdCounter}`;
-  claw.send(
+  node.send(
     JSON.stringify({ type: 'sse_subscribe', request_id: reqId, path: streamKey }),
   );
 
@@ -203,7 +203,7 @@ function handleSSERelay(
 
 /**
  * Attach the WebSocket hub to an HTTP server.
- * Call this on any http.Server to enable claw connections.
+ * Call this on any http.Server to enable node connections.
  */
 export function attachHub(
   httpServer: http.Server,
@@ -225,20 +225,20 @@ export function attachHub(
 
   wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    log.info?.(`[hub] New claw connection from ${ip}`);
+    log.info?.(`[hub] New node connection from ${ip}`);
 
     ws.on('message', (data) => {
       try {
-        handleClawMessage(ws, JSON.parse(data.toString()), log);
+        handleNodeMessage(ws, JSON.parse(data.toString()), log);
       } catch (err) {
         log.error?.('[hub] Parse error:', err);
       }
     });
 
     ws.on('close', () => {
-      const info = claws.get(ws);
-      if (info) log.info?.(`[hub] Claw disconnected: ${info.claw_id}`);
-      claws.delete(ws);
+      const info = nodes.get(ws);
+      if (info) log.info?.(`[hub] Node disconnected: ${info.node_id}`);
+      nodes.delete(ws);
     });
 
     ws.on('error', (err) => {
@@ -253,7 +253,7 @@ export function attachHub(
 // ── HTTP request handler (API relay middleware) ──
 
 /**
- * Handle an HTTP request — route hub API or relay to claw.
+ * Handle an HTTP request — route hub API or relay to node.
  * Returns true if handled, false to pass through.
  */
 export function handleHubRequest(
@@ -262,15 +262,17 @@ export function handleHubRequest(
 ): boolean {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-  // Hub-native: list claws
-  if (url.pathname === '/api/hub/claws' && req.method === 'GET') {
+  // Hub-native: list nodes
+  if (url.pathname === '/api/hub/nodes' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     });
-    res.end(JSON.stringify({ claws: listClaws() }));
+    res.end(JSON.stringify({ nodes: listNodes() }));
     return true;
   }
+
+
 
   // CORS preflight
   if (
@@ -292,7 +294,7 @@ export function handleHubRequest(
     return true;
   }
 
-  // API relay to claw
+  // API relay to node
   if (
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/runs') ||
@@ -309,7 +311,7 @@ export function handleHubRequest(
       } catch {
         parsedBody = body;
       }
-      const result = await relayToClaw(
+      const result = await relayToNode(
         req.method || 'GET',
         url.pathname + url.search,
         parsedBody,

@@ -7,10 +7,9 @@ import {
   ASSISTANT_NAME,
   TICLAW_HOME,
   IDLE_TIMEOUT,
-  MIND_ADMIN_USERS,
   POLL_INTERVAL,
   TRIGGER_PATTERN,
-  CLAW_HOSTNAME,
+  NODE_HOSTNAME,
 } from './core/config.js';
 import './channels/index.js';
 import {
@@ -27,25 +26,14 @@ import {
   getNewMessages,
   getRouterState,
   getSession,
-  initDatabase,
+  initStore,
   setRegisteredProject,
   setRouterState,
   storeChatMetadata,
   storeMessage,
   getRecentMessages,
-} from './core/db.js';
+} from './core/store.js';
 
-import {
-  createPackage,
-  diffMindVersions,
-  listPackages,
-  lockMind,
-  mindStatus,
-  recordUserInteraction,
-  rollbackPackage,
-  setMindPersonaPatch,
-  unlockMind,
-} from './core/mind.js';
 import { logger } from './core/logger.js';
 import { executeSkillsCommand } from './skills/commands.js';
 import {
@@ -128,30 +116,9 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
   // Extract raw text from messages for agent thinking
   const rawText = messages.map((m) => m.content).join('\n');
-
-  // Mind evolution: natural conversation updates persona and memory (non-blocking)
   const latestMsg = messages[messages.length - 1];
-  const isAdminUser = latestMsg?.sender
-    ? MIND_ADMIN_USERS.includes(latestMsg.sender)
-    : false;
-  if (latestMsg?.content && !latestMsg.content.trim().startsWith('/mind')) {
-    recordUserInteraction({
-      chat_jid: chatJid,
-      channel: chatJid.startsWith('dc:')
-        ? 'discord'
-        : chatJid.startsWith('tg:')
-          ? 'telegram'
-          : undefined,
-      role: 'user',
-      content: latestMsg.content,
-      timestamp: latestMsg.timestamp,
-      sender: latestMsg.sender,
-      sender_name: latestMsg.sender_name,
-      is_admin: isAdminUser,
-    }).catch((err) => {
-      logger.warn({ err }, 'mind updater failed (ignored)');
-    });
-  }
+
+
 
   const recentMessages = getRecentMessages(chatJid, 10);
   let contextText = rawText;
@@ -175,194 +142,44 @@ async function processMessages(chatJid: string): Promise<boolean> {
     // Show typing indicator while we process
     routeSetTyping(channels, chatJid, true);
 
-    // Mind control plane: /mind status, lock, unlock, set, package, diff, rollback
+    // Enrollment control plane: /enroll status | /enroll verify <token>
     const latestText = messages[messages.length - 1]?.content?.trim() || '';
-    if (latestText.startsWith('/mind')) {
+    if (latestText.startsWith('/enroll')) {
       const parts = latestText.split(/\s+/);
-      const cmd = parts[1] || 'status';
-
-      if (cmd === 'status') {
-        const state = mindStatus();
+      const sub = parts[1] || 'status';
+      if (sub === 'status') {
+        const e = readEnrollmentState(NODE_HOSTNAME || undefined);
         await sendFn(
           chatJid,
-          `🧠 Mind status\n- version: ${state.version}\n- lifecycle: ${state.lifecycle}\n- persona: ${JSON.stringify(state.persona)}`,
+          `🔐 Enrollment status\n- node: ${e.node_id}\n- fingerprint: ${e.node_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
         );
         return true;
       }
 
-      if (cmd === 'enroll') {
-        const sub = parts[2] || 'status';
-        if (sub === 'status') {
-          const e = readEnrollmentState(CLAW_HOSTNAME || undefined);
+      if (sub === 'verify') {
+        const token = parts[2];
+        if (!token) {
+          await sendFn(chatJid, 'Usage: /enroll verify <token>');
+          return true;
+        }
+        const e = readEnrollmentState(NODE_HOSTNAME || undefined);
+        const result = verifyEnrollmentToken({
+          token,
+          nodeFingerprint: e.node_fingerprint,
+          nodeId: NODE_HOSTNAME || undefined,
+        });
+
+        if (result.ok) {
           await sendFn(
             chatJid,
-            `🔐 Enrollment status\n- claw: ${e.claw_id}\n- fingerprint: ${e.claw_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
+            `✅ Enrollment verified. trust_state=${result.state.trust_state}`,
           );
-          return true;
-        }
-
-        if (sub === 'verify') {
-          const token = parts[3];
-          if (!token) {
-            await sendFn(chatJid, 'Usage: /mind enroll verify <token>');
-            return true;
-          }
-          const e = readEnrollmentState(CLAW_HOSTNAME || undefined);
-          const result = verifyEnrollmentToken({
-            token,
-            clawFingerprint: e.claw_fingerprint,
-            clawId: CLAW_HOSTNAME || undefined,
-          });
-
-          if (result.ok) {
-            await sendFn(
-              chatJid,
-              `✅ Enrollment verified. trust_state=${result.state.trust_state}`,
-            );
-          } else {
-            await sendFn(
-              chatJid,
-              `❌ Enrollment verification failed: ${result.code} (state=${result.state.trust_state})`,
-            );
-          }
-          return true;
-        }
-      }
-
-      const isMainGroup = !!group.isMain;
-
-      if (cmd === 'lock') {
-        if (!isMainGroup) {
-          await sendFn(chatJid, '⛔ /mind lock requires main control group');
-          return true;
-        }
-        const state = lockMind();
-        logger.info(
-          { chatJid, cmd: '/mind lock', version: state.version },
-          'mind governance command',
-        );
-        await sendFn(chatJid, `✅ Mind locked at version ${state.version}`);
-        return true;
-      }
-
-      if (cmd === 'unlock') {
-        if (!isMainGroup) {
-          await sendFn(chatJid, '⛔ /mind unlock requires main control group');
-          return true;
-        }
-        const state = unlockMind();
-        logger.info(
-          { chatJid, cmd: '/mind unlock', lifecycle: state.lifecycle },
-          'mind governance command',
-        );
-        await sendFn(
-          chatJid,
-          `✅ Mind unlocked (lifecycle=${state.lifecycle})`,
-        );
-        return true;
-      }
-
-      if (cmd === 'set') {
-        const field = parts[2];
-        const value = parts.slice(3).join(' ').trim();
-        if (!field || !value) {
+        } else {
           await sendFn(
             chatJid,
-            'Usage: /mind set <tone|verbosity|emoji> <value>',
+            `❌ Enrollment verification failed: ${result.code} (state=${result.state.trust_state})`,
           );
-          return true;
         }
-
-        const patch: any = {};
-        if (field === 'tone') patch.tone = value;
-        else if (field === 'verbosity') patch.verbosity = value;
-        else if (field === 'emoji')
-          patch.emoji = value === 'true' || value === 'on' || value === '1';
-        else {
-          await sendFn(chatJid, `Unsupported field: ${field}`);
-          return true;
-        }
-
-        const state = setMindPersonaPatch(patch);
-        await sendFn(
-          chatJid,
-          `✅ Mind persona updated: ${JSON.stringify(state.persona)}`,
-        );
-        return true;
-      }
-
-      if (cmd === 'package') {
-        const sub = parts[2] || 'create';
-        if (sub === 'create') {
-          if (!isMainGroup) {
-            await sendFn(
-              chatJid,
-              '⛔ /mind package create requires main control group',
-            );
-            return true;
-          }
-          const pkg = createPackage('Created via /mind package create');
-          logger.info(
-            { chatJid, cmd: '/mind package create', version: pkg.version },
-            'mind governance command',
-          );
-          await sendFn(
-            chatJid,
-            `📦 Mind package created: v${pkg.version} (${pkg.id})`,
-          );
-          return true;
-        }
-        if (sub === 'list') {
-          const pkgs = listPackages(5);
-          const lines = pkgs
-            .map((p) => `- v${p.version} [${p.lifecycle}] ${p.id}`)
-            .join('\n');
-          await sendFn(
-            chatJid,
-            `📚 Recent mind packages\n${lines || '(empty)'}`,
-          );
-          return true;
-        }
-      }
-
-      if (cmd === 'diff') {
-        const from = Number(parts[2]);
-        const to = Number(parts[3]);
-        if (!Number.isFinite(from) || !Number.isFinite(to)) {
-          await sendFn(chatJid, 'Usage: /mind diff <fromVersion> <toVersion>');
-          return true;
-        }
-        const diff = diffMindVersions(from, to);
-        await sendFn(chatJid, `🧾 Mind diff ${from} -> ${to}\n${diff}`);
-        return true;
-      }
-
-      if (cmd === 'rollback') {
-        if (!isMainGroup) {
-          await sendFn(
-            chatJid,
-            '⛔ /mind rollback requires main control group',
-          );
-          return true;
-        }
-        const version = Number(parts[2]);
-        if (!Number.isFinite(version)) {
-          await sendFn(chatJid, 'Usage: /mind rollback <version>');
-          return true;
-        }
-        const state = rollbackPackage(version);
-        if (!state) {
-          await sendFn(chatJid, `❌ Mind package version ${version} not found`);
-          return true;
-        }
-        logger.info(
-          { chatJid, cmd: '/mind rollback', version: state.version },
-          'mind governance command',
-        );
-        await sendFn(
-          chatJid,
-          `↩️ Rolled back to mind version ${state.version}`,
-        );
         return true;
       }
     }
@@ -371,7 +188,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
       const rawArgs = latestText.replace(/^\/skills\b/, '').trim();
       const result = executeSkillsCommand(rawArgs, {
         actor: latestMsg?.sender || chatJid,
-        isAdmin: isAdminUser,
+        isAdmin: false,
       });
       await sendFn(chatJid, result.message);
       return result.ok;
@@ -632,7 +449,7 @@ let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 async function main(): Promise<void> {
   logger.info('TiClaw starting');
 
-  initDatabase();
+  initStore();
   logger.info('Database initialized');
 
   // Ensure default agent and session exist
@@ -651,7 +468,18 @@ async function main(): Promise<void> {
   loadState();
 
   const channelOpts: ChannelOpts = {
-    onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),
+    onMessage: (chatJid: string, msg: NewMessage) => {
+      storeMessage(msg);
+      // Event-driven: immediately process web messages instead of waiting for poll
+      if (chatJid.startsWith('web:') && !msg.is_from_me) {
+        if (!activeAgentLocks.has(chatJid)) {
+          const agentPromise = processMessages(chatJid).finally(() => {
+            activeAgentLocks.delete(chatJid);
+          });
+          activeAgentLocks.set(chatJid, agentPromise);
+        }
+      }
+    },
     onChatMetadata: (
       chatJid: string,
       timestamp: string,

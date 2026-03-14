@@ -22,6 +22,11 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "src/core/db.ts",
+    "src/core/db.test.ts",
+    "src/**/*.test.ts",
+    "src/**/*.e2e.ts",
+    "src/test-*.ts"
   ]
 }

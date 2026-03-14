@@ -36,7 +36,7 @@ const envConfig = readEnvFile([
   'TASK_DEFAULT_STEP_TIMEOUT_MS',
   'TASK_DEFAULT_RETRY_COUNT',
   'TASK_DEFAULT_RETRY_BACKOFF_MS',
-  'TC_CLAW_NAME',
+  'TC_NODE_NAME',
 ]);
 
 export const ASSISTANT_NAME =
@@ -225,10 +225,10 @@ export const DEFAULT_LLM_MODEL =
 export const LLM_BASE_URL =
   process.env.LLM_BASE_URL || envConfig.LLM_BASE_URL || '';
 
-// Claw identity — derived from hostname or manual override via TC_CLAW_NAME
+// Node identity — derived from hostname or manual override via TC_NODE_NAME
 const rawHostname = os.hostname() || 'ticlaw-local';
-export const CLAW_HOSTNAME =
-  process.env.TC_CLAW_NAME || envConfig.TC_CLAW_NAME || rawHostname;
+export const NODE_HOSTNAME =
+  process.env.TC_NODE_NAME || envConfig.TC_NODE_NAME || rawHostname;
 
 // ACP (Agent Communication Protocol) configuration
 export const ACP_ENABLED =

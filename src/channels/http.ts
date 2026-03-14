@@ -17,8 +17,8 @@
  *   GET  /api/skills          — list skills
  *   POST /api/skills/:name/*  — enable/disable skills
  *   GET  /api/tasks           — list active tasks
- *   GET  /api/claw            — claw status
- *   POST /api/claw/trust      — trust claw
+ *   GET  /api/node            — node status
+ *   POST /api/node/trust      — trust node
  *   GET  /api/enroll/*        — enrollment endpoints
  *   GET  /health              — health check
  */
@@ -33,7 +33,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import {
   ACP_ENABLED,
   AGENTS_DIR,
-  CLAW_HOSTNAME,
+  NODE_HOSTNAME,
   HTTP_ENABLED,
   HTTP_PORT,
   SKILLS_CONFIG,
@@ -46,7 +46,6 @@ import {
   getAllSchedules,
   getAllSessions,
   getAgent,
-  getMindState,
   getRecentMessages,
   getSession,
   getSessionsForAgent,
@@ -54,7 +53,7 @@ import {
   createSchedule,
   updateSchedule,
   deleteSchedule,
-} from '../core/db.js';
+} from '../core/store.js';
 import { SkillsRegistry } from '../skills/registry.js';
 import {
   createEnrollmentToken,
@@ -275,12 +274,12 @@ export class HttpChannel implements Channel {
           chatJid = buildHttpSessionId(agent_id, session_id);
 
           // Check trust status
-          const enrollState = readEnrollmentState(CLAW_HOSTNAME || undefined);
+          const enrollState = readEnrollmentState(NODE_HOSTNAME || undefined);
           if (enrollState.trust_state !== 'trusted') {
             ws.send(
               JSON.stringify({
                 type: 'error',
-                error: 'claw_not_trusted',
+                error: 'node_not_trusted',
                 trust_state: enrollState.trust_state,
               }),
             );
@@ -368,7 +367,16 @@ export class HttpChannel implements Channel {
       }
 
       if (pathname === '/api/mind' && req.method === 'GET') {
-        writeJson(res, 200, getMindState());
+        // Mind state is now defined by Markdown files (SOUL.md, MEMORY.md)
+        const agentId = url.searchParams.get('agent_id');
+        const baseDir = agentId ? agentPaths(agentId).base : AGENTS_DIR;
+        const soul = fs.existsSync(path.join(baseDir, 'SOUL.md'))
+          ? fs.readFileSync(path.join(baseDir, 'SOUL.md'), 'utf-8')
+          : '';
+        const memory = fs.existsSync(path.join(baseDir, 'MEMORY.md'))
+          ? fs.readFileSync(path.join(baseDir, 'MEMORY.md'), 'utf-8')
+          : '';
+        writeJson(res, 200, { soul, memory });
         return;
       }
 
@@ -409,10 +417,10 @@ export class HttpChannel implements Channel {
       // ── Enrollment endpoints ──
 
       if (pathname === '/api/enroll/status' && req.method === 'GET') {
-        const state = readEnrollmentState(CLAW_HOSTNAME || undefined);
+        const state = readEnrollmentState(NODE_HOSTNAME || undefined);
         writeJson(res, 200, {
-          claw_id: state.claw_id,
-          fingerprint: state.claw_fingerprint,
+          node_id: state.node_id,
+          fingerprint: state.node_fingerprint,
           trust_state: state.trust_state,
           token_expires_at: state.token_expires_at || null,
           failed_attempts: state.failed_attempts,
@@ -428,7 +436,7 @@ export class HttpChannel implements Channel {
         const ttlMinutes = Number(parsed.ttl_minutes);
         const result = createEnrollmentToken({
           ttlMinutes: Number.isFinite(ttlMinutes) ? ttlMinutes : undefined,
-          clawId: CLAW_HOSTNAME || undefined,
+          nodeId: NODE_HOSTNAME || undefined,
         });
         writeJson(res, 201, result);
         return;
@@ -437,22 +445,22 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/enroll/verify' && req.method === 'POST') {
         const parsed = await readJsonBody(req);
         const token = parsed.token;
-        const clawFingerprint = parsed.claw_fingerprint;
-        if (!token || !clawFingerprint) {
+        const nodeFingerprint = parsed.node_fingerprint;
+        if (!token || !nodeFingerprint) {
           writeProtocolError(
             res,
             400,
             'input_error',
             'bad_request',
-            'token and claw_fingerprint are required',
+            'token and node_fingerprint are required',
           );
           return;
         }
 
         const result = verifyEnrollmentToken({
           token,
-          clawFingerprint,
-          clawId: CLAW_HOSTNAME || undefined,
+          nodeFingerprint,
+          nodeId: NODE_HOSTNAME || undefined,
         });
         if (!result.ok) {
           const statusCode =
@@ -480,7 +488,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/revoke' && req.method === 'POST') {
         const state = setTrustState('revoked', {
-          clawId: CLAW_HOSTNAME || undefined,
+          nodeId: NODE_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -488,7 +496,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/suspend' && req.method === 'POST') {
         const state = setTrustState('suspended', {
-          clawId: CLAW_HOSTNAME || undefined,
+          nodeId: NODE_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -496,7 +504,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/reenroll' && req.method === 'POST') {
         const state = setTrustState('discovered_untrusted', {
-          clawId: CLAW_HOSTNAME || undefined,
+          nodeId: NODE_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -608,10 +616,10 @@ export class HttpChannel implements Channel {
         const senderName = sender_name || sender || 'Web User';
         const timestamp = new Date().toISOString();
 
-        const enrollState = readEnrollmentState(CLAW_HOSTNAME || undefined);
+        const enrollState = readEnrollmentState(NODE_HOSTNAME || undefined);
         if (enrollState.trust_state !== 'trusted') {
           writeJson(res, 403, {
-            error: 'claw_not_trusted',
+            error: 'node_not_trusted',
             trust_state: enrollState.trust_state,
           });
           return;
@@ -653,9 +661,8 @@ export class HttpChannel implements Channel {
           task_id: taskId,
         };
 
-        // Dispatch through our centralized global architecture
+        // Store message and let the polling loop handle agent execution
         this.opts.onMessage(chatJid, msg);
-        void app.dispatcher.dispatch(chatJid, msg);
 
         writeJson(res, 202, {
           ok: true,
@@ -912,16 +919,16 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Web UI API: Claw ──
+      // ── Web UI API: Node ──
 
-      if (pathname === '/api/claw' && req.method === 'GET') {
-        const enrollment = readEnrollmentState(CLAW_HOSTNAME || undefined);
+      if (pathname === '/api/node' && req.method === 'GET') {
+        const enrollment = readEnrollmentState(NODE_HOSTNAME || undefined);
         const stats = getExecutorStats();
         writeJson(res, 200, {
-          hostname: CLAW_HOSTNAME,
+          hostname: NODE_HOSTNAME,
           enrollment: {
             trust_state: enrollment.trust_state,
-            fingerprint: enrollment.claw_fingerprint,
+            fingerprint: enrollment.node_fingerprint,
             trusted_at: enrollment.trusted_at,
             failed_attempts: enrollment.failed_attempts,
           },
@@ -932,9 +939,9 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Trust Claw ──
 
-      if (pathname === '/api/claw/trust' && req.method === 'POST') {
+      if (pathname === '/api/node/trust' && req.method === 'POST') {
         const result = setTrustState('trusted', {
-          clawId: CLAW_HOSTNAME || undefined,
+          nodeId: NODE_HOSTNAME || undefined,
         });
         writeJson(res, 200, {
           ok: true,

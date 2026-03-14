@@ -2,10 +2,10 @@
 # See: https://render.com/docs/blueprint-spec
 
 services:
-  # 1. Claw (Agent Worker) — NOT publicly exposed
+  # 1. Node (Agent Worker) — NOT publicly exposed
   # The TiClaw service: connects outbound to the Hub via WebSocket
   - type: pserv
-    name: ticlaw-claw
+    name: ticlaw-node
     runtime: node
     plan: starter
     buildCommand: "pnpm install && pnpm run build"
@@ -19,7 +19,7 @@ services:
         value: "22"
       - key: TICLAW_HOME
         value: "/data/ticlaw"
-      - key: CLAW_HOSTNAME
+      - key: NODE_HOSTNAME
         sync: false
       - key: HTTP_PORT
         value: "10000"
@@ -35,7 +35,7 @@ services:
         value: "60000"
 
   # 2. Web + Hub (public-facing) — reference TiClaw controller
-  # Imports @ticlaw/hub, accepts claw connections, serves web UI
+  # Imports @ticlaw/hub, accepts node connections, serves web UI
   - type: web
     name: ticlaw
     runtime: node

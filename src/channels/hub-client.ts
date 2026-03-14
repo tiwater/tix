@@ -6,7 +6,7 @@ import {
   readEnrollmentState,
   verifyEnrollmentToken,
 } from '../core/enrollment.js';
-import { CLAW_HOSTNAME, HTTP_PORT } from '../core/config.js';
+import { NODE_HOSTNAME, HTTP_PORT } from '../core/config.js';
 import { Channel, NewMessage, RegisteredProject } from '../core/types.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 
@@ -68,7 +68,7 @@ export class HubClientChannel implements Channel {
   }
 
   private authenticate(): void {
-    const state = readEnrollmentState(CLAW_HOSTNAME || undefined);
+    const state = readEnrollmentState(NODE_HOSTNAME || undefined);
 
     // If we have a trust_token in config and we are not yet trusted, attempt enrollment
     if (this.config.trust_token && state.trust_state !== 'trusted') {
@@ -77,16 +77,16 @@ export class HubClientChannel implements Channel {
         JSON.stringify({
           type: 'enroll',
           token: this.config.trust_token,
-          claw_id: state.claw_id,
-          claw_fingerprint: state.claw_fingerprint,
+          node_id: state.node_id,
+          node_fingerprint: state.node_fingerprint,
         }),
       );
     } else {
       this.ws?.send(
         JSON.stringify({
           type: 'auth',
-          claw_id: state.claw_id,
-          claw_fingerprint: state.claw_fingerprint,
+          node_id: state.node_id,
+          node_fingerprint: state.node_fingerprint,
         }),
       );
     }
@@ -96,7 +96,7 @@ export class HubClientChannel implements Channel {
     const interval = this.config.reporting_interval || 60000;
     this.reportingInterval = setInterval(() => {
       if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
-        const state = readEnrollmentState(CLAW_HOSTNAME || undefined);
+        const state = readEnrollmentState(NODE_HOSTNAME || undefined);
         this.ws.send(
           JSON.stringify({
             type: 'report',
@@ -127,8 +127,8 @@ export class HubClientChannel implements Channel {
           // Sync enrollment state
           verifyEnrollmentToken({
             token: this.config.trust_token!,
-            clawFingerprint: payload.claw_fingerprint,
-            clawId: CLAW_HOSTNAME || undefined,
+            nodeFingerprint: payload.node_fingerprint,
+            nodeId: NODE_HOSTNAME || undefined,
           });
         } else {
           logger.error({ code: payload.code }, 'Hub enrollment failed');
@@ -247,7 +247,7 @@ export class HubClientChannel implements Channel {
       this.activeSseSubscriptions.delete(streamKey);
     }
 
-    // Connect to the claw's own local HTTP SSE endpoint and relay events
+    // Connect to the node's own local HTTP SSE endpoint and relay events
     const localUrl = `http://127.0.0.1:${HTTP_PORT}${streamKey}`;
     logger.info({ path: streamKey }, 'SSE relay: subscribing to local stream');
 
@@ -293,7 +293,8 @@ export class HubClientChannel implements Channel {
       });
 
       res.on('error', (err) => {
-        logger.error({ err, path: streamKey }, 'SSE relay: stream error');
+        // ECONNRESET is expected when SSE streams close (server restart, agent done, client disconnect)
+        logger.debug({ err, path: streamKey }, 'SSE relay: stream error');
         this.activeSseSubscriptions.delete(streamKey);
       });
     });

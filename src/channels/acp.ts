@@ -4,7 +4,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 
 import { ACP_ENABLED, ACP_HUB_URL } from '../core/config.js';
-import { ensureSession } from '../core/db.js';
+import { ensureSession } from '../core/store.js';
 import { logger } from '../core/logger.js';
 import { submitTask } from '../task-executor.js';
 import { ACPClient } from '../acp-client.js';

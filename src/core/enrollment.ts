@@ -5,17 +5,19 @@ import path from 'path';
 
 import { TICLAW_HOME } from './config.js';
 
-export type ClawTrustState =
+export type NodeTrustState =
   | 'discovered_untrusted'
   | 'pending_verification'
   | 'trusted'
   | 'suspended'
   | 'revoked';
 
+
+
 export interface EnrollmentState {
-  claw_id: string;
-  claw_fingerprint: string;
-  trust_state: ClawTrustState;
+  node_id: string;
+  node_fingerprint: string;
+  trust_state: NodeTrustState;
   token_hash?: string;
   token_salt?: string;
   token_expires_at?: string;
@@ -51,7 +53,7 @@ function ensureDir(): void {
   fs.mkdirSync(ENROLLMENT_DIR, { recursive: true });
 }
 
-function normalizeClawId(input?: string): string {
+function normalizeNodeId(input?: string): string {
   const raw = (input || '').trim();
   if (raw) return raw;
   return `${os.hostname()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -64,7 +66,7 @@ function machineFingerprintMaterial(): string {
   return `${host}|${platform}|${arch}`;
 }
 
-function deriveClawFingerprint(): string {
+function deriveNodeFingerprint(): string {
   const h = crypto.createHash('sha256');
   h.update(machineFingerprintMaterial());
   return h.digest('base64url');
@@ -76,20 +78,20 @@ function hashToken(token: string, salt: string): string {
   return h.digest('hex');
 }
 
-function defaultState(clawId?: string): EnrollmentState {
+function defaultState(nodeId?: string): EnrollmentState {
   return {
-    claw_id: normalizeClawId(clawId),
-    claw_fingerprint: deriveClawFingerprint(),
+    node_id: normalizeNodeId(nodeId),
+    node_fingerprint: deriveNodeFingerprint(),
     trust_state: 'discovered_untrusted',
     failed_attempts: 0,
     updated_at: nowIso(),
   };
 }
 
-export function readEnrollmentState(clawId?: string): EnrollmentState {
+export function readEnrollmentState(nodeId?: string): EnrollmentState {
   ensureDir();
   if (!fs.existsSync(ENROLLMENT_STATE_PATH)) {
-    const initial = defaultState(clawId);
+    const initial = defaultState(nodeId);
     writeEnrollmentState(initial);
     return initial;
   }
@@ -98,19 +100,12 @@ export function readEnrollmentState(clawId?: string): EnrollmentState {
     const parsed = JSON.parse(
       fs.readFileSync(ENROLLMENT_STATE_PATH, 'utf-8'),
     ) as EnrollmentState;
-    // Ensure required fields exist for old state files
     return {
-      ...defaultState(clawId),
+      ...defaultState(nodeId),
       ...parsed,
-      claw_id:
-        parsed.claw_id || (parsed as any).runtime_id || normalizeClawId(clawId),
-      claw_fingerprint:
-        parsed.claw_fingerprint ||
-        (parsed as any).runtime_fingerprint ||
-        deriveClawFingerprint(),
     };
   } catch {
-    const reset = defaultState(clawId);
+    const reset = defaultState(nodeId);
     writeEnrollmentState(reset);
     return reset;
   }
@@ -127,14 +122,14 @@ export function writeEnrollmentState(state: EnrollmentState): void {
 
 export function createEnrollmentToken(opts?: {
   ttlMinutes?: number;
-  clawId?: string;
+  nodeId?: string;
 }): {
   token: string;
   expires_at: string;
-  claw_id: string;
-  claw_fingerprint: string;
+  node_id: string;
+  node_fingerprint: string;
 } {
-  const state = readEnrollmentState(opts?.clawId);
+  const state = readEnrollmentState(opts?.nodeId);
   const ttl = Math.max(
     10,
     Math.min(30, opts?.ttlMinutes ?? DEFAULT_TOKEN_TTL_MINUTES),
@@ -161,15 +156,15 @@ export function createEnrollmentToken(opts?: {
   return {
     token,
     expires_at: next.token_expires_at!,
-    claw_id: next.claw_id,
-    claw_fingerprint: next.claw_fingerprint,
+    node_id: next.node_id,
+    node_fingerprint: next.node_fingerprint,
   };
 }
 
 export function verifyEnrollmentToken(input: {
   token: string;
-  clawFingerprint: string;
-  clawId?: string;
+  nodeFingerprint: string;
+  nodeId?: string;
 }): {
   ok: boolean;
   code:
@@ -182,7 +177,7 @@ export function verifyEnrollmentToken(input: {
     | 'token_mismatch';
   state: EnrollmentState;
 } {
-  const state = readEnrollmentState(input.clawId);
+  const state = readEnrollmentState(input.nodeId);
 
   if (!state.token_hash || !state.token_salt || !state.token_expires_at) {
     return { ok: false, code: 'missing_token', state };
@@ -212,7 +207,8 @@ export function verifyEnrollmentToken(input: {
     return { ok: false, code: 'expired', state: expired };
   }
 
-  if (input.clawFingerprint !== state.claw_fingerprint) {
+  const fingerprint = input.nodeFingerprint;
+  if (fingerprint !== state.node_fingerprint) {
     const failed = applyFailedAttempt(state);
     return { ok: false, code: 'fingerprint_mismatch', state: failed };
   }
@@ -255,10 +251,10 @@ function applyFailedAttempt(state: EnrollmentState): EnrollmentState {
 }
 
 export function setTrustState(
-  target: ClawTrustState,
-  opts?: { clawId?: string },
+  target: NodeTrustState,
+  opts?: { nodeId?: string },
 ): EnrollmentState {
-  const state = readEnrollmentState(opts?.clawId);
+  const state = readEnrollmentState(opts?.nodeId);
   const next: EnrollmentState = {
     ...state,
     trust_state: target,

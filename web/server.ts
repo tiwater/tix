@@ -2,9 +2,9 @@
  * TiClaw Web — Reference implementation of a TiClaw controller.
  *
  * Demonstrates how to use @ticlaw/hub to build a controller that:
- * - Accepts inbound WebSocket connections from claws
- * - Provides a web UI for interacting with connected claws
- * - Relays API requests from the UI to claws
+ * - Accepts inbound WebSocket connections from nodes
+ * - Provides a web UI for interacting with connected nodes
+ * - Relays API requests from the UI to nodes
  *
  * Same code runs in both development and production:
  * - Dev:  Vite middlewareMode for HMR + SvelteKit dev
