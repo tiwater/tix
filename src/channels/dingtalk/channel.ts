@@ -27,7 +27,10 @@ interface DingTalkInstance {
   lastWebhook?: string;
 }
 
-export class DingTalkChannel extends AbstractChannel<DingTalkInstance, DingTalkAccount> {
+export class DingTalkChannel extends AbstractChannel<
+  DingTalkInstance,
+  DingTalkAccount
+> {
   name = 'dingtalk';
 
   constructor(accounts: DingTalkAccount[], opts: ChannelOpts) {
@@ -42,12 +45,22 @@ export class DingTalkChannel extends AbstractChannel<DingTalkInstance, DingTalkA
         clientSecret: account.appSecret,
       });
 
-      const connectionManager = new ConnectionManager(streamClient, account.appId);
+      const connectionManager = new ConnectionManager(
+        streamClient,
+        account.appId,
+      );
 
       (streamClient as any).registerChatReceiver(async (event: any) => {
-        const { conversationId, senderId, senderNick, content, msgId, sessionWebhook } = event;
+        const {
+          conversationId,
+          senderId,
+          senderNick,
+          content,
+          msgId,
+          sessionWebhook,
+        } = event;
         const chatJid = `dingtalk:${account.appId}:${conversationId}`;
-        
+
         const inst = this.instances.get(account.appId);
         if (inst) inst.lastWebhook = sessionWebhook;
 
@@ -59,18 +72,20 @@ export class DingTalkChannel extends AbstractChannel<DingTalkInstance, DingTalkA
           chat_jid: chatJid,
           sender: senderId,
           sender_name: senderNick,
-          content: TRIGGER_PATTERN.test(text) ? text : `@${ASSISTANT_NAME} ${text}`,
+          content: TRIGGER_PATTERN.test(text)
+            ? text
+            : `@${ASSISTANT_NAME} ${text}`,
           timestamp: new Date().toISOString(),
         });
 
         return { status: 'ok' };
       });
 
-      this.instances.set(account.appId, { 
-        appId: account.appId, 
+      this.instances.set(account.appId, {
+        appId: account.appId,
         appSecret: account.appSecret,
-        streamClient, 
-        connectionManager 
+        streamClient,
+        connectionManager,
       });
     }
   }
@@ -92,7 +107,13 @@ export class DingTalkChannel extends AbstractChannel<DingTalkInstance, DingTalkA
       await sendBySession(inst.lastWebhook, inst.appId, inst.appSecret, text);
     } else {
       const isGroup = chatId.startsWith('cid');
-      await sendProactiveMessage(inst.appId, inst.appSecret, chatId, text, isGroup);
+      await sendProactiveMessage(
+        inst.appId,
+        inst.appSecret,
+        chatId,
+        text,
+        isGroup,
+      );
     }
   }
 

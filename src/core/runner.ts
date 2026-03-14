@@ -315,26 +315,7 @@ export class AgentRunner {
   }
 }
 
-/**
- * Legacy Compatibility: Procedural wrapper for AgentRunner.
- */
-export async function runAgent(params: {
-  agentId: string;
-  sessionId: string;
-  message: string;
-  taskId?: string;
-  onReply?: (text: string) => void | Promise<void>;
-  onStateChange?: (state: RunnerState) => void | Promise<void>;
-}): Promise<void> {
-  const runner = new AgentRunner(params.agentId, params.sessionId, {
-    onReply: params.onReply,
-    onStateChange: params.onStateChange,
-  });
-  return runner.run(params.message, params.taskId);
-}
-
-// Re-export for convenience
+// Re-export logger utilities for other core modules
 export function appendJobLog(taskId: string, log: string): void {
-  // Logic for specialized job logging if needed
   logger.info({ taskId, log }, 'Job Log');
 }

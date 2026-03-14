@@ -26,13 +26,14 @@ import {
   storeMessage,
 } from './core/db.js';
 import { logger } from './core/logger.js';
-import {
-  getChannelFactory,
-  getRegisteredChannelNames,
-} from './channels/registry.js';
+import { getChannelFactory, getRegisteredChannelNames } from './channels/registry.js';
 import { routeOutbound, routeSetTyping } from './router.js';
-import { runAgent } from './run-agent.js';
-import { startPeriodicSupabasePush, pullFromSupabase, isSupabaseConfigured } from './sync/supabase-sync.js';
+import { AgentRunner } from './core/runner.js';
+import {
+  startPeriodicSupabasePush,
+  pullFromSupabase,
+  isSupabaseConfigured,
+} from './sync/supabase-sync.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { CommandHub } from './core/command-hub.js';
 import { ensureSession } from './core/db.js';
@@ -74,7 +75,9 @@ async function processMessages(chatJid: string): Promise<boolean> {
       const commandRes = await CommandHub.tryExecute(message.content);
       if (commandRes) {
         if (commandRes.type === 'card') {
-          await channel.sendMessage(chatJid, commandRes.content, { card: commandRes.data });
+          await channel.sendMessage(chatJid, commandRes.content, {
+            card: commandRes.data,
+          });
         } else {
           await channel.sendMessage(chatJid, commandRes.content);
         }
@@ -83,15 +86,13 @@ async function processMessages(chatJid: string): Promise<boolean> {
       }
 
       // 2. Fallback to LLM Agent
-      await runAgent({
-        agentId: group.folder,
-        sessionId: message.session_id || chatJid,
-        message: message.content,
-        taskId: message.task_id || randomUUID(),
+      const runner = new AgentRunner(group.folder, message.session_id || chatJid, {
         onReply: async (text) => {
           await channel.sendMessage(chatJid, text);
         },
       });
+
+      await runner.run(message.content, message.task_id || randomUUID());
 
       lastAgentTimestamp[chatJid] = new Date().toISOString();
       return true;
@@ -134,7 +135,9 @@ async function startMessageLoop(): Promise<void> {
       const jids = Object.keys(registeredProjects);
       for (const jid of jids) {
         if (!activeAgentLocks.has(jid)) {
-          const p = processMessages(jid).finally(() => activeAgentLocks.delete(jid));
+          const p = processMessages(jid).finally(() =>
+            activeAgentLocks.delete(jid),
+          );
           activeAgentLocks.set(jid, p);
         }
       }
@@ -151,7 +154,8 @@ async function main(): Promise<void> {
 
   const channelOpts: ChannelOpts = {
     onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),
-    onChatMetadata: (jid, ts, name, channel, isGroup) => storeChatMetadata(jid, ts, name, channel, isGroup),
+    onChatMetadata: (jid, ts, name, channel, isGroup) =>
+      storeChatMetadata(jid, ts, name, channel, isGroup),
     registeredProjects: () => registeredProjects,
     onGroupRegistered: (jid, group) => registerProject(jid, group),
   };

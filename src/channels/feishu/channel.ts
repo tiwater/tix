@@ -105,7 +105,7 @@ export class FeishuChannel extends AbstractChannel<
       const commandNames = CommandHub.getCommandNames();
       if (commandNames.length === 0) return;
 
-      const menuItems = commandNames.map(name => ({
+      const menuItems = commandNames.map((name) => ({
         name: `/${name}`,
         value: `/${name}`,
       }));
@@ -115,13 +115,16 @@ export class FeishuChannel extends AbstractChannel<
         data: {
           chat_menu_item: {
             action_type: 'REDIRECT',
-            name: 'TiClaw Menu'
-          }
-        }
+            name: 'TiClaw Menu',
+          },
+        },
       });
       logger.info({ appId: inst.appId }, 'Feishu bot menu synced');
     } catch (err: any) {
-      logger.warn({ appId: inst.appId, err: err.message }, 'Failed to sync Feishu bot menu');
+      logger.warn(
+        { appId: inst.appId, err: err.message },
+        'Failed to sync Feishu bot menu',
+      );
     }
   }
 
@@ -144,13 +147,13 @@ export class FeishuChannel extends AbstractChannel<
 
     let content: string;
     if (options?.card) {
-       // If a card object is provided, use it directly
-       content = JSON.stringify(options.card);
+      // If a card object is provided, use it directly
+      content = JSON.stringify(options.card);
     } else {
-       // Default fallback: lark_md div
-       content = JSON.stringify({
-          elements: [{ tag: 'div', text: { content: text, tag: 'lark_md' } }],
-       });
+      // Default fallback: lark_md div
+      content = JSON.stringify({
+        elements: [{ tag: 'div', text: { content: text, tag: 'lark_md' } }],
+      });
     }
 
     await inst.client.im.message.create({

@@ -1,20 +1,17 @@
 /**
- * Task Executor - Sync Stub Fix
+ * Task Executor - Sync Implementation using AgentRunner
  */
-import { runAgent } from './run-agent.js';
+import { AgentRunner } from './core/runner.js';
 import { logger } from './core/logger.js';
 
 export async function executeTask(task: any) {
   try {
-    await runAgent({
-      agentId: task.agent_id,
-      sessionId: task.session_id,
-      message: task.prompt,
-      taskId: task.id,
+    const runner = new AgentRunner(task.agent_id, task.session_id, {
       onReply: async (text) => {
         logger.info({ taskId: task.id, text }, 'Task Reply');
       }
     });
+    await runner.run(task.prompt, task.id);
   } catch (err) {
     logger.error({ err }, 'Task Execution Failed');
   }
