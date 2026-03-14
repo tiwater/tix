@@ -2,9 +2,6 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import '../app.css';
 
-  // --- Config ---
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3280';
-
   // --- Types ---
   type Tab = 'chat' | 'sessions' | 'schedules' | 'skills' | 'claw';
 
@@ -144,7 +141,7 @@
   // --- SSE ---
   function connectSSE() {
     if (eventSource) { eventSource.close(); eventSource = null; }
-    const url = `${API_BASE}/runs/web-run/stream?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}`;
+    const url = `/runs/web-run/stream?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}`;
     eventSource = new EventSource(url);
 
     eventSource.onopen = () => {
@@ -155,7 +152,7 @@
 
     async function fetchMessageHistory() {
       try {
-        const res = await fetch(`${API_BASE}/api/messages?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}&limit=50`);
+        const res = await fetch(`/api/messages?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}&limit=50`);
         if (!res.ok) return;
         const data = await res.json();
         if (data.messages && data.messages.length > 0) {
@@ -268,7 +265,7 @@
     isThinking = true;
 
     try {
-      const res = await fetch(`${API_BASE}/runs`, {
+      const res = await fetch(`/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -311,20 +308,20 @@
 
   // --- Fetch data ---
   async function fetchMind() {
-    try { const res = await fetch(`${API_BASE}/api/mind`); mindState = await res.json(); } catch { /* ignore */ }
+    try { const res = await fetch(`/api/mind`); mindState = await res.json(); } catch { /* ignore */ }
   }
 
   async function fetchMessages() {
     try {
       const chatJid = `web:${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
-      const res = await fetch(`${API_BASE}/api/messages?chat_jid=${encodeURIComponent(chatJid)}`);
+      const res = await fetch(`/api/messages?chat_jid=${encodeURIComponent(chatJid)}`);
       if (res.ok) { messages = await res.json(); scrollToBottom(); }
     } catch { /* ignore */ }
   }
 
   async function fetchMindFiles() {
     try {
-      const res = await fetch(`${API_BASE}/api/mind/files`);
+      const res = await fetch(`/api/mind/files`);
       if (res.ok) {
         const data = await res.json();
         if (data.files) {
@@ -344,7 +341,7 @@
   async function fetchSkills() {
     skillsLoading = true;
     try {
-      const res = await fetch(`${API_BASE}/api/skills`);
+      const res = await fetch(`/api/skills`);
       if (res.ok) { const data = await res.json(); skills = data.skills || []; }
     } catch { /* ignore */ }
     skillsLoading = false;
@@ -353,7 +350,7 @@
   async function fetchAgents() {
     agentsLoading = true;
     try {
-      const res = await fetch(`${API_BASE}/api/agents`);
+      const res = await fetch(`/api/agents`);
       if (res.ok) {
         const data = await res.json();
         agents = data.agents || [];
@@ -365,7 +362,7 @@
   async function fetchSessionsForAgent(agId: string) {
     selectedAgentId = agId;
     try {
-      const res = await fetch(`${API_BASE}/api/sessions?agent_id=${encodeURIComponent(agId)}`);
+      const res = await fetch(`/api/sessions?agent_id=${encodeURIComponent(agId)}`);
       if (res.ok) {
         const data = await res.json();
         sessions = data.sessions || [];
@@ -376,7 +373,7 @@
   async function fetchSchedules() {
     schedulesLoading = true;
     try {
-      const res = await fetch(`${API_BASE}/api/schedules`);
+      const res = await fetch(`/api/schedules`);
       if (res.ok) {
         const data = await res.json();
         schedules = data.schedules || [];
@@ -388,7 +385,7 @@
   async function fetchClaw() {
     clawLoading = true;
     try {
-      const res = await fetch(`${API_BASE}/api/claw`);
+      const res = await fetch(`/api/claw`);
       if (res.ok) { clawInfo = await res.json(); }
     } catch { /* ignore */ }
     clawLoading = false;
@@ -396,7 +393,7 @@
 
   async function trustClaw() {
     try {
-      const res = await fetch(`${API_BASE}/api/claw/trust`, { method: 'POST' });
+      const res = await fetch(`/api/claw/trust`, { method: 'POST' });
       if (res.ok) {
         await fetchClaw();
         addLog('Claw trusted ✓');
@@ -407,7 +404,7 @@
   async function toggleSkill(name: string, enabled: boolean) {
     const action = enabled ? 'disable' : 'enable';
     try {
-      const res = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      const res = await fetch(`/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
         addLog(`⚠️ Skill ${action} failed: ${err.detail || err.message || 'Unknown error'}`);
@@ -422,7 +419,7 @@
   async function createAgent() {
     if (!newAgentName.trim()) return;
     try {
-      const res = await fetch(`${API_BASE}/api/agents`, {
+      const res = await fetch(`/api/agents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newAgentName.trim() }),
@@ -439,7 +436,7 @@
     const aid = newSessionAgentId || selectedAgentId;
     if (!aid) return;
     try {
-      const res = await fetch(`${API_BASE}/api/sessions`, {
+      const res = await fetch(`/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent_id: aid }),
@@ -457,7 +454,7 @@
   async function toggleSchedule(id: string, currentStatus: string) {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
     try {
-      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(id)}/toggle`, {
+      await fetch(`/api/schedules/${encodeURIComponent(id)}/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -468,7 +465,7 @@
 
   async function removeSchedule(id: string) {
     try {
-      await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await fetch(`/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
       await fetchSchedules();
     } catch { /* ignore */ }
   }
