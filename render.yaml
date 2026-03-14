@@ -5,7 +5,7 @@ services:
   # 1. Claw (Agent Worker) — NOT publicly exposed
   # Connects outbound to the Hub (ticlaw-ui) via WebSocket
   - type: pserv
-    name: ticlaw
+    name: ticlaw-claw
     runtime: node
     plan: starter # Persistent disk requires paid plan
     buildCommand: "pnpm install && pnpm run build"
@@ -37,7 +37,7 @@ services:
   # 2. Hub + Web UI (public-facing)
   # Claws connect TO this service. Users access this URL.
   - type: web
-    name: ticlaw-ui
+    name: ticlaw
     runtime: node
     plan: starter
     rootDir: web
