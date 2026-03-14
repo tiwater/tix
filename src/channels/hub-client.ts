@@ -263,9 +263,7 @@ export class HubClientChannel implements Channel {
 
         for (const part of parts) {
           if (!part.trim()) continue;
-          const dataLine = part
-            .split('\n')
-            .find((l) => l.startsWith('data: '));
+          const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
           if (!dataLine) continue;
 
           try {

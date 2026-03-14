@@ -654,6 +654,7 @@ export class HttpChannel implements Channel {
         };
 
         // Dispatch through our centralized global architecture
+        this.opts.onMessage(chatJid, msg);
         void app.dispatcher.dispatch(chatJid, msg);
 
         writeJson(res, 202, {
