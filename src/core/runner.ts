@@ -149,6 +149,23 @@ function buildQueryOptions(
   taskId: string,
 ) {
   const cliPath = getClaudeCliPath();
+
+  // Resolve API key: prefer dedicated ANTHROPIC_API_KEY, fall back to LLM_API_KEY
+  const effectiveApiKey = ANTHROPIC_API_KEY || LLM_API_KEY || '';
+  const effectiveBaseUrl = LLM_BASE_URL || '';
+
+  if (!effectiveApiKey) {
+    logger.warn('No API key configured (ANTHROPIC_API_KEY or LLM_API_KEY)');
+  } else {
+    logger.debug(
+      {
+        keyPrefix: effectiveApiKey.slice(0, 8) + '…',
+        hasBaseUrl: !!effectiveBaseUrl,
+      },
+      'Agent subprocess API key configured',
+    );
+  }
+
   return {
     systemPrompt,
     cwd: workspace,
@@ -161,14 +178,8 @@ function buildQueryOptions(
     persistSession: false,
     env: {
       ...process.env,
-      ...(LLM_API_KEY && !ANTHROPIC_API_KEY
-        ? {
-            ANTHROPIC_API_KEY: LLM_API_KEY,
-            ...(LLM_BASE_URL ? { ANTHROPIC_BASE_URL: LLM_BASE_URL } : {}),
-          }
-        : {
-            ANTHROPIC_API_KEY: ANTHROPIC_API_KEY || '',
-          }),
+      ANTHROPIC_API_KEY: effectiveApiKey,
+      ...(effectiveBaseUrl ? { ANTHROPIC_BASE_URL: effectiveBaseUrl } : {}),
       TICLAW_AGENT_ID: agentId,
       TICLAW_SESSION_ID: sessionId,
       TICLAW_TASK_ID: taskId,
