@@ -3,7 +3,10 @@
  * Used to generate interactive management cards.
  */
 
-import { getRegisteredChannelNames, getChannelFactory } from '../channels/registry.js';
+import {
+  getRegisteredChannelNames,
+  getChannelFactory,
+} from '../channels/registry.js';
 import { AbstractChannel } from '../channels/base.js';
 import { logger } from './logger.js';
 
@@ -26,27 +29,27 @@ export class StatusInspector {
     // Note: This relies on channels being already instantiated into singletons.
     // In a mature architecture, we'd pull from a live ChannelRegistry.
     // For now, let's look at what we've registered.
-    
+
     logger.debug({ channelNames }, 'Inspecting channels for unified status');
 
-    // This is a placeholder logic for scanning. 
+    // This is a placeholder logic for scanning.
     // In TiClaw, we need to ensure we can access the live Channel instances.
     return allStatuses;
   }
-  
+
   /**
    * Format the status data into a generic "Interactive Card" JSON.
    */
   static generateManagementCard(statuses: BotStatus[]) {
     return {
       title: 'TiClaw 实时运行状态',
-      elements: statuses.map(s => ({
+      elements: statuses.map((s) => ({
         type: 'bot_row',
         channel: s.channel,
         name: s.appId,
         status: s.connected ? 'online' : 'offline',
-        actions: ['restart', 'logs']
-      }))
+        actions: ['restart', 'logs'],
+      })),
     };
   }
 }

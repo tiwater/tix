@@ -3,7 +3,7 @@
  * Structured similarly to Feishu's high-quality implementation.
  */
 
-const FALLBACK_DING_TEXT = "[DingTalk message]";
+const FALLBACK_DING_TEXT = '[DingTalk message]';
 
 export function parseDingTalkContent(content: string, type: string): string {
   // DingTalk often delivers content as a JSON string

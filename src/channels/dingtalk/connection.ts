@@ -25,7 +25,7 @@ export class ConnectionManager {
   private attemptCount = 0;
   private reconnectTimer?: NodeJS.Timeout;
   private stopped = false;
-  
+
   private config: ConnectionConfig = {
     maxAttempts: 10,
     initialDelay: 1000,
@@ -51,34 +51,43 @@ export class ConnectionManager {
 
   async connect(): Promise<void> {
     if (this.stopped) return;
-    
+
     this.state = ConnectionState.CONNECTING;
     this.attemptCount++;
-    
-    logger.info({ appId: this.appId, attempt: this.attemptCount }, 'DingTalk attempting to connect...');
+
+    logger.info(
+      { appId: this.appId, attempt: this.attemptCount },
+      'DingTalk attempting to connect...',
+    );
 
     try {
       await this.client.start();
       this.state = ConnectionState.CONNECTED;
       this.attemptCount = 0;
       logger.info({ appId: this.appId }, 'DingTalk connected successfully');
-      
+
       // Setup zombie detection (simpler version for TiClaw)
       this.setupMonitoring();
     } catch (err: any) {
       this.state = ConnectionState.FAILED;
-      logger.error({ appId: this.appId, err: err.message }, 'DingTalk connection failed');
-      
+      logger.error(
+        { appId: this.appId, err: err.message },
+        'DingTalk connection failed',
+      );
+
       if (this.attemptCount < this.config.maxAttempts) {
         const delay = this.calculateNextDelay(this.attemptCount - 1);
-        logger.warn({ appId: this.appId, delay }, `DingTalk retrying in ${delay}ms`);
+        logger.warn(
+          { appId: this.appId, delay },
+          `DingTalk retrying in ${delay}ms`,
+        );
         this.reconnectTimer = setTimeout(() => this.connect(), delay);
       }
     }
   }
 
   private setupMonitoring() {
-    // In a real implementation, we would hook into the internal WebSocket 
+    // In a real implementation, we would hook into the internal WebSocket
     // but for now we rely on the client's internal reconnect if available.
   }
 

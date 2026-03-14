@@ -12,14 +12,14 @@ export class UltimateFeishuRenderer {
       config: { wide_screen_mode: true },
       header: {
         template: 'purple', // Premium look
-        title: { tag: 'plain_text', content: 'TiClaw 核心运行控制台' }
+        title: { tag: 'plain_text', content: 'TiClaw 核心运行控制台' },
       },
       elements: [
         {
           tag: 'column_set',
           flex_mode: 'bisect',
           background_style: 'grey',
-          columns: bots.map(bot => ({
+          columns: bots.map((bot) => ({
             tag: 'column',
             width: 'weighted',
             weight: 1,
@@ -28,8 +28,8 @@ export class UltimateFeishuRenderer {
                 tag: 'div',
                 text: {
                   tag: 'lark_md',
-                  content: `${bot.connected ? '🟢' : '🔴'} **${bot.name}**\n<font color='grey'>最后活跃: ${bot.activity}</font>`
-                }
+                  content: `${bot.connected ? '🟢' : '🔴'} **${bot.name}**\n<font color='grey'>最后活跃: ${bot.activity}</font>`,
+                },
               },
               {
                 tag: 'action',
@@ -38,7 +38,7 @@ export class UltimateFeishuRenderer {
                     tag: 'button',
                     text: { tag: 'plain_text', content: '详情' },
                     type: 'default',
-                    value: { action: 'show_details', id: bot.name }
+                    value: { action: 'show_details', id: bot.name },
                   },
                   {
                     tag: 'button',
@@ -46,24 +46,27 @@ export class UltimateFeishuRenderer {
                     type: 'primary',
                     confirm: {
                       title: { tag: 'plain_text', content: '确认重启' },
-                      text: { tag: 'plain_text', content: `确定要重启机器人 ${bot.name} 吗？` }
+                      text: {
+                        tag: 'plain_text',
+                        content: `确定要重启机器人 ${bot.name} 吗？`,
+                      },
                     },
-                    value: { action: 'restart', id: bot.name }
-                  }
-                ]
-              }
-            ]
-          }))
+                    value: { action: 'restart', id: bot.name },
+                  },
+                ],
+              },
+            ],
+          })),
         },
         { tag: 'hr' },
         {
           tag: 'div',
           text: {
             tag: 'lark_md',
-            content: `📊 **资源占用**: CPU 12% | 内存 256MB\n🏠 **工作目录**: \`${process.cwd()}\``
-          }
-        }
-      ]
+            content: `📊 **资源占用**: CPU 12% | 内存 256MB\n🏠 **工作目录**: \`${process.cwd()}\``,
+          },
+        },
+      ],
     };
   }
 }

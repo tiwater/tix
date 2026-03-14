@@ -3,8 +3,8 @@
  * Adapted from OpenClaw's high-quality send-service implementation.
  */
 
-import axios from "axios";
-import { getAccessToken } from "./auth.js";
+import axios from 'axios';
+import { getAccessToken } from './auth.js';
 
 const DINGTALK_TEXT_CHUNK_LIMIT = 3800;
 
@@ -24,39 +24,47 @@ interface ProactiveMessagePayload {
 /**
  * Detect if text is Markdown and extract title.
  */
-function detectMarkdownAndExtractTitle(text: string): { useMarkdown: boolean; title: string } {
+function detectMarkdownAndExtractTitle(text: string): {
+  useMarkdown: boolean;
+  title: string;
+} {
   // Simple heuristic: check for common markdown chars
-  const markdownIndicators = ["#", "**", "[", "](", "```", "- ", "* "];
-  const isMarkdown = markdownIndicators.some((indicator) => text.includes(indicator));
-  
-  let title = "TiClaw 消息";
-  if (isMarkdown && text.startsWith("# ")) {
-    const firstLine = text.split("\n")[0];
-    title = firstLine.replace(/^#\s*/, "").slice(0, 50);
+  const markdownIndicators = ['#', '**', '[', '](', '```', '- ', '* '];
+  const isMarkdown = markdownIndicators.some((indicator) =>
+    text.includes(indicator),
+  );
+
+  let title = 'TiClaw 消息';
+  if (isMarkdown && text.startsWith('# ')) {
+    const firstLine = text.split('\n')[0];
+    title = firstLine.replace(/^#\s*/, '').slice(0, 50);
   }
-  
+
   return { useMarkdown: isMarkdown, title };
 }
 
 /**
  * Split long markdown into chunks.
  */
-function splitMarkdownChunks(text: string, limit = DINGTALK_TEXT_CHUNK_LIMIT): string[] {
+function splitMarkdownChunks(
+  text: string,
+  limit = DINGTALK_TEXT_CHUNK_LIMIT,
+): string[] {
   if (!text || text.length <= limit) return [text];
-  
+
   const chunks: string[] = [];
-  let buf = "";
-  const lines = text.split("\n");
-  
+  let buf = '';
+  const lines = text.split('\n');
+
   for (const line of lines) {
     if (buf.length + line.length + 1 > limit && buf.length > 0) {
       chunks.push(buf);
-      buf = "";
+      buf = '';
     }
-    buf += (buf ? "\n" : "") + line;
+    buf += (buf ? '\n' : '') + line;
   }
   if (buf) chunks.push(buf);
-  
+
   return chunks;
 }
 
@@ -72,35 +80,36 @@ export async function sendBySession(
 ): Promise<void> {
   const { log } = options;
   const token = await getAccessToken(clientId, clientSecret, log);
-  
+
   const { useMarkdown, title } = detectMarkdownAndExtractTitle(text);
   const chunks = splitMarkdownChunks(text, DINGTALK_TEXT_CHUNK_LIMIT);
-  
+
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     let body: any;
-    
+
     if (useMarkdown) {
-      const chunkTitle = chunks.length > 1 ? `${title} (${i + 1}/${chunks.length})` : title;
+      const chunkTitle =
+        chunks.length > 1 ? `${title} (${i + 1}/${chunks.length})` : title;
       body = {
-        msgtype: "markdown",
+        msgtype: 'markdown',
         markdown: { title: chunkTitle, text: chunk },
       };
     } else {
       body = {
-        msgtype: "text",
+        msgtype: 'text',
         text: { content: chunk },
       };
     }
-    
+
     try {
       await axios({
         url: sessionWebhook,
-        method: "POST",
+        method: 'POST',
         data: body,
         headers: {
-          "x-acs-dingtalk-access-token": token,
-          "Content-Type": "application/json",
+          'x-acs-dingtalk-access-token': token,
+          'Content-Type': 'application/json',
         },
       });
     } catch (err: any) {
@@ -123,38 +132,38 @@ export async function sendProactiveMessage(
 ): Promise<void> {
   const { log } = options;
   const token = await getAccessToken(clientId, clientSecret, log);
-  
+
   const { useMarkdown, title } = detectMarkdownAndExtractTitle(text);
-  
+
   const url = isGroup
-    ? "https://api.dingtalk.com/v1.0/robot/groupMessages/send"
-    : "https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend";
-    
-  const msgKey = useMarkdown ? "sampleMarkdown" : "sampleText";
+    ? 'https://api.dingtalk.com/v1.0/robot/groupMessages/send'
+    : 'https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend';
+
+  const msgKey = useMarkdown ? 'sampleMarkdown' : 'sampleText';
   const msgParam = useMarkdown
     ? JSON.stringify({ title, text })
     : JSON.stringify({ content: text });
-    
+
   const payload: ProactiveMessagePayload = {
     robotCode: clientId,
     msgKey,
     msgParam,
   };
-  
+
   if (isGroup) {
     payload.openConversationId = target;
   } else {
     payload.userIds = [target];
   }
-  
+
   try {
     await axios({
       url,
-      method: "POST",
+      method: 'POST',
       data: payload,
       headers: {
-        "x-acs-dingtalk-access-token": token,
-        "Content-Type": "application/json",
+        'x-acs-dingtalk-access-token': token,
+        'Content-Type': 'application/json',
       },
     });
     log?.info?.(`[DingTalk] Proactive message sent to ${target}`);

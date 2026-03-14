@@ -12,7 +12,10 @@ import {
   RegisteredProject,
 } from '../core/types.js';
 
-export abstract class AbstractChannel<TInstance, TAccountConfig> implements Channel {
+export abstract class AbstractChannel<
+  TInstance,
+  TAccountConfig,
+> implements Channel {
   abstract name: string;
   protected instances = new Map<string, TInstance>();
   protected opts: ChannelOpts;
@@ -28,12 +31,17 @@ export abstract class AbstractChannel<TInstance, TAccountConfig> implements Chan
   async connect(): Promise<void> {
     logger.info({ channel: this.name }, `Connecting ${this.name} channel...`);
     const results = await Promise.allSettled(
-      Array.from(this.instances.values()).map(inst => this.connectInstance(inst))
+      Array.from(this.instances.values()).map((inst) =>
+        this.connectInstance(inst),
+      ),
     );
     // Log failures
     results.forEach((res, i) => {
       if (res.status === 'rejected') {
-        logger.error({ channel: this.name, index: i, err: res.reason }, 'Instance connection failed');
+        logger.error(
+          { channel: this.name, index: i, err: res.reason },
+          'Instance connection failed',
+        );
       }
     });
   }
@@ -42,7 +50,11 @@ export abstract class AbstractChannel<TInstance, TAccountConfig> implements Chan
   protected abstract disconnectInstance(instance: TInstance): Promise<void>;
 
   /** Common JID Parser: {channel}:{app_id}:{chat_id} */
-  protected parseJid(jid: string): { channel: string; appId: string; chatId: string } {
+  protected parseJid(jid: string): {
+    channel: string;
+    appId: string;
+    chatId: string;
+  } {
     const parts = jid.split(':');
     return {
       channel: parts[0],
@@ -70,7 +82,11 @@ export abstract class AbstractChannel<TInstance, TAccountConfig> implements Chan
 
   /** Delegate to concrete implementations */
   abstract sendMessage(jid: string, text: string, options?: any): Promise<void>;
-  abstract sendFile(jid: string, filePath: string, caption?: string): Promise<void>;
+  abstract sendFile(
+    jid: string,
+    filePath: string,
+    caption?: string,
+  ): Promise<void>;
 
   /** New: Return real-time status of all managed app instances. */
   getInstancesStatus(): Array<{
@@ -80,7 +96,7 @@ export abstract class AbstractChannel<TInstance, TAccountConfig> implements Chan
     accountLabel?: string;
   }> {
     // Basic implementation, subclasses can override for more detail.
-    return Array.from(this.instances.keys()).map(id => ({
+    return Array.from(this.instances.keys()).map((id) => ({
       appId: id,
       connected: this.isConnected(), // simplified
       lastActivity: new Date().toISOString(),

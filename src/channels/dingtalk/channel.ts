@@ -1,9 +1,10 @@
 /**
  * DingTalk (钉钉) channel for TiClaw.
- * Refactored using AbstractChannel base class.
+ * Multi-account support via DingTalk Stream Mode.
+ * Adapted from OpenClaw's high-quality implementation.
  */
 
-import * as dingtalkstream from '@dingtalk/dingtalk-stream';
+import * as dingtalkstream from 'dingtalk-stream';
 import { AbstractChannel } from '../base.js';
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../../core/config.js';
 import { readEnvFile } from '../../core/env.js';
@@ -21,7 +22,7 @@ interface DingTalkAccount {
 interface DingTalkInstance {
   appId: string;
   appSecret: string;
-  streamClient: dingtalkstream.DingtalkStreamClient;
+  streamClient: dingtalkstream.DWClient;
   connectionManager: ConnectionManager;
   lastWebhook?: string;
 }
@@ -36,14 +37,14 @@ export class DingTalkChannel extends AbstractChannel<DingTalkInstance, DingTalkA
 
   protected initInstances(accounts: DingTalkAccount[]): void {
     for (const account of accounts) {
-      const streamClient = new dingtalkstream.DingtalkStreamClient({
+      const streamClient = new dingtalkstream.DWClient({
         clientId: account.appId,
         clientSecret: account.appSecret,
       });
 
       const connectionManager = new ConnectionManager(streamClient, account.appId);
 
-      streamClient.registerChatReceiver(async (event) => {
+      (streamClient as any).registerChatReceiver(async (event: any) => {
         const { conversationId, senderId, senderNick, content, msgId, sessionWebhook } = event;
         const chatJid = `dingtalk:${account.appId}:${conversationId}`;
         
@@ -82,7 +83,7 @@ export class DingTalkChannel extends AbstractChannel<DingTalkInstance, DingTalkA
     inst.connectionManager.stop();
   }
 
-  async sendMessage(jid: string, text: string): Promise<void> {
+  async sendMessage(jid: string, text: string, options?: any): Promise<void> {
     const { appId, chatId } = this.parseJid(jid);
     const inst = this.instances.get(appId);
     if (!inst) return;

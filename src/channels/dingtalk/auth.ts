@@ -3,7 +3,7 @@
  * Adapted from OpenClaw's dingtalk-plugin.
  */
 
-import axios from "axios";
+import axios from 'axios';
 
 interface TokenCache {
   accessToken: string;
@@ -27,12 +27,12 @@ export async function getAccessToken(
 
   try {
     const response = await axios.post(
-      "https://api.dingtalk.com/v1.0/oauth2/accessToken",
+      'https://api.dingtalk.com/v1.0/oauth2/accessToken',
       {
         appKey: clientId,
         appSecret: clientSecret,
       },
-      { headers: { "Content-Type": "application/json" } }
+      { headers: { 'Content-Type': 'application/json' } },
     );
 
     accessTokenCache.set(cacheKey, {

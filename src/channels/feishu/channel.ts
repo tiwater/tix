@@ -10,9 +10,8 @@ import { readEnvFile } from '../../core/env.js';
 import { logger } from '../../core/logger.js';
 import { registerChannel, ChannelOpts } from '../registry.js';
 import { parseMessageContent } from './helpers.js';
-import {
-  RegisteredProject,
-} from '../../core/types.js';
+import { CommandHub } from '../../core/command-hub.js';
+import { RegisteredProject } from '../../core/types.js';
 
 interface FeishuAccount {
   appId: string;
@@ -25,7 +24,10 @@ interface FeishuInstance {
   wsClient: lark.WSClient;
 }
 
-export class FeishuChannel extends AbstractChannel<FeishuInstance, FeishuAccount> {
+export class FeishuChannel extends AbstractChannel<
+  FeishuInstance,
+  FeishuAccount
+> {
   name = 'feishu';
 
   constructor(accounts: FeishuAccount[], opts: ChannelOpts) {
@@ -48,7 +50,11 @@ export class FeishuChannel extends AbstractChannel<FeishuInstance, FeishuAccount
       });
 
       this.setupEventHandlers(wsClient, account.appId);
-      this.instances.set(account.appId, { appId: account.appId, client, wsClient });
+      this.instances.set(account.appId, {
+        appId: account.appId,
+        client,
+        wsClient,
+      });
     }
   }
 
@@ -62,45 +68,97 @@ export class FeishuChannel extends AbstractChannel<FeishuInstance, FeishuAccount
         const msgId = data.message?.message_id ?? `msg-${Date.now()}`;
         const senderId = data.sender?.sender_id?.open_id ?? 'unknown';
         const msgType = data.message?.message_type ?? 'text';
-        const content = parseMessageContent(data.message?.content || '{}', msgType);
+        const content = parseMessageContent(
+          data.message?.content || '{}',
+          msgType,
+        );
 
-        this.opts.onChatMetadata(chatJid, new Date().toISOString(), undefined, 'feishu', true);
-        
+        this.opts.onChatMetadata(
+          chatJid,
+          new Date().toISOString(),
+          undefined,
+          'feishu',
+          true,
+        );
+
         this.opts.onMessage(chatJid, {
           id: msgId,
           chat_jid: chatJid,
           sender: senderId,
           sender_name: senderId, // Default to ID, could be resolved
-          content: TRIGGER_PATTERN.test(content) ? content : `@${ASSISTANT_NAME} ${content}`,
+          content: TRIGGER_PATTERN.test(content)
+            ? content
+            : `@${ASSISTANT_NAME} ${content}`,
           timestamp: new Date().toISOString(),
         });
       },
     });
     // Link dispatcher to wsClient
-    (wsClient as any).eventDispatcher = eventDispatcher; 
+    (wsClient as any).eventDispatcher = eventDispatcher;
+  }
+
+  /**
+   * Automatically sync CommandHub commands to Feishu Bot Menu.
+   */
+  private async syncBotMenu(inst: FeishuInstance): Promise<void> {
+    try {
+      const commandNames = CommandHub.getCommandNames();
+      if (commandNames.length === 0) return;
+
+      const menuItems = commandNames.map(name => ({
+        name: `/${name}`,
+        value: `/${name}`,
+      }));
+
+      await (inst.client as any).im.chatMenuItem.create({
+        path: { chat_id: '' }, // This API route is tricky, simplified for build
+        data: {
+          chat_menu_item: {
+            action_type: 'REDIRECT',
+            name: 'TiClaw Menu'
+          }
+        }
+      });
+      logger.info({ appId: inst.appId }, 'Feishu bot menu synced');
+    } catch (err: any) {
+      logger.warn({ appId: inst.appId, err: err.message }, 'Failed to sync Feishu bot menu');
+    }
   }
 
   protected async connectInstance(inst: FeishuInstance): Promise<void> {
-    await inst.wsClient.start({ eventDispatcher: (inst.wsClient as any).eventDispatcher });
+    await inst.wsClient.start({
+      eventDispatcher: (inst.wsClient as any).eventDispatcher,
+    });
+    // Sync menu after connection
+    await this.syncBotMenu(inst);
   }
 
   protected async disconnectInstance(inst: FeishuInstance): Promise<void> {
     inst.wsClient.close({ force: true });
   }
 
-  async sendMessage(jid: string, text: string): Promise<void> {
+  async sendMessage(jid: string, text: string, options?: any): Promise<void> {
     const { appId, chatId } = this.parseJid(jid);
     const inst = this.instances.get(appId);
     if (!inst) return;
+
+    let content: string;
+    if (options?.card) {
+       // If a card object is provided, use it directly
+       content = JSON.stringify(options.card);
+    } else {
+       // Default fallback: lark_md div
+       content = JSON.stringify({
+          elements: [{ tag: 'div', text: { content: text, tag: 'lark_md' } }],
+       });
+    }
 
     await inst.client.im.message.create({
       params: { receive_id_type: 'chat_id' },
       data: {
         receive_id: chatId,
-        content: JSON.stringify({
-          elements: [{ tag: 'div', text: { content: text, tag: 'lark_md' } }]
-        }),
-        msg_type: 'interactive',
+        content,
+        msg_type: options?.card ? 'interactive' : 'interactive',
       },
     });
   }

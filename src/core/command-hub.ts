@@ -13,7 +13,10 @@ export interface CommandResponse {
 }
 
 export class CommandHub {
-  private static commands = new Map<string, (args: string[]) => Promise<CommandResponse>>();
+  private static commands = new Map<
+    string,
+    (args: string[]) => Promise<CommandResponse>
+  >();
 
   /** Register core system commands */
   static init() {
@@ -22,20 +25,29 @@ export class CommandHub {
       return {
         type: 'card',
         content: '正在查询系统运行状态...',
-        data: StatusInspector.generateManagementCard(statuses)
+        data: StatusInspector.generateManagementCard(statuses),
       };
     });
 
     this.register('help', async () => {
       return {
         type: 'text',
-        content: 'TiClaw 快捷指令说明:\n/status - 查看所有 Bot 连接状态\n/reload - 重新加载配置\n/web [url] - 快速抓取网页内容'
+        content:
+          'TiClaw 快捷指令说明:\n/status - 查看所有 Bot 连接状态\n/reload - 重新加载配置\n/web [url] - 快速抓取网页内容',
       };
     });
   }
 
-  static register(name: string, handler: (args: string[]) => Promise<CommandResponse>) {
+  static register(
+    name: string,
+    handler: (args: string[]) => Promise<CommandResponse>,
+  ) {
     this.commands.set(name, handler);
+  }
+
+  /** New: Expose all registered command names */
+  static getCommandNames(): string[] {
+    return Array.from(this.commands.keys());
   }
 
   /**
@@ -51,7 +63,10 @@ export class CommandHub {
 
     const handler = this.commands.get(cmdName);
     if (!handler) {
-      return { type: 'text', content: `未知指令: /${cmdName}。输入 /help 查看可用指令。` };
+      return {
+        type: 'text',
+        content: `未知指令: /${cmdName}。输入 /help 查看可用指令。`,
+      };
     }
 
     try {

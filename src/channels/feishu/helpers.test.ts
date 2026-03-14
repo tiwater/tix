@@ -13,16 +13,14 @@ describe('Feishu Helpers', () => {
       content: [
         [
           { tag: 'text', text: 'Normal text ' },
-          { tag: 'text', text: 'Bold text', style: { bold: true } }
+          { tag: 'text', text: 'Bold text', style: { bold: true } },
         ],
-        [
-          { tag: 'a', text: 'Link', href: 'https://example.com' }
-        ]
-      ]
+        [{ tag: 'a', text: 'Link', href: 'https://example.com' }],
+      ],
     };
     const content = JSON.stringify({ post: { zh_cn: postPayload } });
     const result = parsePostContent(content);
-    
+
     expect(result.textContent).toContain('Title');
     expect(result.textContent).toContain('**Bold text**');
     expect(result.textContent).toContain('[Link](https://example.com)');
@@ -30,7 +28,7 @@ describe('Feishu Helpers', () => {
 
   it('should extract mentioned open_ids from post content', () => {
     const postWithAt = {
-      content: [[{ tag: 'at', open_id: 'ou_123', user_name: 'Alice' }]]
+      content: [[{ tag: 'at', open_id: 'ou_123', user_name: 'Alice' }]],
     };
     const content = JSON.stringify(postWithAt);
     const result = parsePostContent(content);
