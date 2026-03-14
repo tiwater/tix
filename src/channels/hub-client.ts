@@ -1,11 +1,12 @@
 import WebSocket from 'ws';
+import http from 'http';
 import { logger } from '../core/logger.js';
 import { readHubConfig, HubConfig } from '../core/hub-config.js';
 import {
   readEnrollmentState,
   verifyEnrollmentToken,
 } from '../core/enrollment.js';
-import { CLAW_HOSTNAME } from '../core/config.js';
+import { CLAW_HOSTNAME, HTTP_PORT } from '../core/config.js';
 import { Channel, NewMessage, RegisteredProject } from '../core/types.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 
@@ -188,7 +189,6 @@ export class HubClientChannel implements Channel {
     path: string;
     body?: unknown;
   }): Promise<void> {
-    const { HTTP_PORT } = await import('../core/config.js');
     const localUrl = `http://127.0.0.1:${HTTP_PORT}${payload.path}`;
 
     try {
@@ -248,76 +248,65 @@ export class HubClientChannel implements Channel {
     }
 
     // Connect to the claw's own local HTTP SSE endpoint and relay events
-    import('../core/config.js').then(({ HTTP_PORT }) => {
-      const localUrl = `http://127.0.0.1:${HTTP_PORT}${streamKey}`;
-      logger.info(
-        { path: streamKey },
-        'SSE relay: subscribing to local stream',
-      );
+    const localUrl = `http://127.0.0.1:${HTTP_PORT}${streamKey}`;
+    logger.info({ path: streamKey }, 'SSE relay: subscribing to local stream');
 
-      import('http').then((http) => {
-        const req = http.get(localUrl, (res) => {
-          let buffer = '';
+    const req = http.get(localUrl, (res) => {
+      let buffer = '';
 
-          res.on('data', (chunk: Buffer) => {
-            buffer += chunk.toString();
+      res.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString();
 
-            // Parse SSE events from buffer (format: "data: {...}\n\n")
-            const parts = buffer.split('\n\n');
-            buffer = parts.pop() || '';
+        // Parse SSE events from buffer (format: "data: {...}\n\n")
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
 
-            for (const part of parts) {
-              if (!part.trim()) continue;
-              const dataLine = part
-                .split('\n')
-                .find((l) => l.startsWith('data: '));
-              if (!dataLine) continue;
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          const dataLine = part
+            .split('\n')
+            .find((l) => l.startsWith('data: '));
+          if (!dataLine) continue;
 
-              try {
-                const eventData = JSON.parse(dataLine.slice(6));
-                this.ws?.send(
-                  JSON.stringify({
-                    type: 'sse_event',
-                    stream_key: streamKey,
-                    event: eventData,
-                  }),
-                );
-              } catch {
-                // Non-JSON event, forward as-is
-                this.ws?.send(
-                  JSON.stringify({
-                    type: 'sse_event',
-                    stream_key: streamKey,
-                    event: { raw: dataLine.slice(6) },
-                  }),
-                );
-              }
-            }
-          });
-
-          res.on('end', () => {
-            logger.debug({ path: streamKey }, 'SSE relay: local stream ended');
-            this.activeSseSubscriptions.delete(streamKey);
-          });
-
-          res.on('error', (err) => {
-            logger.error({ err, path: streamKey }, 'SSE relay: stream error');
-            this.activeSseSubscriptions.delete(streamKey);
-          });
-        });
-
-        req.on('error', (err) => {
-          logger.error(
-            { err, path: streamKey },
-            'SSE relay: failed to connect',
-          );
-        });
-
-        // Track subscription so we can abort it later
-        this.activeSseSubscriptions.set(streamKey, {
-          destroy: () => req.destroy(),
-        });
+          try {
+            const eventData = JSON.parse(dataLine.slice(6));
+            this.ws?.send(
+              JSON.stringify({
+                type: 'sse_event',
+                stream_key: streamKey,
+                event: eventData,
+              }),
+            );
+          } catch {
+            this.ws?.send(
+              JSON.stringify({
+                type: 'sse_event',
+                stream_key: streamKey,
+                event: { raw: dataLine.slice(6) },
+              }),
+            );
+          }
+        }
       });
+
+      res.on('end', () => {
+        logger.debug({ path: streamKey }, 'SSE relay: local stream ended');
+        this.activeSseSubscriptions.delete(streamKey);
+      });
+
+      res.on('error', (err) => {
+        logger.error({ err, path: streamKey }, 'SSE relay: stream error');
+        this.activeSseSubscriptions.delete(streamKey);
+      });
+    });
+
+    req.on('error', (err) => {
+      logger.error({ err, path: streamKey }, 'SSE relay: failed to connect');
+    });
+
+    // Track subscription so we can abort it later
+    this.activeSseSubscriptions.set(streamKey, {
+      destroy: () => req.destroy(),
     });
   }
 
