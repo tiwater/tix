@@ -157,16 +157,16 @@ TiClaw uses physical isolation and port-locking. However, it is designed for con
 
 **Can I use third-party LLM providers?**
 
-Yes! TiClaw defaults to **OpenRouter** which provides access to Claude 4.5 Sonnet and other powerful models via an Anthropic-compatible API. You can switch to direct Anthropic or Gemini by updating your `.env` file.
+Yes! TiClaw defaults to **BigModel** (`open.bigmodel.cn`) which provides an Anthropic-compatible API. Configure your provider in `~/.ticlaw/config.yaml`:
 
-**How do I configure OpenRouter?**
-
-Simply set your key and preferred model in `.env`:
-```bash
-LLM_API_KEY="your-openrouter-key"
-TC_MODEL="anthropic/claude-sonnet-4.6"
+```yaml
+llm:
+  api_key: "your-api-key"
+  base_url: "https://open.bigmodel.cn/api/anthropic"
+  # model: "glm-4.7"  # Optional: override default model
 ```
-TiClaw automatically handles the routing and provider-specific mapping.
+
+Or set environment variables: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`.
 
 ## Credits
 

@@ -251,11 +251,14 @@ The `/push` command triggers `workspace.push()`:
 
 ## Agent Architecture Authentication
 
-Configure authentication in a `.env` file in the project root. The agent execution relies on OpenRouter API connections or Anthropic native configurations.
+Configure authentication in `~/.ticlaw/config.yaml` or via environment variables. The agent execution relies on an Anthropic-compatible API provider (default: BigModel).
 
-**OpenRouter (Default)**:
-```bash
-LLM_API_KEY=sk-or-v1-...
+**BigModel (Default)**:
+```yaml
+# ~/.ticlaw/config.yaml
+llm:
+  api_key: "your-bigmodel-key"
+  base_url: "https://open.bigmodel.cn/api/anthropic"
 ```
 
 **Claude Native**:
@@ -440,7 +443,7 @@ SQLite database at `~/.ticlaw/store/messages.db`:
 
 | Variable | Purpose |
 |----------|---------|
-| `LLM_API_KEY` | Authenticate OpenRouter models |
+| `LLM_API_KEY` | LLM provider API key (BigModel, etc.) |
 | `ANTHROPIC_API_KEY` | API key for Anthropic native endpoints |
 | `MINIMAX_API_KEY` | API key for MiniMax compatibility layer |
 | `GEMINI_API_KEY` | API key for Delta Feed summaries |

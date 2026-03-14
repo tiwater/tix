@@ -22,7 +22,7 @@ channels:
 # proxy: "http://127.0.0.1:7890"
 
 # llm:
-#   api_key: "sk-or-..."        # OpenRouter API key
+#   api_key: "your-bigmodel-key"        # BigModel API key
 #   model: "google/gemini-2.5-flash"
 
 # Generic control-plane enrollment (TOFU + out-of-band verification)

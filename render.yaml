@@ -39,7 +39,7 @@ services:
   - type: web
     name: ticlaw-ui
     runtime: node
-    plan: free
+    plan: starter
     rootDir: web
     buildCommand: "pnpm install && pnpm run build"
     startCommand: "node build/index.js"

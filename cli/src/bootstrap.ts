@@ -67,9 +67,9 @@ export async function bootstrap(): Promise<void> {
   // Note: Gemini CLI and Claude use their own OAuth — no API key needed.
   // API keys are only needed for direct API access without a CLI.
 
-  // LLM config (OpenRouter powers the agent brain)
-  const openrouterKey = await prompt('OpenRouter API key (powers agent thinking)', '');
-  const llmModel = await prompt('LLM model', 'google/gemini-2.5-flash');
+  // LLM config (BigModel powers the agent brain)
+  const llmApiKey = await prompt('BigModel API key (powers agent thinking)', '');
+  const llmModel = await prompt('LLM model', '');
 
   // 4. Build config object
   const config: any = {
@@ -86,10 +86,11 @@ export async function bootstrap(): Promise<void> {
   }
 
   // LLM
-  if (openrouterKey) {
+  if (llmApiKey) {
     config.llm = {
-      api_key: openrouterKey,
-      model: llmModel,
+      api_key: llmApiKey,
+      base_url: 'https://open.bigmodel.cn/api/anthropic',
+      ...(llmModel ? { model: llmModel } : {}),
     };
   }
 

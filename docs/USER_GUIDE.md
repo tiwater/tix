@@ -20,7 +20,7 @@ pnpm start
 Configure `~/.ticlaw/config.yaml` with at least one channel:
 - **Discord:** Disabled by default. Set `channels.discord.enabled: true` and `channels.discord.token` (or `TC_DISCORD_ENABLED=true` and `TC_DISCORD_TOKEN`) to enable.
 - **Feishu:** `channels.feishu.app_id` and `channels.feishu.app_secret` — see [Feishu Setup](FEISHU_SETUP.md)
-- **LLM:** `llm.api_key` (OpenRouter), `llm.model`
+- **LLM:** `llm.api_key` (BigModel), `llm.model`
 - **Workspace skill:** `TC_CODING_CLI` — optional. Set to `"gemini"`, `"codex"`, or `"claude"` when you want the agent to use a coding CLI for repo/code tasks. The agent handles most tasks directly; this is just one skill.
 - **Proxy:** `proxy` (or `HTTPS_PROXY` / `HTTP_PROXY`) — **required in China** for LLM calls, Discord, and Feishu. Example: `proxy: "http://127.0.0.1:7890"` in config.yaml, or `HTTPS_PROXY="http://127.0.0.1:7890"` in .env.
 
