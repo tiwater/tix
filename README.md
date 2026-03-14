@@ -1,5 +1,18 @@
 # 🦞 TiClaw (v1.3.0)
 
+```text
+    _ _      _
+   | | |__ _| |__  ___| |_ ___ _ _
+   | | / _` | '_ \(_-<|  _/ -_) '_|
+   |_|_\__,_|_.__//__/ \__\___|_|
+   
+      /\|___/\      TiClaw v1.3.0
+     (  o   o  )     [ The Enterprise Shell ]
+      \  -^-  /      
+       /|   |\       Status: ONLINE 🟢
+      (_|___|_)
+```
+
 > **The Most Polished Enterprise AI Agent Base.** 
 > Built for serious developers who need industrial-grade reliability, multi-tenant bot management, and drop-dead gorgeous interactive experiences.
 
