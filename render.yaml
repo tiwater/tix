@@ -28,7 +28,7 @@ services:
       - key: LLM_BASE_URL
         value: "https://open.bigmodel.cn/api/anthropic"
       - key: HUB_URL
-        sync: false # Hub WebSocket URL — set to wss://ticlaw-ui.onrender.com
+        value: "wss://ticlaw.onrender.com" # Hub WebSocket URL
       - key: HUB_TRUST_TOKEN
         sync: false # Set in Render Dashboard
       - key: HUB_REPORTING_INTERVAL
