@@ -101,6 +101,10 @@ importers:
         version: link:..
 
   web:
+    dependencies:
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
     devDependencies:
       '@sveltejs/adapter-node':
         specifier: ^5.5.4
