@@ -146,12 +146,17 @@ function handleClawMessage(
     }
 
     case 'sse_event': {
-      const clients = sseClients.get(msg.stream_key as string);
+      const streamKey = msg.stream_key as string;
+      const clients = sseClients.get(streamKey);
+      log?.info?.(`[hub] SSE event received for stream_key=${streamKey}, clients=${clients?.size ?? 0}`);
       if (clients) {
         const eventData = `data: ${JSON.stringify(msg.event)}\n\n`;
         for (const res of clients) {
           res.write(eventData);
         }
+      } else {
+        log?.warn?.(`[hub] SSE event dropped — no clients for key: ${streamKey}`);
+        log?.warn?.(`[hub] Available stream keys: ${[...sseClients.keys()].join(', ')}`);
       }
       break;
     }
@@ -183,6 +188,7 @@ function handleSSERelay(
   });
 
   const streamKey = url.pathname + url.search;
+  console.info(`[hub] SSE relay setup: streamKey=${streamKey}`);
   if (!sseClients.has(streamKey)) sseClients.set(streamKey, new Set());
   sseClients.get(streamKey)!.add(res);
 
