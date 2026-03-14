@@ -33,7 +33,10 @@ import {
   createSchedule,
   updateSchedule,
   deleteSchedule,
-  initDatabase, storeChatMetadata, setRegisteredProject, storeMessage
+  initDatabase,
+  storeChatMetadata,
+  setRegisteredProject,
+  storeMessage,
 } from '../core/db.js';
 import { SkillsRegistry } from '../skills/registry.js';
 import {
