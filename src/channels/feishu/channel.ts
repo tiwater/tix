@@ -64,7 +64,11 @@ export class FeishuChannel extends AbstractChannel<
     }
   }
 
-  private setupEventHandlers(wsClient: lark.WSClient, appId: string, agentId: string) {
+  private setupEventHandlers(
+    wsClient: lark.WSClient,
+    appId: string,
+    agentId: string,
+  ) {
     const eventDispatcher = new lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data) => {
         if (data.sender?.sender_type === 'app') return;

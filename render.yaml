@@ -20,7 +20,7 @@ services:
       - key: TICLAW_HOME
         value: "/data/ticlaw"
       - key: NODE_HOSTNAME
-        sync: false
+        value: "RenderClaw"
       - key: HTTP_PORT
         value: "10000"
       - key: LLM_API_KEY
