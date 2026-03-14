@@ -34,6 +34,7 @@ const envConfig = readEnvFile([
   'TASK_DEFAULT_STEP_TIMEOUT_MS',
   'TASK_DEFAULT_RETRY_COUNT',
   'TASK_DEFAULT_RETRY_BACKOFF_MS',
+  'TC_CLAW_NAME',
 ]);
 
 export const ASSISTANT_NAME =
@@ -215,8 +216,10 @@ export const MINIMAX_BASE_URL =
 /** Default model name. Uses MiniMax-M2.5 when MINIMAX_API_KEY is set, else undefined (claude-code default). */
 export const DEFAULT_LLM_MODEL = MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined;
 
-// Claw identity — derived from hostname, not configurable
-export const CLAW_HOSTNAME = os.hostname() || 'ticlaw-local';
+// Claw identity — derived from hostname or manual override via TC_CLAW_NAME
+const rawHostname = os.hostname() || 'ticlaw-local';
+export const CLAW_HOSTNAME =
+  process.env.TC_CLAW_NAME || envConfig.TC_CLAW_NAME || rawHostname;
 
 // ACP (Agent Communication Protocol) configuration
 export const ACP_ENABLED =
