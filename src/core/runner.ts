@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { Query, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  Query,
+  SDKResultMessage,
+  SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { logger } from './logger.js';
 import {
   AGENT_MIND_FILES,
@@ -124,7 +128,9 @@ setInterval(() => {
   for (const [key, session] of warmSessions) {
     if (now - session.lastUsedAt > WARM_SESSION_TTL) {
       logger.info({ key }, 'Closing idle warm session');
-      try { session.query.close(); } catch {}
+      try {
+        session.query.close();
+      } catch {}
       warmSessions.delete(key);
       activeHandlers.delete(key);
     }
@@ -297,7 +303,9 @@ export class AgentRunner {
           },
           onResult: (event: any) => {
             const finalText =
-              event.result?.trim() || handler.textParts.join('\n').trim() || '(done)';
+              event.result?.trim() ||
+              handler.textParts.join('\n').trim() ||
+              '(done)';
             this.events.onReply?.(finalText);
             this.consolidateMemory(paths.base, finalText);
             activeHandlers.delete(key);
@@ -331,16 +339,20 @@ export class AgentRunner {
           session_id: warm!.sessionId,
           uuid: randomUUID() as UUID,
         };
-        await warm!.query.streamInput((async function* () {
-          yield userMsg;
-        })());
+        await warm!.query.streamInput(
+          (async function* () {
+            yield userMsg;
+          })(),
+        );
       } else {
         // ── Cold path: spawn new subprocess with the actual message ──
         logger.info({ key }, 'AgentRunner: Cold start — spawning subprocess');
 
         // Clean up stale session if any
         if (warm) {
-          try { warm.query.close(); } catch {}
+          try {
+            warm.query.close();
+          } catch {}
           warmSessions.delete(key);
         }
 
@@ -390,7 +402,9 @@ export class AgentRunner {
         // Clean up broken warm session
         const warm = warmSessions.get(key);
         if (warm) {
-          try { warm.query.close(); } catch {}
+          try {
+            warm.query.close();
+          } catch {}
           warmSessions.delete(key);
           activeHandlers.delete(key);
         }
@@ -440,7 +454,10 @@ export class AgentRunner {
     const mtimeKey = getPromptMtimeKey(baseDir);
     const cached = _promptCache.get(this.state.agent_id);
     if (cached && cached.mtimeKey === mtimeKey) {
-      logger.debug({ agent_id: this.state.agent_id }, 'Using cached system prompt');
+      logger.debug(
+        { agent_id: this.state.agent_id },
+        'Using cached system prompt',
+      );
       return cached.prompt;
     }
 

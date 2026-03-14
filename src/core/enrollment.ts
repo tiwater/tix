@@ -12,8 +12,6 @@ export type NodeTrustState =
   | 'suspended'
   | 'revoked';
 
-
-
 export interface EnrollmentState {
   node_id: string;
   node_fingerprint: string;

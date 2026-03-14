@@ -118,8 +118,6 @@ async function processMessages(chatJid: string): Promise<boolean> {
   const rawText = messages.map((m) => m.content).join('\n');
   const latestMsg = messages[messages.length - 1];
 
-
-
   const recentMessages = getRecentMessages(chatJid, 10);
   let contextText = rawText;
   if (recentMessages.length > messages.length) {

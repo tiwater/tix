@@ -51,7 +51,7 @@ When `agent_id` is set, all other config sections below are optional — the ser
 | Field                        | Type           | Description                   | Constraints                                                  |
 |------------------------------|----------------|-------------------------------|--------------------------------------------------------------|
 | provider                     | string         | Model provider                | `tiwater`(default)/`customization`/`aliyun`/`bytedance`/`qcloud`/`baidu`/`deepseek`/`zai`/`openai` |
-| name                         | string         | Model name                    | tiwater: `stardust-6.0`/`stardust-5.0`/`stardust-3.0`/`stardust-2.5-max`/`stardust-2.5-pro`/`stardust-2.5-turbo`/`stardust-2.5-lite`; deepseek: `deepseek-v3`; openai: `gpt-4` etc. |
+| name                         | string         | Model name                    | Tiwater: `stardust-6.0`/`stardust-5.0`/`stardust-3.0`/`stardust-2.5-max`/`stardust-2.5-pro`/`stardust-2.5-turbo`/`stardust-2.5-lite`; deepseek: `deepseek-v3`; openai: `gpt-4` etc. |
 | modalities                   | string[]       | Interaction modes             | `text`/`audio`/`video`                                       |
 | instructions                 | string\|object | System prompt                 | Supports `{{variable}}` syntax (see Template Variables). Object type for ext_config usage. |
 | ext_config                   | object         | Extended model config         | See ext_config section below                                 |

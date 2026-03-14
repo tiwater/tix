@@ -24,9 +24,7 @@ import {
 } from '../core/store.js';
 import { readEnvFile } from '../core/env.js';
 import { logger } from '../core/logger.js';
-import type {
-  RegisteredProject,
-} from '../core/types.js';
+import type { RegisteredProject } from '../core/types.js';
 
 const STORAGE_BUCKET = 'ticlaw';
 const STORAGE_AGENTS_PREFIX = 'agents';

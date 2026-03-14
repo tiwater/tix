@@ -133,10 +133,7 @@ function scheduleJsonPath(agentId: string, scheduleId: string): string {
 }
 
 const routerStatePath = path.join(TICLAW_HOME, 'router-state.json');
-const registeredGroupsPath = path.join(
-  TICLAW_HOME,
-  'registered-groups.json',
-);
+const registeredGroupsPath = path.join(TICLAW_HOME, 'registered-groups.json');
 
 // ═══════════════════════════════════════════════════════════════
 // Init (no-op — dirs created on demand)
@@ -189,8 +186,8 @@ export function getAllAgents(): AgentRecord[] {
     const agent = readJson<AgentRecord>(agentJsonPath(id));
     if (agent) agents.push(agent);
   }
-  return agents.sort(
-    (a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''),
+  return agents.sort((a, b) =>
+    (b.updated_at || '').localeCompare(a.updated_at || ''),
   );
 }
 
@@ -255,8 +252,8 @@ export function getSessionsForAgent(agentId: string): SessionRecord[] {
     const session = readJson<SessionRecord>(sessionJsonPath(agentId, sid));
     if (session) sessions.push(session);
   }
-  return sessions.sort(
-    (a, b) => (b.created_at || '').localeCompare(a.created_at || ''),
+  return sessions.sort((a, b) =>
+    (b.created_at || '').localeCompare(a.created_at || ''),
   );
 }
 
@@ -302,10 +299,7 @@ interface StoredMessage {
 }
 
 /** Convert internal JSONL format → NewMessage for API compatibility */
-function storedToNewMessage(
-  m: StoredMessage,
-  chatJid: string,
-): NewMessage {
+function storedToNewMessage(m: StoredMessage, chatJid: string): NewMessage {
   return {
     id: m.id,
     chat_jid: chatJid,
@@ -335,9 +329,7 @@ function resolveFromChatJid(chatJid: string): {
   for (const agentId of listDirs(AGENTS_DIR)) {
     const sessionsBase = path.join(agentDir(agentId), 'sessions');
     for (const sid of listDirs(sessionsBase)) {
-      const session = readJson<SessionRecord>(
-        sessionJsonPath(agentId, sid),
-      );
+      const session = readJson<SessionRecord>(sessionJsonPath(agentId, sid));
       if (session?.source_ref === chatJid) {
         return { agentId, sessionId: sid };
       }
@@ -473,9 +465,7 @@ export function createSchedule(input: {
 
 export function getScheduleById(id: string): ScheduleRecord | undefined {
   for (const agentId of listDirs(AGENTS_DIR)) {
-    const schedule = readJson<ScheduleRecord>(
-      scheduleJsonPath(agentId, id),
-    );
+    const schedule = readJson<ScheduleRecord>(scheduleJsonPath(agentId, id));
     if (schedule) return schedule;
   }
   return undefined;
@@ -486,8 +476,8 @@ export function getAllSchedules(): ScheduleRecord[] {
   for (const agentId of listDirs(AGENTS_DIR)) {
     schedules.push(...getSchedulesForAgent(agentId));
   }
-  return schedules.sort(
-    (a, b) => (b.created_at || '').localeCompare(a.created_at || ''),
+  return schedules.sort((a, b) =>
+    (b.created_at || '').localeCompare(a.created_at || ''),
   );
 }
 
@@ -495,13 +485,11 @@ export function getSchedulesForAgent(agentId: string): ScheduleRecord[] {
   const dir = schedulesDir(agentId);
   const schedules: ScheduleRecord[] = [];
   for (const id of listJsonFiles(dir)) {
-    const schedule = readJson<ScheduleRecord>(
-      scheduleJsonPath(agentId, id),
-    );
+    const schedule = readJson<ScheduleRecord>(scheduleJsonPath(agentId, id));
     if (schedule) schedules.push(schedule);
   }
-  return schedules.sort(
-    (a, b) => (b.created_at || '').localeCompare(a.created_at || ''),
+  return schedules.sort((a, b) =>
+    (b.created_at || '').localeCompare(a.created_at || ''),
   );
 }
 
@@ -596,9 +584,7 @@ function loadRegisteredGroups(): Record<
   );
 }
 
-function saveRegisteredGroups(
-  groups: Record<string, RegisteredProject>,
-): void {
+function saveRegisteredGroups(groups: Record<string, RegisteredProject>): void {
   writeJson(registeredGroupsPath, groups);
 }
 
@@ -731,8 +717,8 @@ export function getAllChats(): ChatInfo[] {
       });
     }
   }
-  return chats.sort(
-    (a, b) => b.last_message_time.localeCompare(a.last_message_time),
+  return chats.sort((a, b) =>
+    b.last_message_time.localeCompare(a.last_message_time),
   );
 }
 
