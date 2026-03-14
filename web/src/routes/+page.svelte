@@ -196,6 +196,31 @@
           return;
         }
 
+        // Streaming via runner_state: when hub relays runner_state with speaking tokens
+        if (
+          data.type === 'runner_state' &&
+          data.activity?.action === 'speaking' &&
+          data.activity?.target
+        ) {
+          if (isThinking) { isThinking = false; }
+
+          if (streamingMessageId) {
+            messages = messages.map((m) =>
+              m.id === streamingMessageId ? { ...m, text: m.text + data.activity.target } : m
+            );
+          } else {
+            streamingMessageId = `bot-${Date.now()}`;
+            messages = [...messages, {
+              id: streamingMessageId,
+              role: 'bot',
+              text: data.activity.target,
+              time: new Date().toLocaleTimeString(),
+            }];
+          }
+          scrollToBottom();
+          return;
+        }
+
         // Final complete message — replace streaming content
         if (data.type === 'message' && data.text) {
           if (isThinking) { isThinking = false; fetchMindFiles(); }

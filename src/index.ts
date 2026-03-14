@@ -431,10 +431,15 @@ async function processMessages(chatJid: string): Promise<boolean> {
         messages: aiMessages,
         onEvent: async (event) => {
           // Forward streaming text deltas to SSE clients
-          if ((event as any).phase === 'stream_delta') {
+          // Runner emits: phase='stream_event', action='speaking', target=deltaText
+          if (
+            (event as any).phase === 'stream_event' &&
+            (event as any).action === 'speaking' &&
+            (event as any).target
+          ) {
             broadcastToChat(chatJid, {
               type: 'stream_delta',
-              text: (event as any).text,
+              text: (event as any).target,
             });
           }
         },
