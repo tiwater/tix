@@ -341,7 +341,7 @@ export interface StartHubOptions extends HubOptions {
  * Convenience for quick setup — or use attachHub() for more control.
  */
 export function startHub(opts: StartHubOptions = {}): Promise<http.Server> {
-  const port = opts.port ?? parseInt(process.env.HUB_PORT || '3280', 10);
+  const port = opts.port ?? parseInt(process.env.HUB_PORT || '2755', 10);
   const host = opts.host ?? '0.0.0.0';
   const log = opts.logger ?? console;
 
