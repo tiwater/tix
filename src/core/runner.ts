@@ -9,6 +9,7 @@ import {
   DEFAULT_LLM_MODEL,
   ANTHROPIC_API_KEY,
   OPENROUTER_API_KEY,
+  LLM_BASE_URL,
   SKILLS_CONFIG,
   agentPaths,
   TICLAW_HOME,
@@ -131,15 +132,16 @@ export class AgentRunner {
           allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
           permissionMode: 'acceptEdits',
           model: DEFAULT_LLM_MODEL,
+          settingSources: [], // Prevent ~/.claude/settings.json from overriding our env config
           includePartialMessages: true,
           pathToClaudeCodeExecutable: cliPath, // Fix: Explicitly set the path
           env: {
             ...process.env,
-            // Route through OpenRouter when no direct Anthropic key is set
+            // Use config.yaml llm.api_key + llm.base_url when no direct Anthropic key
             ...(OPENROUTER_API_KEY && !ANTHROPIC_API_KEY
               ? {
                   ANTHROPIC_API_KEY: OPENROUTER_API_KEY,
-                  ANTHROPIC_BASE_URL: 'https://openrouter.ai/api/v1',
+                  ...(LLM_BASE_URL ? { ANTHROPIC_BASE_URL: LLM_BASE_URL } : {}),
                 }
               : {
                   ANTHROPIC_API_KEY: ANTHROPIC_API_KEY || '',

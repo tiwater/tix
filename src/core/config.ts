@@ -21,6 +21,8 @@ const envConfig = readEnvFile([
   'HTTP_ENABLED',
   'ANTHROPIC_API_KEY',
   'OPENROUTER_API_KEY',
+  'LLM_MODEL',
+  'LLM_BASE_URL',
   'MINIMAX_API_KEY',
   'MINIMAX_BASE_URL',
   'CONTROL_PLANE_URL',
@@ -212,12 +214,14 @@ export const MINIMAX_BASE_URL =
   envConfig.MINIMAX_BASE_URL ||
   'https://api.minimax.io/anthropic';
 
-/** Default model name. Priority: MiniMax > OpenRouter (full name) > Claude default. */
-export const DEFAULT_LLM_MODEL = MINIMAX_API_KEY
-  ? 'MiniMax-M2.5'
-  : OPENROUTER_API_KEY && !ANTHROPIC_API_KEY
-    ? 'claude-sonnet-4-20250514'
-    : undefined;
+/** Default model name. Priority: config.yaml llm.model > MiniMax > undefined (let CLI decide). */
+export const DEFAULT_LLM_MODEL =
+  process.env.LLM_MODEL || envConfig.LLM_MODEL ||
+  (MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined);
+
+/** LLM base URL from config.yaml llm.base_url (Anthropic-compatible endpoint). */
+export const LLM_BASE_URL =
+  process.env.LLM_BASE_URL || envConfig.LLM_BASE_URL || '';
 
 // Claw identity — derived from hostname, not configurable
 export const CLAW_HOSTNAME = os.hostname() || 'ticlaw-local';
