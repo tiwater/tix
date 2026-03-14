@@ -77,7 +77,6 @@ import {
   startPeriodicSupabasePush,
 } from './sync/supabase-sync.js';
 
-
 // Define ChannelOpts locally as it was removed from registry.ts
 export interface ChannelOpts {
   onMessage: (chatJid: string, msg: NewMessage) => void;
@@ -645,7 +644,6 @@ async function main(): Promise<void> {
     startPeriodicSupabasePush();
   }
   loadState();
-
 
   const channelOpts: ChannelOpts = {
     onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),
