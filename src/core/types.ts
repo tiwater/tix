@@ -195,7 +195,7 @@ export interface Channel {
   sendMessage(
     jid: string,
     text: string,
-    options?: { embeds?: any[] },
+    options?: { embeds?: any[]; card?: any },
   ): Promise<void>;
   sendFile(jid: string, filePath: string, caption?: string): Promise<void>;
   isConnected(): boolean;
@@ -229,6 +229,16 @@ export type OnChatMetadata = (
   channel?: string,
   isGroup?: boolean,
 ) => void;
+
+/**
+ * Common configuration passed to all channel factories.
+ */
+export interface ChannelOpts {
+  onMessage: OnInboundMessage;
+  onChatMetadata: OnChatMetadata;
+  registeredProjects: () => Record<string, RegisteredProject>;
+  onGroupRegistered?: (jid: string, group: RegisteredProject) => void;
+}
 
 export interface ContainerOutput {
   status: 'success' | 'error';
