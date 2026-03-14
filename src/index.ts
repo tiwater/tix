@@ -26,7 +26,10 @@ import {
   storeMessage,
 } from './core/db.js';
 import { logger } from './core/logger.js';
-import { getChannelFactory, getRegisteredChannelNames } from './channels/registry.js';
+import {
+  getChannelFactory,
+  getRegisteredChannelNames,
+} from './channels/registry.js';
 import { routeOutbound, routeSetTyping } from './router.js';
 import { AgentRunner } from './core/runner.js';
 import {
@@ -86,11 +89,15 @@ async function processMessages(chatJid: string): Promise<boolean> {
       }
 
       // 2. Fallback to LLM Agent
-      const runner = new AgentRunner(group.folder, message.session_id || chatJid, {
-        onReply: async (text) => {
-          await channel.sendMessage(chatJid, text);
+      const runner = new AgentRunner(
+        group.folder,
+        message.session_id || chatJid,
+        {
+          onReply: async (text) => {
+            await channel.sendMessage(chatJid, text);
+          },
         },
-      });
+      );
 
       await runner.run(message.content, message.task_id || randomUUID());
 

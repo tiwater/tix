@@ -1,26 +1,5 @@
 /**
  * HTTP SSE channel for TiClaw.
- *
- * Routes:
- *   POST /runs                — send a message to an agent
- *   GET  /runs/:id/stream     — SSE stream for a session
- *   GET  /agents              — agent info
- *   GET  /api/mind            — mind state
- *   GET  /api/agents          — list agents
- *   POST /api/agents          — create agent
- *   GET  /api/sessions        — list sessions
- *   POST /api/sessions        — create session
- *   GET  /api/schedules       — list schedules
- *   POST /api/schedules       — create schedule
- *   DEL  /api/schedules/:id   — delete schedule
- *   POST /api/schedules/:id/toggle — toggle schedule
- *   GET  /api/skills          — list skills
- *   POST /api/skills/:name/*  — enable/disable skills
- *   GET  /api/tasks           — list active tasks
- *   GET  /api/claw            — claw status
- *   POST /api/claw/trust      — trust claw
- *   GET  /api/enroll/*        — enrollment endpoints
- *   GET  /health              — health check
  */
 
 import fs from 'fs';
@@ -54,6 +33,7 @@ import {
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  initDatabase, storeChatMetadata, setRegisteredProject, storeMessage
 } from '../core/db.js';
 import { SkillsRegistry } from '../skills/registry.js';
 import {
@@ -63,7 +43,6 @@ import {
   verifyEnrollmentToken,
 } from '../core/enrollment.js';
 import { logger } from '../core/logger.js';
-import { getTaskLogPath } from '../run-agent.js';
 import { getExecutorStats, listActiveTasks } from '../task-executor.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { maybeHandleAcpRequest } from './acp.js';
@@ -84,16 +63,6 @@ const sseClients = new Map<string, Set<http.ServerResponse | WebSocket>>();
 app.on('broadcast', (data: { chatJid: string; event: object }) => {
   if (data.chatJid.startsWith(WEB_JID_PREFIX)) {
     broadcastToChat(data.chatJid, data.event);
-  }
-});
-
-app.on('send', async (data: { jid: string; text: string }) => {
-  if (data.jid.startsWith(WEB_JID_PREFIX)) {
-    broadcastToChat(data.jid, {
-      type: 'message',
-      chat_jid: data.jid,
-      text: data.text,
-    });
   }
 });
 

@@ -9,7 +9,7 @@ export async function executeTask(task: any) {
     const runner = new AgentRunner(task.agent_id, task.session_id, {
       onReply: async (text) => {
         logger.info({ taskId: task.id, text }, 'Task Reply');
-      }
+      },
     });
     await runner.run(task.prompt, task.id);
   } catch (err) {
@@ -17,8 +17,18 @@ export async function executeTask(task: any) {
   }
 }
 
-export function submitTask(input: any): any { return { id: 'stub' }; }
-export function submitScheduleTask(input: any): any { return { id: 'stub' }; }
-export function getActiveTaskById(id: string): any { return null; }
-export function listActiveTasks() { return []; }
-export function getExecutorStats() { return {}; }
+export function submitTask(input: any): any {
+  return { id: 'stub' };
+}
+export function submitScheduleTask(input: any): any {
+  return { id: 'stub' };
+}
+export function getActiveTaskById(id: string): any {
+  return null;
+}
+export function listActiveTasks() {
+  return [];
+}
+export function getExecutorStats() {
+  return {};
+}
