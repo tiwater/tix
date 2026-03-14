@@ -240,6 +240,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
         agent_name: group.name,
       });
 
+      let streamedToWeb = false;
       await runAgent({
         group,
         session: { ...session, task_id: `run-${Date.now()}` },
@@ -252,6 +253,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
             (event as any).action === 'speaking' &&
             (event as any).target
           ) {
+            streamedToWeb = true;
             broadcastToChat(chatJid, {
               type: 'stream_delta',
               text: (event as any).target,
@@ -263,7 +265,31 @@ async function processMessages(chatJid: string): Promise<boolean> {
           await sendFn(chatJid, `⏳ (${secs}s) Working on it...`);
         },
         onReply: async (text) => {
-          await sendFn(chatJid, text);
+          if (chatJid.startsWith('web:') && streamedToWeb) {
+            // Web clients already received the response via stream_delta events.
+            // Send stream_end so the client knows streaming is complete,
+            // and store the bot message without re-broadcasting the full text.
+            broadcastToChat(chatJid, {
+              type: 'stream_end',
+              text,
+            });
+            // Still store the bot message for history
+            const ts = new Date().toISOString();
+            lastAgentTimestamp[chatJid] = ts;
+            setRouterState(chatJid, ts);
+            storeMessage({
+              id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              chat_jid: chatJid,
+              sender: ASSISTANT_NAME,
+              sender_name: ASSISTANT_NAME,
+              content: text,
+              timestamp: ts,
+              is_from_me: true,
+            });
+          } else {
+            // Non-web channels (Discord, Feishu, etc.) or no streaming happened
+            await sendFn(chatJid, text);
+          }
         },
       });
       return true;
@@ -493,9 +519,13 @@ async function main(): Promise<void> {
   const CHANNEL_CONNECT_TIMEOUT = 15_000;
   const enabledFromConfig = getEnabledChannelsFromConfig();
   const registeredChannelNames = getRegisteredChannelNames();
+  // Infrastructure channels (hub-client) must always connect regardless of config
+  const INFRA_CHANNELS = ['hub-client'];
   const toConnect =
     enabledFromConfig.length > 0
-      ? registeredChannelNames.filter((n) => enabledFromConfig.includes(n))
+      ? registeredChannelNames.filter(
+          (n) => enabledFromConfig.includes(n) || INFRA_CHANNELS.includes(n),
+        )
       : registeredChannelNames;
   for (const name of toConnect) {
     const factory = getChannelFactory(name);

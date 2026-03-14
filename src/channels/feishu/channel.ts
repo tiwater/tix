@@ -3,10 +3,13 @@
  * Refactored using AbstractChannel base class.
  */
 
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import * as lark from '@larksuiteoapi/node-sdk';
+import * as yaml from 'yaml';
 import { AbstractChannel } from '../base.js';
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../../core/config.js';
-import { readEnvFile } from '../../core/env.js';
 import { logger } from '../../core/logger.js';
 import { registerChannel, ChannelOpts } from '../registry.js';
 import { parseMessageContent } from './helpers.js';
@@ -16,10 +19,12 @@ import { RegisteredProject } from '../../core/types.js';
 interface FeishuAccount {
   appId: string;
   appSecret: string;
+  agentId: string;
 }
 
 interface FeishuInstance {
   appId: string;
+  agentId: string;
   client: lark.Client;
   wsClient: lark.WSClient;
 }
@@ -49,16 +54,17 @@ export class FeishuChannel extends AbstractChannel<
         appSecret: account.appSecret,
       });
 
-      this.setupEventHandlers(wsClient, account.appId);
+      this.setupEventHandlers(wsClient, account.appId, account.agentId);
       this.instances.set(account.appId, {
         appId: account.appId,
+        agentId: account.agentId,
         client,
         wsClient,
       });
     }
   }
 
-  private setupEventHandlers(wsClient: lark.WSClient, appId: string) {
+  private setupEventHandlers(wsClient: lark.WSClient, appId: string, agentId: string) {
     const eventDispatcher = new lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data) => {
         if (data.sender?.sender_type === 'app') return;
@@ -76,7 +82,7 @@ export class FeishuChannel extends AbstractChannel<
         this.opts.onChatMetadata(
           chatJid,
           new Date().toISOString(),
-          undefined,
+          agentId,
           'feishu',
           true,
         );
@@ -85,11 +91,13 @@ export class FeishuChannel extends AbstractChannel<
           id: msgId,
           chat_jid: chatJid,
           sender: senderId,
-          sender_name: senderId, // Default to ID, could be resolved
+          sender_name: senderId,
           content: TRIGGER_PATTERN.test(content)
             ? content
             : `@${ASSISTANT_NAME} ${content}`,
           timestamp: new Date().toISOString(),
+          agent_id: agentId,
+          session_id: chatJid,
         });
       },
     });
@@ -172,15 +180,45 @@ export class FeishuChannel extends AbstractChannel<
 }
 
 function createFeishuChannel(opts: ChannelOpts): FeishuChannel | null {
-  const config = readEnvFile(['TC_FEISHU_ENABLED', 'TC_FEISHU_ACCOUNTS']);
-  if (config.TC_FEISHU_ENABLED === 'false') return null;
-
+  // Read from ~/.ticlaw/config.yaml channels.feishu block
+  let doc: any;
   try {
-    const accounts = JSON.parse(config.TC_FEISHU_ACCOUNTS || '[]');
-    return accounts.length > 0 ? new FeishuChannel(accounts, opts) : null;
+    const configPath = path.join(os.homedir(), '.ticlaw', 'config.yaml');
+    const content = fs.readFileSync(configPath, 'utf-8');
+    doc = yaml.parse(content);
   } catch {
     return null;
   }
+
+  const feishuConfig = doc?.channels?.feishu;
+  if (!feishuConfig) return null;
+  if (feishuConfig.enabled === false) return null;
+
+  let accounts: FeishuAccount[] = [];
+
+  // Support single account: channels.feishu.app_id + app_secret + agent_id
+  if (feishuConfig.app_id && feishuConfig.app_secret) {
+    accounts.push({
+      appId: feishuConfig.app_id,
+      appSecret: feishuConfig.app_secret,
+      agentId: feishuConfig.agent_id || feishuConfig.app_id,
+    });
+  }
+
+  // Support multi-account: channels.feishu.accounts[]
+  if (Array.isArray(feishuConfig.accounts)) {
+    for (const acc of feishuConfig.accounts) {
+      if (acc.app_id && acc.app_secret) {
+        accounts.push({
+          appId: acc.app_id,
+          appSecret: acc.app_secret,
+          agentId: acc.agent_id || acc.app_id,
+        });
+      }
+    }
+  }
+
+  return accounts.length > 0 ? new FeishuChannel(accounts, opts) : null;
 }
 
 registerChannel('feishu', createFeishuChannel);

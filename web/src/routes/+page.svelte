@@ -249,7 +249,22 @@
           return;
         }
 
-        // Final complete message — replace streaming content
+        // Stream complete — finalize the streaming message with authoritative text
+        if (data.type === 'stream_end') {
+          if (isThinking) {
+            isThinking = false;
+          }
+          if (streamingMessageId && data.text) {
+            messages = messages.map((m) =>
+              m.id === streamingMessageId ? { ...m, text: data.text } : m,
+            );
+          }
+          streamingMessageId = null;
+          fetchMindFiles();
+          return;
+        }
+
+        // Final complete message (non-streaming path or fallback)
         if (data.type === 'message' && data.text) {
           if (isThinking) {
             isThinking = false;
