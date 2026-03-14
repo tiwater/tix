@@ -8,7 +8,7 @@ import {
   ASSISTANT_NAME,
   DEFAULT_LLM_MODEL,
   ANTHROPIC_API_KEY,
-  OPENROUTER_API_KEY,
+  LLM_API_KEY,
   LLM_BASE_URL,
   SKILLS_CONFIG,
   agentPaths,
@@ -138,9 +138,9 @@ export class AgentRunner {
           env: {
             ...process.env,
             // Use config.yaml llm.api_key + llm.base_url when no direct Anthropic key
-            ...(OPENROUTER_API_KEY && !ANTHROPIC_API_KEY
+            ...(LLM_API_KEY && !ANTHROPIC_API_KEY
               ? {
-                  ANTHROPIC_API_KEY: OPENROUTER_API_KEY,
+                  ANTHROPIC_API_KEY: LLM_API_KEY,
                   ...(LLM_BASE_URL ? { ANTHROPIC_BASE_URL: LLM_BASE_URL } : {}),
                 }
               : {

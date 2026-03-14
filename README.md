@@ -163,7 +163,7 @@ Yes! TiClaw defaults to **OpenRouter** which provides access to Claude 4.5 Sonne
 
 Simply set your key and preferred model in `.env`:
 ```bash
-OPENROUTER_API_KEY="your-openrouter-key"
+LLM_API_KEY="your-openrouter-key"
 TC_MODEL="anthropic/claude-sonnet-4.6"
 ```
 TiClaw automatically handles the routing and provider-specific mapping.

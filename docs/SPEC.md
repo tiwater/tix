@@ -255,7 +255,7 @@ Configure authentication in a `.env` file in the project root. The agent executi
 
 **OpenRouter (Default)**:
 ```bash
-OPENROUTER_API_KEY=sk-or-v1-...
+LLM_API_KEY=sk-or-v1-...
 ```
 
 **Claude Native**:
@@ -440,7 +440,7 @@ SQLite database at `~/.ticlaw/store/messages.db`:
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENROUTER_API_KEY` | Authenticate OpenRouter models |
+| `LLM_API_KEY` | Authenticate OpenRouter models |
 | `ANTHROPIC_API_KEY` | API key for Anthropic native endpoints |
 | `MINIMAX_API_KEY` | API key for MiniMax compatibility layer |
 | `GEMINI_API_KEY` | API key for Delta Feed summaries |

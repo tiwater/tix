@@ -36,7 +36,7 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   CONTAINER_IMAGE: ['container', 'image'],
   CONTAINER_TIMEOUT: ['container', 'timeout'],
   MAX_CONCURRENT_CONTAINERS: ['container', 'max_concurrent'],
-  OPENROUTER_API_KEY: ['llm', 'api_key'],
+  LLM_API_KEY: ['llm', 'api_key'],
   LLM_MODEL: ['llm', 'model'],
   LLM_BASE_URL: ['llm', 'base_url'],
   SUPABASE_URL: ['supabase', 'url'],

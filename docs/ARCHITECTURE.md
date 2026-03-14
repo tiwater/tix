@@ -29,7 +29,7 @@ The physical engine that manages workspaces.
 To ensure robust multi-turn task execution without fragile regex parsing or complex tmux session management, TiClaw utilizes the official `@anthropic-ai/claude-agent-sdk`.
 *   **The SDK Core (`run-agent.ts`):** Instead of a multi-CLI driver pattern (Gemini CLI, Codex, etc.), TiClaw wraps the `query()` generator from the Claude SDK. This grants the LLM built-in access to its native toolchain (Bash, Edit, Read).
 *   **Physical Execution:** The SDK executes safely on the host inside the restricted `~/.ticlaw/factory/` directories without requiring headless subprocess polling or Docker container layers.
-*   **OpenRouter Routing:** By overriding `ANTHROPIC_BASE_URL` with standard OpenRouter credentials (`OPENROUTER_API_KEY`), the agent naturally executes models like MiniMax-M2.5 or Claude 3.5 Sonnet directly from the Node runtime.
+*   **OpenRouter Routing:** By overriding `ANTHROPIC_BASE_URL` with standard OpenRouter credentials (`LLM_API_KEY`), the agent naturally executes models like MiniMax-M2.5 or Claude 3.5 Sonnet directly from the Node runtime.
 
 ### D. The Delta Feed (Gemini Powered Audit)
 *   **Function:** Periodically (or upon file save/command completion) calculates the `git diff`.

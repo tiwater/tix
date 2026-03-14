@@ -20,7 +20,7 @@ const envConfig = readEnvFile([
   'HTTP_PORT',
   'HTTP_ENABLED',
   'ANTHROPIC_API_KEY',
-  'OPENROUTER_API_KEY',
+  'LLM_API_KEY',
   'LLM_MODEL',
   'LLM_BASE_URL',
   'MINIMAX_API_KEY',
@@ -205,8 +205,8 @@ export const HTTP_ENABLED =
 // LLM API keys — prefer MiniMax if configured, fall back to Anthropic
 export const ANTHROPIC_API_KEY =
   process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
-export const OPENROUTER_API_KEY =
-  process.env.OPENROUTER_API_KEY || envConfig.OPENROUTER_API_KEY || '';
+export const LLM_API_KEY =
+  process.env.LLM_API_KEY || envConfig.LLM_API_KEY || '';
 export const MINIMAX_API_KEY =
   process.env.MINIMAX_API_KEY || envConfig.MINIMAX_API_KEY || '';
 export const MINIMAX_BASE_URL =
