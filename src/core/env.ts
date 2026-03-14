@@ -6,7 +6,7 @@ import { logger } from './logger.js';
 
 const TICLAW_CONFIG_PATH = path.join(
   process.env.HOME || os.homedir(),
-  'ticlaw',
+  '.ticlaw',
   'config.yaml',
 );
 
@@ -51,10 +51,26 @@ const YAML_KEY_MAP: Record<string, string[]> = {
 };
 
 /**
- * Read config values from ~/ticlaw/config.yaml.
+ * Read config values from ~/.ticlaw/config.yaml.
  * Returns a flat key-value map using env-style keys.
+ * Creates a default config template on first run.
  */
 export function readConfigYaml(keys: string[]): Record<string, string> {
+  // Bootstrap: create default config.yaml if missing
+  if (!fs.existsSync(TICLAW_CONFIG_PATH)) {
+    const dir = path.dirname(TICLAW_CONFIG_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      TICLAW_CONFIG_PATH,
+      DEFAULT_CONFIG_YAML,
+      'utf-8',
+    );
+    logger.info(
+      { path: TICLAW_CONFIG_PATH },
+      'Created default config.yaml — edit it to set your API keys',
+    );
+  }
+
   let doc: any;
   try {
     const content = fs.readFileSync(TICLAW_CONFIG_PATH, 'utf-8');
@@ -86,6 +102,38 @@ export function readConfigYaml(keys: string[]): Record<string, string> {
 
   return result;
 }
+
+const DEFAULT_CONFIG_YAML = `# TiClaw Configuration
+# Edit this file to configure your TiClaw agent.
+# Docs: https://github.com/tiwater/ticlaw
+
+# ── LLM Provider ──
+# OpenRouter (recommended): get a key at https://openrouter.ai/keys
+llm:
+  # api_key: "sk-or-v1-your-key-here"
+  # model: "claude-sonnet-4-20250514"
+  # base_url: "https://openrouter.ai/api/v1"
+
+# ── Direct Anthropic (alternative) ──
+# api_keys:
+#   anthropic: "sk-ant-..."
+
+# ── Agent Settings ──
+# assistant_name: "Andy"
+# coding_cli: "gemini"
+
+# ── Channels ──
+# channels:
+#   http:
+#     enabled: true
+#   discord:
+#     token: "your-discord-bot-token"
+#     enabled: false
+#   feishu:
+#     app_id: "your-feishu-app-id"
+#     app_secret: "your-feishu-app-secret"
+#     enabled: false
+`;
 
 /**
  * Read config values. Priority: process.env → config.yaml → .env (dev fallback).
