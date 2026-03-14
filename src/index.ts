@@ -11,6 +11,7 @@ import {
   POLL_INTERVAL,
   TRIGGER_PATTERN,
   CLAW_HOSTNAME,
+  TICLAW_MODE,
 } from './core/config.js';
 import './channels/index.js';
 import {
@@ -76,6 +77,7 @@ import {
   scheduleSupabasePush,
   startPeriodicSupabasePush,
 } from './sync/supabase-sync.js';
+import { startHub } from '@ticlaw/hub';
 
 // Define ChannelOpts locally as it was removed from registry.ts
 export interface ChannelOpts {
@@ -625,6 +627,11 @@ let sendFn: (
 let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 
 async function main(): Promise<void> {
+  const runClaw = TICLAW_MODE === 'claw' || TICLAW_MODE === 'both';
+  const runHub = TICLAW_MODE === 'hub' || TICLAW_MODE === 'both';
+
+  logger.info({ mode: TICLAW_MODE }, 'TiClaw starting');
+
   initDatabase();
   logger.info('Database initialized');
 
@@ -642,6 +649,24 @@ async function main(): Promise<void> {
     startPeriodicSupabasePush();
   }
   loadState();
+
+  // ── Hub mode: start hub server ──
+  if (runHub) {
+    await startHub({ logger: console });
+  }
+
+  // ── Claw mode: start channels & agent ──
+  if (!runClaw) {
+    logger.info('Hub-only mode — skipping claw startup');
+    // In hub-only mode, still need shutdown handler
+    const shutdown = async (signal: string) => {
+      logger.info({ signal }, 'Shutdown signal received');
+      process.exit(0);
+    };
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    return;
+  }
 
   const channelOpts: ChannelOpts = {
     onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),

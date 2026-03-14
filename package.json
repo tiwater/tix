@@ -25,6 +25,7 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "@supabase/supabase-js": "^2.47.0",
+    "@ticlaw/hub": "workspace:^",
     "@types/js-yaml": "^4.0.9",
     "better-sqlite3": "^11.8.1",
     "cron-parser": "^5.5.0",

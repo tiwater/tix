@@ -3,7 +3,7 @@
 
 services:
   # 1. Claw (Agent Worker) — NOT publicly exposed
-  # Connects outbound to the Hub (ticlaw-ui) via WebSocket
+  # Connects outbound to the Hub via WebSocket
   - type: pserv
     name: ticlaw-claw
     runtime: node
@@ -17,6 +17,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      - key: TICLAW_MODE
+        value: "claw"
       - key: TICLAW_HOME
         value: "/data/ticlaw" # Persistent disk — survives redeploys
       - key: CLAW_HOSTNAME
@@ -34,17 +36,18 @@ services:
       - key: HUB_REPORTING_INTERVAL
         value: "60000"
 
-  # 2. Hub + Web UI (public-facing)
-  # Claws connect TO this service. Users access this URL.
+  # 2. Hub (public-facing) — accepts claws + serves web UI
+  # Same codebase, different TICLAW_MODE
   - type: web
     name: ticlaw
     runtime: node
     plan: starter
-    rootDir: web
-    buildCommand: "pnpm install && pnpm run build"
-    startCommand: "node server.js"
+    buildCommand: "pnpm install && pnpm run build && cd web && pnpm run build"
+    startCommand: "node dist/index.js"
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: PORT
+      - key: TICLAW_MODE
+        value: "hub"
+      - key: HUB_PORT
         value: "10000"

@@ -20,6 +20,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.47.0
         version: 2.99.1
+      '@ticlaw/hub':
+        specifier: workspace:^
+        version: link:hub
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -100,11 +103,20 @@ importers:
         specifier: workspace:*
         version: link:..
 
-  web:
+  hub:
     dependencies:
       ws:
-        specifier: ^8.19.0
+        specifier: ^8.18.0
         version: 8.19.0
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.5.14
+        version: 8.18.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  web:
     devDependencies:
       '@sveltejs/adapter-node':
         specifier: ^5.5.4
