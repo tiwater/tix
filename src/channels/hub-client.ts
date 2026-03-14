@@ -4,7 +4,6 @@ import { readHubConfig, HubConfig } from '../core/hub-config.js';
 import {
   readEnrollmentState,
   verifyEnrollmentToken,
-  ClawTrustState,
 } from '../core/enrollment.js';
 import { CLAW_HOSTNAME } from '../core/config.js';
 import { Channel, NewMessage, RegisteredProject } from '../core/types.js';
@@ -238,7 +237,10 @@ export class HubClientChannel implements Channel {
     path: string;
   }): void {
     // SSE relay — not yet implemented, would stream events back to hub
-    logger.debug({ path: payload.path }, 'SSE subscribe requested (not yet relayed)');
+    logger.debug(
+      { path: payload.path },
+      'SSE subscribe requested (not yet relayed)',
+    );
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
