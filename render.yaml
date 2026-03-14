@@ -3,12 +3,12 @@
 
 services:
   # 1. Claw (Agent Worker) — NOT publicly exposed
-  # Connects outbound to the Hub via WebSocket
+  # The TiClaw service: connects outbound to the Hub via WebSocket
   - type: pserv
     name: ticlaw-claw
     runtime: node
-    plan: starter # Persistent disk requires paid plan
-    buildCommand: "pnpm install && pnpm --filter @ticlaw/hub run build && pnpm run build"
+    plan: starter
+    buildCommand: "pnpm install && pnpm run build"
     startCommand: "node dist/index.js"
     disk:
       name: ticlaw-data
@@ -17,26 +17,24 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: TICLAW_MODE
-        value: "claw"
       - key: TICLAW_HOME
-        value: "/data/ticlaw" # Persistent disk — survives redeploys
+        value: "/data/ticlaw"
       - key: CLAW_HOSTNAME
         sync: false
       - key: HTTP_PORT
         value: "10000"
       - key: LLM_API_KEY
-        sync: false # BigModel API key — set in Render Dashboard
+        sync: false
       - key: LLM_BASE_URL
         value: "https://open.bigmodel.cn/api/anthropic"
       - key: HUB_URL
-        value: "wss://ticlaw.onrender.com" # Hub WebSocket URL
+        value: "wss://ticlaw.onrender.com"
       - key: HUB_TRUST_TOKEN
-        sync: false # Set in Render Dashboard
+        sync: false
       - key: HUB_REPORTING_INTERVAL
         value: "60000"
 
-  # 2. Web + Hub (public-facing) — reference controller
+  # 2. Web + Hub (public-facing) — reference TiClaw controller
   # Imports @ticlaw/hub, accepts claw connections, serves web UI
   - type: web
     name: ticlaw

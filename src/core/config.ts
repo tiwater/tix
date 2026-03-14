@@ -47,10 +47,6 @@ export const ASSISTANT_HAS_OWN_NUMBER =
 export const TC_CODING_CLI =
   process.env.TC_CODING_CLI || envConfig.TC_CODING_CLI || 'gemini';
 
-/** Runtime mode: claw (agent worker), hub (accepts claws), both (default). */
-export type TiclawMode = 'claw' | 'hub' | 'both';
-export const TICLAW_MODE: TiclawMode =
-  (process.env.TICLAW_MODE as TiclawMode) || 'both';
 
 // Comma-separated sender IDs that can perform privileged mind operations.
 // Example: MIND_ADMIN_USERS="ou_xxx,dc:user:12345"

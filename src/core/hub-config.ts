@@ -40,7 +40,14 @@ export function readHubConfig(): HubConfig {
     );
   }
 
-  // Use defaults for missing fields if necessary, or keep as undefined
+  // 3. Default HUB_URL based on environment
+  if (!config.hub_url) {
+    config.hub_url =
+      process.env.NODE_ENV === 'production'
+        ? 'wss://ticlaw.onrender.com'
+        : 'ws://localhost:2856';
+  }
+
   return config;
 }
 

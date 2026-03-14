@@ -20,9 +20,6 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.47.0
         version: 2.99.1
-      '@ticlaw/hub':
-        specifier: workspace:^
-        version: link:hub
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
