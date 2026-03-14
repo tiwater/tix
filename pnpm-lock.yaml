@@ -117,6 +117,10 @@ importers:
         version: 5.9.3
 
   web:
+    dependencies:
+      '@ticlaw/hub':
+        specifier: workspace:*
+        version: link:../hub
     devDependencies:
       '@sveltejs/adapter-node':
         specifier: ^5.5.4
@@ -133,6 +137,9 @@ importers:
       svelte-check:
         specifier: ^4.4.2
         version: 4.4.5(picomatch@4.0.3)(svelte@5.53.11)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.3
+        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

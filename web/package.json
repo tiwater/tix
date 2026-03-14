@@ -4,12 +4,16 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "tsx server.ts",
 		"build": "vite build",
+		"start": "NODE_ENV=production node --import tsx server.ts",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+	},
+	"dependencies": {
+		"@ticlaw/hub": "workspace:*"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "^5.5.4",
@@ -17,6 +21,7 @@
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"svelte": "^5.51.0",
 		"svelte-check": "^4.4.2",
+		"tsx": "^4.19.3",
 		"typescript": "^5.9.3",
 		"vite": "^7.3.1"
 	}
