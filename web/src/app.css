@@ -159,6 +159,9 @@ body {
 
 .nav-btn-label {
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ─── Right Sidebar ─── */
@@ -587,13 +590,19 @@ body {
 }
 
 /* ─── Skills Tab ─── */
-.skills-grid {
-  padding: 16px 24px;
+.skills-content {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.skills-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
-  flex: 1;
 }
 
 .skill-card {

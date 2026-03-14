@@ -98,10 +98,15 @@ export function readEnrollmentState(nodeId?: string): EnrollmentState {
     const parsed = JSON.parse(
       fs.readFileSync(ENROLLMENT_STATE_PATH, 'utf-8'),
     ) as EnrollmentState;
-    return {
+    const merged = {
       ...defaultState(nodeId),
       ...parsed,
     };
+    if (nodeId && nodeId.trim() && merged.node_id !== nodeId.trim()) {
+      merged.node_id = nodeId.trim();
+      writeEnrollmentState(merged);
+    }
+    return merged;
   } catch {
     const reset = defaultState(nodeId);
     writeEnrollmentState(reset);

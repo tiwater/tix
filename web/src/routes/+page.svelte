@@ -1073,15 +1073,16 @@
         {@const installedSkills = skills.filter((s) => s.installed)}
         {@const availableSkills = skills.filter((s) => !s.installed)}
 
-        <!-- Installed Skills -->
-        <div class="skills-section">
+        <div class="skills-content">
+          <!-- Installed Skills -->
+          <div class="skills-section">
           <h3 class="skills-section-title">Installed</h3>
           {#if installedSkills.length === 0}
             <div class="skills-empty-hint">
               No skills installed yet. Enable one from Available below.
             </div>
           {:else}
-            <div class="skills-grid">
+            <div class="skills-list">
               {#each installedSkills as skill}
                 <div class="skill-card">
                   <div class="skill-info">
@@ -1115,7 +1116,7 @@
         {#if availableSkills.length > 0}
           <div class="skills-section">
             <h3 class="skills-section-title">Available</h3>
-            <div class="skills-grid">
+            <div class="skills-list">
               {#each availableSkills as skill}
                 <div class="skill-card skill-card-available">
                   <div class="skill-info">
@@ -1141,6 +1142,7 @@
             </div>
           </div>
         {/if}
+        </div>
       {/if}
     {:else if activeTab === 'node'}
       <!-- Node View -->
