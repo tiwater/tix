@@ -236,11 +236,65 @@ export class HubClientChannel implements Channel {
     request_id: string;
     path: string;
   }): void {
-    // SSE relay — not yet implemented, would stream events back to hub
-    logger.debug(
-      { path: payload.path },
-      'SSE subscribe requested (not yet relayed)',
-    );
+    // Connect to the claw's own local HTTP SSE endpoint and relay events
+    // back through the WebSocket so the hub can broadcast them to web clients.
+    import('../core/config.js').then(({ HTTP_PORT }) => {
+      const localUrl = `http://127.0.0.1:${HTTP_PORT}${payload.path}`;
+      logger.info({ path: payload.path }, 'SSE relay: subscribing to local stream');
+
+      import('http').then((http) => {
+        http.get(localUrl, (res) => {
+          let buffer = '';
+
+          res.on('data', (chunk: Buffer) => {
+            buffer += chunk.toString();
+
+            // Parse SSE events from buffer (format: "data: {...}\n\n")
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() || ''; // keep incomplete part
+
+            for (const part of parts) {
+              if (!part.trim()) continue;
+              // Skip comment lines (heartbeat pings like ": ping")
+              const dataLine = part
+                .split('\n')
+                .find((l) => l.startsWith('data: '));
+              if (!dataLine) continue;
+
+              try {
+                const eventData = JSON.parse(dataLine.slice(6));
+                this.ws?.send(
+                  JSON.stringify({
+                    type: 'sse_event',
+                    stream_key: payload.path,
+                    event: eventData,
+                  }),
+                );
+              } catch {
+                // Non-JSON event, forward as-is
+                this.ws?.send(
+                  JSON.stringify({
+                    type: 'sse_event',
+                    stream_key: payload.path,
+                    event: { raw: dataLine.slice(6) },
+                  }),
+                );
+              }
+            }
+          });
+
+          res.on('end', () => {
+            logger.debug({ path: payload.path }, 'SSE relay: local stream ended');
+          });
+
+          res.on('error', (err) => {
+            logger.error({ err, path: payload.path }, 'SSE relay: stream error');
+          });
+        }).on('error', (err) => {
+          logger.error({ err, path: payload.path }, 'SSE relay: failed to connect');
+        });
+      });
+    });
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
