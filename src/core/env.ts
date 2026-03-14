@@ -104,15 +104,11 @@ const DEFAULT_CONFIG_YAML = `# TiClaw Configuration
 # Docs: https://github.com/tiwater/ticlaw
 
 # ── LLM Provider ──
-# OpenRouter (recommended): get a key at https://openrouter.ai/keys
+# BigModel (recommended): get a key at https://open.bigmodel.cn
 llm:
-  # api_key: "sk-or-v1-your-key-here"
-  # model: "claude-sonnet-4-20250514"
-  # base_url: "https://openrouter.ai/api/v1"
-
-# ── Direct Anthropic (alternative) ──
-# api_keys:
-#   anthropic: "sk-ant-..."
+  # api_key: "your-bigmodel-api-key"
+  # base_url: "https://open.bigmodel.cn/api/anthropic"
+  # model: "glm-4.7"  # Optional: override default model
 
 # ── Agent Settings ──
 # assistant_name: "Andy"
@@ -124,10 +120,6 @@ llm:
 #     enabled: true
 #   discord:
 #     token: "your-discord-bot-token"
-#     enabled: false
-#   feishu:
-#     app_id: "your-feishu-app-id"
-#     app_secret: "your-feishu-app-secret"
 #     enabled: false
 `;
 

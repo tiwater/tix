@@ -216,7 +216,8 @@ export const MINIMAX_BASE_URL =
 
 /** Default model name. Priority: config.yaml llm.model > MiniMax > undefined (let CLI decide). */
 export const DEFAULT_LLM_MODEL =
-  process.env.LLM_MODEL || envConfig.LLM_MODEL ||
+  process.env.LLM_MODEL ||
+  envConfig.LLM_MODEL ||
   (MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined);
 
 /** LLM base URL from config.yaml llm.base_url (Anthropic-compatible endpoint). */
