@@ -18,7 +18,7 @@
 import http from 'node:http';
 import { attachHub, handleHubRequest } from '@ticlaw/hub';
 
-const PORT = parseInt(process.env.PORT || '2856', 10);
+const PORT = parseInt(process.env.PORT || '2756', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const DEV = process.env.NODE_ENV !== 'production';
 

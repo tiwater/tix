@@ -45,7 +45,7 @@ export function readHubConfig(): HubConfig {
     config.hub_url =
       process.env.NODE_ENV === 'production'
         ? 'wss://ticlaw.onrender.com'
-        : 'ws://localhost:2856';
+        : 'ws://localhost:2756';
   }
 
   return config;

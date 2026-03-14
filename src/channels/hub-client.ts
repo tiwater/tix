@@ -163,10 +163,82 @@ export class HubClientChannel implements Channel {
           false,
         );
         this.opts.onMessage(chatJid, msg);
+        return;
+      }
+
+      // Handle api_request: relay to local HTTP server
+      if (payload.type === 'api_request') {
+        this.handleApiRequest(payload);
+        return;
+      }
+
+      // Handle sse_subscribe: relay SSE stream from local HTTP server
+      if (payload.type === 'sse_subscribe') {
+        this.handleSseSubscribe(payload);
+        return;
       }
     } catch (err) {
       logger.error({ err }, 'Failed to handle hub message');
     }
+  }
+
+  private async handleApiRequest(payload: {
+    request_id: string;
+    method: string;
+    path: string;
+    body?: unknown;
+  }): Promise<void> {
+    const { HTTP_PORT } = await import('../core/config.js');
+    const localUrl = `http://127.0.0.1:${HTTP_PORT}${payload.path}`;
+
+    try {
+      const fetchOpts: RequestInit = {
+        method: payload.method || 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      };
+      if (payload.body && payload.method !== 'GET') {
+        fetchOpts.body = JSON.stringify(payload.body);
+      }
+
+      const res = await fetch(localUrl, fetchOpts);
+      const body = await res.text();
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        parsed = body;
+      }
+
+      this.ws?.send(
+        JSON.stringify({
+          type: 'api_response',
+          request_id: payload.request_id,
+          status: res.status,
+          headers: {},
+          body: parsed,
+        }),
+      );
+    } catch (err) {
+      logger.error({ err, path: payload.path }, 'Failed to relay API request');
+      this.ws?.send(
+        JSON.stringify({
+          type: 'api_response',
+          request_id: payload.request_id,
+          status: 502,
+          headers: {},
+          body: { error: 'relay_failed', message: String(err) },
+        }),
+      );
+    }
+  }
+
+  private handleSseSubscribe(payload: {
+    request_id: string;
+    path: string;
+  }): void {
+    // SSE relay — not yet implemented, would stream events back to hub
+    logger.debug({ path: payload.path }, 'SSE subscribe requested (not yet relayed)');
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
