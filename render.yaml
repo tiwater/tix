@@ -19,7 +19,9 @@ services:
       - key: HTTP_PORT
         value: "10000"
       - key: OPENROUTER_API_KEY
-        sync: false # Set in Render Dashboard
+        sync: false # BigModel API key — set in Render Dashboard
+      - key: LLM_BASE_URL
+        value: "https://open.bigmodel.cn/api/anthropic"
       - key: HUB_URL
         sync: false # Set in Render Dashboard for Hub Client Mode
       - key: HUB_TRUST_TOKEN
