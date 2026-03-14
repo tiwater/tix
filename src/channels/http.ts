@@ -81,15 +81,19 @@ const WEB_JID_PREFIX = 'web:';
 const sseClients = new Map<string, Set<http.ServerResponse | WebSocket>>();
 
 // Hook into global app and dispatcher
-app.on('broadcast', (data: { chatJid: string, event: object }) => {
+app.on('broadcast', (data: { chatJid: string; event: object }) => {
   if (data.chatJid.startsWith(WEB_JID_PREFIX)) {
     broadcastToChat(data.chatJid, data.event);
   }
 });
 
-app.on('send', async (data: { jid: string, text: string }) => {
+app.on('send', async (data: { jid: string; text: string }) => {
   if (data.jid.startsWith(WEB_JID_PREFIX)) {
-    broadcastToChat(data.jid, { type: 'message', chat_jid: data.jid, text: data.text });
+    broadcastToChat(data.jid, {
+      type: 'message',
+      chat_jid: data.jid,
+      text: data.text,
+    });
   }
 });
 
@@ -97,12 +101,18 @@ function buildHttpSessionId(agentId: string, sessionId: string): string {
   return `${WEB_JID_PREFIX}${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
 }
 
-function addClient(chatJid: string, res: http.ServerResponse | WebSocket): void {
+function addClient(
+  chatJid: string,
+  res: http.ServerResponse | WebSocket,
+): void {
   if (!sseClients.has(chatJid)) sseClients.set(chatJid, new Set());
   sseClients.get(chatJid)!.add(res);
 }
 
-function removeClient(chatJid: string, res: http.ServerResponse | WebSocket): void {
+function removeClient(
+  chatJid: string,
+  res: http.ServerResponse | WebSocket,
+): void {
   sseClients.get(chatJid)?.delete(res);
 }
 
@@ -249,20 +259,32 @@ export class HttpChannel implements Channel {
     ws.on('message', async (data) => {
       try {
         const payload = JSON.parse(data.toString());
-        const { type, agent_id, session_id, content, sender, sender_name } = payload;
+        const { type, agent_id, session_id, content, sender, sender_name } =
+          payload;
 
         if (type === 'auth') {
           if (!agent_id || !session_id) {
-            ws.send(JSON.stringify({ type: 'error', message: 'agent_id and session_id required' }));
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                message: 'agent_id and session_id required',
+              }),
+            );
             return;
           }
           chatJid = buildHttpSessionId(agent_id, session_id);
-          
+
           // Check trust status
           const enrollState = readEnrollmentState(CLAW_HOSTNAME || undefined);
           if (enrollState.trust_state !== 'trusted') {
-             ws.send(JSON.stringify({ type: 'error', error: 'claw_not_trusted', trust_state: enrollState.trust_state }));
-             return;
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                error: 'claw_not_trusted',
+                trust_state: enrollState.trust_state,
+              }),
+            );
+            return;
           }
 
           addClient(chatJid, ws);
@@ -272,7 +294,9 @@ export class HttpChannel implements Channel {
 
         if (type === 'message') {
           if (!chatJid) {
-            ws.send(JSON.stringify({ type: 'error', message: 'not authenticated' }));
+            ws.send(
+              JSON.stringify({ type: 'error', message: 'not authenticated' }),
+            );
             return;
           }
 
@@ -303,7 +327,9 @@ export class HttpChannel implements Channel {
           };
 
           this.opts.onMessage(chatJid, msg);
-          ws.send(JSON.stringify({ type: 'accepted', id: msg.id, task_id: taskId }));
+          ws.send(
+            JSON.stringify({ type: 'accepted', id: msg.id, task_id: taskId }),
+          );
         }
       } catch (err) {
         logger.error({ err }, 'WS message handling failed');

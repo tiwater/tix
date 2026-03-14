@@ -28,7 +28,10 @@ export class Dispatcher {
     const { agent_id, session_id, content, task_id } = msg;
 
     if (!agent_id || !session_id) {
-      logger.error({ chat_jid: chatJid }, 'Dispatcher: Cannot dispatch message without agent_id or session_id');
+      logger.error(
+        { chat_jid: chatJid },
+        'Dispatcher: Cannot dispatch message without agent_id or session_id',
+      );
       return;
     }
 
@@ -45,20 +48,23 @@ export class Dispatcher {
     let runner = this.runners.get(runnerKey);
 
     if (!runner) {
-      logger.info({ agent_id, session_id }, 'Dispatcher: Spawning new AgentRunner for session');
+      logger.info(
+        { agent_id, session_id },
+        'Dispatcher: Spawning new AgentRunner for session',
+      );
       runner = new AgentRunner(agent_id, session_id, {
         onStateChange: (state: RunnerState) => {
           // Precise Telemetry: Push JSON status updates to the originating channel
           this.deps.broadcastToChat(chatJid, {
             type: 'runner_state',
             chat_jid: chatJid,
-            ...state
+            ...state,
           });
         },
         onReply: async (text: string) => {
           // Reply Routing: Send response back to the correct chat JID
           await this.deps.sendMessage(chatJid, text);
-        }
+        },
       });
       this.runners.set(runnerKey, runner);
     }
@@ -67,13 +73,19 @@ export class Dispatcher {
     const status = runner.getState().status;
     if (status === 'busy') {
       if (this.isUrgentInterrupt(content)) {
-        logger.info({ agent_id, session_id }, 'Dispatcher: Urgent interruption triggered via message');
+        logger.info(
+          { agent_id, session_id },
+          'Dispatcher: Urgent interruption triggered via message',
+        );
         runner.interrupt();
         // Give the runner time to cleanup/abort gracefully before taking the new message
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise((resolve) => setTimeout(resolve, 800));
       } else {
         // Queue/Inform non-interrupting messages
-        await this.deps.sendMessage(chatJid, 'Agent is currently processing a task. Send "STOP" or a similar urgent command to interrupt.');
+        await this.deps.sendMessage(
+          chatJid,
+          'Agent is currently processing a task. Send "STOP" or a similar urgent command to interrupt.',
+        );
         return;
       }
     }
@@ -83,9 +95,15 @@ export class Dispatcher {
       await runner.run(content, task_id);
     } catch (err: any) {
       if (err.message?.includes('aborted')) {
-        logger.debug({ agent_id, session_id }, 'Dispatcher: Task was successfully aborted');
+        logger.debug(
+          { agent_id, session_id },
+          'Dispatcher: Task was successfully aborted',
+        );
       } else {
-        logger.error({ err, agent_id, session_id }, 'Dispatcher: Runner execution failed');
+        logger.error(
+          { err, agent_id, session_id },
+          'Dispatcher: Runner execution failed',
+        );
         await this.deps.sendMessage(chatJid, `Task Error: ${err.message}`);
       }
     }
@@ -95,8 +113,16 @@ export class Dispatcher {
    * Determine if a message content should preempt a running task.
    */
   private isUrgentInterrupt(content: string): boolean {
-    const patterns = [/stop/i, /interrupt/i, /cancel/i, /wait/i, /打断/ , /停止/, /取消/];
-    return patterns.some(p => p.test(content));
+    const patterns = [
+      /stop/i,
+      /interrupt/i,
+      /cancel/i,
+      /wait/i,
+      /打断/,
+      /停止/,
+      /取消/,
+    ];
+    return patterns.some((p) => p.test(content));
   }
 
   /**

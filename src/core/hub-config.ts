@@ -22,15 +22,22 @@ export function readHubConfig(): HubConfig {
       config = yaml.load(fileContent) as HubConfig;
       logger.debug({ path: CONFIG_PATH }, 'Loaded hub config from file');
     } catch (err) {
-      logger.error({ err, path: CONFIG_PATH }, 'Failed to read hub config file');
+      logger.error(
+        { err, path: CONFIG_PATH },
+        'Failed to read hub config file',
+      );
     }
   }
 
   // 2. Override with Environment Variables
   if (process.env.HUB_URL) config.hub_url = process.env.HUB_URL;
-  if (process.env.HUB_TRUST_TOKEN) config.trust_token = process.env.HUB_TRUST_TOKEN;
+  if (process.env.HUB_TRUST_TOKEN)
+    config.trust_token = process.env.HUB_TRUST_TOKEN;
   if (process.env.HUB_REPORTING_INTERVAL) {
-    config.reporting_interval = parseInt(process.env.HUB_REPORTING_INTERVAL, 10);
+    config.reporting_interval = parseInt(
+      process.env.HUB_REPORTING_INTERVAL,
+      10,
+    );
   }
 
   // Use defaults for missing fields if necessary, or keep as undefined

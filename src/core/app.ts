@@ -20,7 +20,7 @@ export class TiClawApp {
       sendMessage: async (jid: string, text: string) => {
         // This will be handled by the channel that owns the JID
         this.emit('send', { jid, text });
-      }
+      },
     });
   }
 
@@ -33,14 +33,14 @@ export class TiClawApp {
 
   // Simple event emitter pattern for cross-layer communication
   private listeners: Record<string, Function[]> = {};
-  
+
   public on(event: string, fn: Function) {
     if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(fn);
   }
 
   public emit(event: string, data: any) {
-    this.listeners[event]?.forEach(fn => fn(data));
+    this.listeners[event]?.forEach((fn) => fn(data));
   }
 
   public async init() {

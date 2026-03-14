@@ -3,19 +3,24 @@ import path from 'path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Query, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { logger } from './logger.js';
-import { 
-  AGENT_MIND_FILES, 
-  ASSISTANT_NAME, 
-  DEFAULT_LLM_MODEL, 
-  ANTHROPIC_API_KEY, 
-  SKILLS_CONFIG, 
+import {
+  AGENT_MIND_FILES,
+  ASSISTANT_NAME,
+  DEFAULT_LLM_MODEL,
+  ANTHROPIC_API_KEY,
+  SKILLS_CONFIG,
   agentPaths,
-  TICLAW_HOME
+  TICLAW_HOME,
 } from './config.js';
 import { getSession } from './db.js';
 import { createRequire } from 'module';
 import { SkillsRegistry } from '../skills/registry.js';
-import type { SessionContext, RunnerState, RunnerStatus, RunnerActivity } from './types.js';
+import type {
+  SessionContext,
+  RunnerState,
+  RunnerStatus,
+  RunnerActivity,
+} from './types.js';
 
 const require = createRequire(import.meta.url);
 
@@ -25,7 +30,10 @@ const require = createRequire(import.meta.url);
 function getClaudeCliPath(): string {
   // SDK requires a path ending with .js/.mjs/.ts/.tsx to use node mode
   // Use the flat node_modules path after npm install
-  const cliPath = path.join(process.cwd(), 'node_modules/@anthropic-ai/claude-agent-sdk/cli.js');
+  const cliPath = path.join(
+    process.cwd(),
+    'node_modules/@anthropic-ai/claude-agent-sdk/cli.js',
+  );
   console.log('[DEBUG getClaudeCliPath] cwd:', process.cwd());
   console.log('[DEBUG getClaudeCliPath] cliPath:', cliPath);
   console.log('[DEBUG getClaudeCliPath] exists:', fs.existsSync(cliPath));
@@ -73,7 +81,9 @@ export class AgentRunner {
    */
   async run(message: string, taskId?: string): Promise<void> {
     if (this.state.status === 'busy') {
-      throw new Error(`Runner ${this.state.agent_id}:${this.state.session_id} is already busy.`);
+      throw new Error(
+        `Runner ${this.state.agent_id}:${this.state.session_id} is already busy.`,
+      );
     }
 
     this.state.task_id = taskId || `task-${Date.now()}`;
@@ -90,7 +100,10 @@ export class AgentRunner {
     const paths = agentPaths(this.state.agent_id);
     this.initBrain(paths.base);
 
-    logger.info({ agent_id: this.state.agent_id, task_id: this.state.task_id }, 'AgentRunner: Starting task loop');
+    logger.info(
+      { agent_id: this.state.agent_id, task_id: this.state.task_id },
+      'AgentRunner: Starting task loop',
+    );
     await this.notifyState();
 
     try {
@@ -122,9 +135,13 @@ export class AgentRunner {
 
       // Handle AbortSignal
       const abortQuery = () => {
-        try { (agentQuery as Query).close(); } catch {}
+        try {
+          (agentQuery as Query).close();
+        } catch {}
       };
-      this.controller.signal.addEventListener('abort', abortQuery, { once: true });
+      this.controller.signal.addEventListener('abort', abortQuery, {
+        once: true,
+      });
 
       for await (const msg of agentQuery) {
         if (this.controller.signal.aborted) break;
@@ -142,7 +159,8 @@ export class AgentRunner {
         }
 
         if (event.type === 'result') {
-          const finalText = event.result?.trim() || textParts.join('\n').trim() || '(done)';
+          const finalText =
+            event.result?.trim() || textParts.join('\n').trim() || '(done)';
           await this.events.onReply?.(finalText);
           // Consolidate memory after successful completion
           await this.consolidateMemory(paths.base, finalText);
@@ -158,7 +176,10 @@ export class AgentRunner {
       } else {
         this.state.status = 'error';
         this.state.activity = { phase: 'error', action: err.message };
-        logger.error({ err, agent_id: this.state.agent_id }, 'AgentRunner: Loop failed');
+        logger.error(
+          { err, agent_id: this.state.agent_id },
+          'AgentRunner: Loop failed',
+        );
       }
     } finally {
       this.controller = null;
@@ -180,7 +201,7 @@ export class AgentRunner {
    */
   private initBrain(baseDir: string): void {
     if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
-    
+
     // Ensure memory journal directory exists
     const memoryDir = path.join(baseDir, 'memory');
     if (!fs.existsSync(memoryDir)) fs.mkdirSync(memoryDir, { recursive: true });
@@ -189,7 +210,11 @@ export class AgentRunner {
     for (const filename of AGENT_MIND_FILES) {
       const p = path.join(baseDir, filename);
       if (!fs.existsSync(p)) {
-        fs.writeFileSync(p, `# ${filename.replace('.md', '')}\n\nInitialized.\n`, 'utf-8');
+        fs.writeFileSync(
+          p,
+          `# ${filename.replace('.md', '')}\n\nInitialized.\n`,
+          'utf-8',
+        );
       }
     }
   }
@@ -201,7 +226,7 @@ export class AgentRunner {
   private preparePrompt(baseDir: string): string {
     const parts: string[] = [
       `You are ${ASSISTANT_NAME}. Work strictly within your assigned workspace.`,
-      `Your core persona and memory are defined in the following Markdown files.`
+      `Your core persona and memory are defined in the following Markdown files.`,
     ];
 
     // 1. Core Mind Files (SOUL, IDENTITY, etc.)
@@ -216,16 +241,19 @@ export class AgentRunner {
     // 2. Chronological Memory Fragments (Recent Journal)
     const memoryDir = path.join(baseDir, 'memory');
     if (fs.existsSync(memoryDir)) {
-      const journals = fs.readdirSync(memoryDir)
-        .filter(f => f.endsWith('.md'))
+      const journals = fs
+        .readdirSync(memoryDir)
+        .filter((f) => f.endsWith('.md'))
         .sort()
         .reverse()
         .slice(0, 3); // Load last 3 days
-      
+
       if (journals.length > 0) {
         parts.push('## Recent Journal (Chronological Memory)');
         for (const j of journals) {
-          const content = fs.readFileSync(path.join(memoryDir, j), 'utf-8').trim();
+          const content = fs
+            .readFileSync(path.join(memoryDir, j), 'utf-8')
+            .trim();
           parts.push(`### Date: ${j.replace('.md', '')}\n${content}`);
         }
       }
@@ -237,13 +265,18 @@ export class AgentRunner {
   /**
    * Maps Executor (Claude SDK) events to internal Telemetry State.
    */
-  private async handleExecutorEvent(event: Record<string, any>, elapsed: number): Promise<void> {
+  private async handleExecutorEvent(
+    event: Record<string, any>,
+    elapsed: number,
+  ): Promise<void> {
     const type = event.type as string;
     this.state.activity.phase = event.phase || type;
     this.state.activity.elapsed_ms = elapsed;
 
     if (type === 'assistant') {
-      const tool = (event.message?.content || []).find((b: any) => b.type === 'tool_use');
+      const tool = (event.message?.content || []).find(
+        (b: any) => b.type === 'tool_use',
+      );
       if (tool) {
         this.state.activity.action = `executing_${tool.name}`;
         this.state.activity.target = JSON.stringify(tool.input);
@@ -266,7 +299,10 @@ export class AgentRunner {
   /**
    * Automatically consolidates task results into an asynchronous journal.
    */
-  private async consolidateMemory(baseDir: string, result: string): Promise<void> {
+  private async consolidateMemory(
+    baseDir: string,
+    result: string,
+  ): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
     const journalPath = path.join(baseDir, 'memory', `${today}.md`);
     const entry = `\n- [${new Date().toLocaleTimeString()}] Task: ${this.state.task_id}\n  Result: ${result.slice(0, 200)}...\n`;
@@ -274,6 +310,7 @@ export class AgentRunner {
   }
 
   private async notifyState(): Promise<void> {
-    if (this.events.onStateChange) await this.events.onStateChange(this.getState());
+    if (this.events.onStateChange)
+      await this.events.onStateChange(this.getState());
   }
 }

@@ -234,7 +234,10 @@ export function initDatabase(): void {
   if (!fs.existsSync(dbPath) && fs.existsSync(oldDbPath)) {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     fs.copyFileSync(oldDbPath, dbPath);
-    logger.info({ oldDbPath, dbPath }, 'Migrated legacy database to new location');
+    logger.info(
+      { oldDbPath, dbPath },
+      'Migrated legacy database to new location',
+    );
   }
 
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
