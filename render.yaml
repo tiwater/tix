@@ -6,14 +6,18 @@ services:
   - type: web
     name: ticlaw
     runtime: node
-    plan: free
+    plan: starter # Persistent disk requires paid plan
     buildCommand: "pnpm install && pnpm run build"
     startCommand: "node dist/index.js"
+    disk:
+      name: ticlaw-data
+      mountPath: /data/ticlaw
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "22"
       - key: TICLAW_HOME
-        value: "/opt/render/project/src"
+        value: "/data/ticlaw" # Persistent disk — survives redeploys
       - key: CLAW_HOSTNAME
         sync: false
       - key: HTTP_PORT
