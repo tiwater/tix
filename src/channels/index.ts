@@ -5,8 +5,7 @@
 // discord
 import './discord.js';
 
-// feishu (飞书)
-import './feishu.js';
+// feishu (飞书) — removed
 
 // acp / SSE bridge
 import './acp.js';

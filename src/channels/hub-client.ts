@@ -250,7 +250,10 @@ export class HubClientChannel implements Channel {
     // Connect to the claw's own local HTTP SSE endpoint and relay events
     import('../core/config.js').then(({ HTTP_PORT }) => {
       const localUrl = `http://127.0.0.1:${HTTP_PORT}${streamKey}`;
-      logger.info({ path: streamKey }, 'SSE relay: subscribing to local stream');
+      logger.info(
+        { path: streamKey },
+        'SSE relay: subscribing to local stream',
+      );
 
       import('http').then((http) => {
         const req = http.get(localUrl, (res) => {
@@ -304,7 +307,10 @@ export class HubClientChannel implements Channel {
         });
 
         req.on('error', (err) => {
-          logger.error({ err, path: streamKey }, 'SSE relay: failed to connect');
+          logger.error(
+            { err, path: streamKey },
+            'SSE relay: failed to connect',
+          );
         });
 
         // Track subscription so we can abort it later
