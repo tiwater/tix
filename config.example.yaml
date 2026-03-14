@@ -1,5 +1,5 @@
 # TiClaw 配置示例
-# 复制为 ~/ticlaw/config.yaml 并填入实际值
+# 复制为 ~/.ticlaw/config.yaml 并填入实际值
 
 channels:
   # Config-driven: only channels with a block and enabled !== false are started.
@@ -34,7 +34,7 @@ channels:
 # OpenClaw-compatible skills registry
 # skills:
 #   directories:
-#     - "~/ticlaw/skills"
+#     - "~/.ticlaw/skills"
 #     - "./skills"
 #   admin_only: true
 #   allow_level3: false

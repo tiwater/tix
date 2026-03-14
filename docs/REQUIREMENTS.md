@@ -25,7 +25,7 @@ This enables clean upgrades (`npm update ticlaw`), broad adoption, and a healthy
 
 ### 3. Physical-First Isolation
 While we support containers for generic tasks, TiClaw prioritizes **Physical Workspace Isolation**.
-- Every task lives in a dedicated directory: `~/ticlaw/factory/{id}`.
+- Every task lives in a dedicated directory: `~/.ticlaw/factory/{id}`.
 - This provides the AI native access to host toolchains (Node, Go, Rust, etc.) while preventing cross-task contamination.
 
 ### 4. Agent-Centric Model
@@ -46,7 +46,7 @@ The agent handles most tasks directly. When it needs to run code or access a rep
 
 ### A. Automated Workspace "The Factory"
 - **Workspace Orchestration:** A standardized flow to clone, branch, and bootstrap any GitHub repository.
-- **Environment Seeding:** Granular, recursive `.env` seeding from `~/ticlaw/config/environments/` to support complex monorepos.
+- **Environment Seeding:** Granular, recursive `.env` seeding from `~/.ticlaw/config/environments/` to support complex monorepos.
 - **Auto-Bootstrap:** Automatic detection and execution of project-specific setup scripts and package managers.
 
 ### B. Deep Observability (The Audit Trail)
@@ -80,7 +80,7 @@ Skills are the primary extensibility mechanism. Adding a new channel means creat
 TiClaw uses the **OpenClaw mind format** for full compatibility: SOUL.md (personality), MEMORY.md (facts), IDENTITY.md, USER.md. These evolve through conversation — persona and memory updates sync to files automatically. No ClawHub; skills come from a curated list only.
 
 ### Data Decentralization
-All transient data, databases, and logs must reside in **`~/ticlaw/`**, keeping the source repository strictly for engine logic.
+All transient data, databases, and logs must reside in **`~/.ticlaw/`**, keeping the source repository strictly for engine logic.
 
 ---
 

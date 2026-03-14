@@ -15,8 +15,14 @@ async function testAgentEvents() {
   if (!fs.existsSync(agentDir)) {
     fs.mkdirSync(agentDir, { recursive: true });
   }
-  fs.writeFileSync(path.join(agentDir, 'SOUL.md'), '# TEST SOUL\nYou are a helpful test agent.');
-  fs.writeFileSync(path.join(agentDir, 'IDENTITY.md'), '# TEST IDENTITY\nA simple probe agent.');
+  fs.writeFileSync(
+    path.join(agentDir, 'SOUL.md'),
+    '# TEST SOUL\nYou are a helpful test agent.',
+  );
+  fs.writeFileSync(
+    path.join(agentDir, 'IDENTITY.md'),
+    '# TEST IDENTITY\nA simple probe agent.',
+  );
 
   const session = {
     agent_id: agentId,
@@ -45,10 +51,11 @@ async function testAgentEvents() {
       group,
       session,
       messages: [
-        { 
-          role: 'user', 
-          content: '请列出当前目录下所有的 .md 文件，然后告诉我其中一个文件的内容概要。' 
-        }
+        {
+          role: 'user',
+          content:
+            '请列出当前目录下所有的 .md 文件，然后告诉我其中一个文件的内容概要。',
+        },
       ],
       onEvent: (event) => {
         // Capture and display the precise JSON signals

@@ -4,7 +4,7 @@
  * Steps:
  * 1. Detect platform and installed coding CLIs
  * 2. Collect configuration (data dir, proxy, API keys)
- * 3. Write ~/ticlaw/config.yaml
+ * 3. Write ~/.ticlaw/config.yaml
  * 4. Apply initial channel skill (Discord)
  * 5. Build the project
  * 6. Install and start system service

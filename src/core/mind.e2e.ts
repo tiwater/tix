@@ -7,7 +7,7 @@
  *
  * Usage: npx tsx src/core/mind.e2e.ts
  *
- * Uses the real production database (~/ticlaw/store/messages.db), so wrap it with
+ * Uses the real production database (~/.ticlaw/store/messages.db), so wrap it with
  * initDatabase() first. A fresh in-memory DB is NOT used here.
  */
 import { initDatabase, getMindState } from './db.js';

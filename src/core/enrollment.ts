@@ -102,9 +102,12 @@ export function readEnrollmentState(clawId?: string): EnrollmentState {
     return {
       ...defaultState(clawId),
       ...parsed,
-      claw_id: parsed.claw_id || (parsed as any).runtime_id || normalizeClawId(clawId),
+      claw_id:
+        parsed.claw_id || (parsed as any).runtime_id || normalizeClawId(clawId),
       claw_fingerprint:
-        parsed.claw_fingerprint || (parsed as any).runtime_fingerprint || deriveClawFingerprint(),
+        parsed.claw_fingerprint ||
+        (parsed as any).runtime_fingerprint ||
+        deriveClawFingerprint(),
     };
   } catch {
     const reset = defaultState(clawId);

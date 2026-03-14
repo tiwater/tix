@@ -6,7 +6,7 @@ TiClaw supports **sync mode**: local-first operation with continuous background 
 
 Sync is **off by default**. To enable, set `SUPABASE_SYNC_ENABLED=true` and add credentials.
 
-Add to `~/ticlaw/config.yaml` or `.env`:
+Add to `~/.ticlaw/config.yaml` or `.env`:
 
 ```yaml
 supabase:

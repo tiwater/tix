@@ -26,7 +26,7 @@ TiClaw is a **mind builder**. It focuses on:
 ## 🛠 Core Capabilities
 
 - **🧠 Mind System:** Persona and memory evolve through daily conversation. Lock for production, rollback when needed. `/mind` for status, lock, unlock, package, diff, rollback.
-- **🦀 Workspace skill:** The agent handles most tasks directly. When it needs to run code or access a repo, it utilizes the native Claude Agent SDK. Physical `~/ticlaw/factory/{folder}` isolation.
+- **🦀 Workspace skill:** The agent handles most tasks directly. When it needs to run code or access a repo, it utilizes the native Claude Agent SDK. Physical `~/.ticlaw/factory/{folder}` isolation.
 - **📺 Live Monitoring:** Agent stdout and tools stream delivered to the channel in real-time.
 - **📸 Vision-Backed Audit:** Automated macOS screenshots for UI changes and Gemini-powered "Delta Feeds" for code summaries.
 - **🚀 PR Pipeline:** Seamless transition from "Issue Solved" to "PR Created" with automated context-aware descriptions (when configured).

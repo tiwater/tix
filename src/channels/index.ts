@@ -1,6 +1,6 @@
 // Channel self-registration barrel file.
 // Each import triggers the channel module's registerChannel() call.
-// Channels self-register at startup; configure credentials in ~/ticlaw/config.yaml.
+// Channels self-register at startup; configure credentials in ~/.ticlaw/config.yaml.
 
 // discord
 import './discord.js';

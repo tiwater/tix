@@ -37,7 +37,7 @@ export class HubClientChannel implements Channel {
 
   private async initiateConnection(): Promise<void> {
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
-    
+
     const url = this.config.hub_url!;
     logger.info({ url }, 'Connecting to hub...');
 
@@ -68,22 +68,26 @@ export class HubClientChannel implements Channel {
 
   private authenticate(): void {
     const state = readEnrollmentState(CLAW_HOSTNAME || undefined);
-    
+
     // If we have a trust_token in config and we are not yet trusted, attempt enrollment
     if (this.config.trust_token && state.trust_state !== 'trusted') {
       logger.info('Attempting enrollment with hub using trust_token');
-      this.ws?.send(JSON.stringify({
-        type: 'enroll',
-        token: this.config.trust_token,
-        claw_id: state.claw_id,
-        claw_fingerprint: state.claw_fingerprint,
-      }));
+      this.ws?.send(
+        JSON.stringify({
+          type: 'enroll',
+          token: this.config.trust_token,
+          claw_id: state.claw_id,
+          claw_fingerprint: state.claw_fingerprint,
+        }),
+      );
     } else {
-      this.ws?.send(JSON.stringify({
-        type: 'auth',
-        claw_id: state.claw_id,
-        claw_fingerprint: state.claw_fingerprint,
-      }));
+      this.ws?.send(
+        JSON.stringify({
+          type: 'auth',
+          claw_id: state.claw_id,
+          claw_fingerprint: state.claw_fingerprint,
+        }),
+      );
     }
   }
 
@@ -92,12 +96,14 @@ export class HubClientChannel implements Channel {
     this.reportingInterval = setInterval(() => {
       if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
         const state = readEnrollmentState(CLAW_HOSTNAME || undefined);
-        this.ws.send(JSON.stringify({
-          type: 'report',
-          status: 'online',
-          trust_state: state.trust_state,
-          timestamp: new Date().toISOString(),
-        }));
+        this.ws.send(
+          JSON.stringify({
+            type: 'report',
+            status: 'online',
+            trust_state: state.trust_state,
+            timestamp: new Date().toISOString(),
+          }),
+        );
       }
     }, interval);
   }
@@ -116,25 +122,28 @@ export class HubClientChannel implements Channel {
 
       if (payload.type === 'enrollment_result') {
         if (payload.ok) {
-           logger.info('Hub enrollment successful');
-           // Sync enrollment state
-           verifyEnrollmentToken({
-              token: this.config.trust_token!,
-              clawFingerprint: payload.claw_fingerprint,
-              clawId: CLAW_HOSTNAME || undefined
-           });
+          logger.info('Hub enrollment successful');
+          // Sync enrollment state
+          verifyEnrollmentToken({
+            token: this.config.trust_token!,
+            clawFingerprint: payload.claw_fingerprint,
+            clawId: CLAW_HOSTNAME || undefined,
+          });
         } else {
-           logger.error({ code: payload.code }, 'Hub enrollment failed');
+          logger.error({ code: payload.code }, 'Hub enrollment failed');
         }
         return;
       }
 
       if (payload.type === 'message') {
-        const { agent_id, session_id, content, sender, sender_name, task_id } = payload;
+        const { agent_id, session_id, content, sender, sender_name, task_id } =
+          payload;
         const chatJid = `${HUB_JID_PREFIX}${agent_id}:${session_id}`;
-        
+
         const msg: NewMessage = {
-          id: payload.id || `hub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id:
+            payload.id ||
+            `hub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           chat_jid: chatJid,
           sender: sender || 'hub-user',
           sender_name: sender_name || 'Hub User',
@@ -146,7 +155,13 @@ export class HubClientChannel implements Channel {
           task_id: task_id || `hub-task-${Date.now()}`,
         };
 
-        this.opts.onChatMetadata(chatJid, msg.timestamp, agent_id, 'hub', false);
+        this.opts.onChatMetadata(
+          chatJid,
+          msg.timestamp,
+          agent_id,
+          'hub',
+          false,
+        );
         this.opts.onMessage(chatJid, msg);
       }
     } catch (err) {
@@ -164,16 +179,22 @@ export class HubClientChannel implements Channel {
     const agent_id = parts[0];
     const session_id = parts[1];
 
-    this.ws.send(JSON.stringify({
-      type: 'message',
-      agent_id,
-      session_id,
-      content: text,
-      timestamp: new Date().toISOString(),
-    }));
+    this.ws.send(
+      JSON.stringify({
+        type: 'message',
+        agent_id,
+        session_id,
+        content: text,
+        timestamp: new Date().toISOString(),
+      }),
+    );
   }
 
-  async sendFile(jid: string, filePath: string, caption?: string): Promise<void> {
+  async sendFile(
+    jid: string,
+    filePath: string,
+    caption?: string,
+  ): Promise<void> {
     logger.warn('HubClientChannel.sendFile not implemented');
   }
 

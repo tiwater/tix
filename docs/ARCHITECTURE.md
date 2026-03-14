@@ -19,7 +19,7 @@ TiClaw treats Discord, Feishu, and other platforms as adapters. Messages route t
 
 ### B. The Factory (`TcWorkspace`)
 The physical engine that manages workspaces.
-*   **Location:** `~/ticlaw/factory/{thread_id}/`
+*   **Location:** `~/.ticlaw/factory/{thread_id}/`
 *   **Workflow:** 
     1. Clone the repository into a unique directory.
     2. Manage independent `.envrc` and workspace-specific settings.
@@ -28,7 +28,7 @@ The physical engine that manages workspaces.
 ### C. Native Agent SDK Loop
 To ensure robust multi-turn task execution without fragile regex parsing or complex tmux session management, TiClaw utilizes the official `@anthropic-ai/claude-agent-sdk`.
 *   **The SDK Core (`run-agent.ts`):** Instead of a multi-CLI driver pattern (Gemini CLI, Codex, etc.), TiClaw wraps the `query()` generator from the Claude SDK. This grants the LLM built-in access to its native toolchain (Bash, Edit, Read).
-*   **Physical Execution:** The SDK executes safely on the host inside the restricted `~/ticlaw/factory/` directories without requiring headless subprocess polling or Docker container layers.
+*   **Physical Execution:** The SDK executes safely on the host inside the restricted `~/.ticlaw/factory/` directories without requiring headless subprocess polling or Docker container layers.
 *   **OpenRouter Routing:** By overriding `ANTHROPIC_BASE_URL` with standard OpenRouter credentials (`OPENROUTER_API_KEY`), the agent naturally executes models like MiniMax-M2.5 or Claude 3.5 Sonnet directly from the Node runtime.
 
 ### D. The Delta Feed (Gemini Powered Audit)
@@ -65,7 +65,7 @@ To ensure robust multi-turn task execution without fragile regex parsing or comp
 
 ## 4. Key Security Decisions
 
-*   **Host Lockdown:** TiClaw is restricted to operating within `~/ticlaw/factory/`.
+*   **Host Lockdown:** TiClaw is restricted to operating within `~/.ticlaw/factory/`.
 *   **Port Isolation:** Each task is assigned a unique port (e.g., 3000-3050) via a `PortLocker` utility.
 *   **Physical Isolation:** Unlike Docker containers which can sometimes mask performance or system-level issues on macOS (like keychain access or GPU acceleration), physical isolation ensures the AI is working on the real metal, which is critical for TiCOS.
 

@@ -7,21 +7,26 @@ import { ensureAgent } from './core/db.js';
 
 async function testEndToEnd() {
   await app.init();
-  
+
   const agentId = 'e2e-agent';
   const chatJid = 'web:session-123';
-  
+
   // 1. Setup Brain
   const agentDir = path.join(AGENTS_DIR, agentId);
   fs.mkdirSync(agentDir, { recursive: true });
-  fs.writeFileSync(path.join(agentDir, 'SOUL.md'), '# E2E SOUL\nYou are an agent that performs long tasks.');
+  fs.writeFileSync(
+    path.join(agentDir, 'SOUL.md'),
+    '# E2E SOUL\nYou are an agent that performs long tasks.',
+  );
   ensureAgent({ agent_id: agentId, name: 'E2E Agent' });
 
   console.log('--- E2E TEST: STARTING LONG TASK ---');
 
   // Listen for state changes (Telemetry)
   app.on('broadcast', (data: any) => {
-    console.log(`[HUB_TELEMETRY] Status: ${data.event.status}, Action: ${data.event.activity?.action}`);
+    console.log(
+      `[HUB_TELEMETRY] Status: ${data.event.status}, Action: ${data.event.activity?.action}`,
+    );
   });
 
   // Listen for replies
@@ -38,7 +43,7 @@ async function testEndToEnd() {
     content: '请先 sleep 10 秒，然后告诉我你现在在做什么。',
     timestamp: new Date().toISOString(),
     agent_id: agentId,
-    session_id: 'session-123'
+    session_id: 'session-123',
   };
 
   void app.dispatcher.dispatch(chatJid, msg1);
@@ -54,7 +59,7 @@ async function testEndToEnd() {
       content: 'STOP',
       timestamp: new Date().toISOString(),
       agent_id: agentId,
-      session_id: 'session-123'
+      session_id: 'session-123',
     };
     await app.dispatcher.dispatch(chatJid, msg2);
   }, 3000);
@@ -66,7 +71,7 @@ async function testEndToEnd() {
   }, 10000);
 }
 
-testEndToEnd().catch(err => {
+testEndToEnd().catch((err) => {
   console.error(err);
   process.exit(1);
 });

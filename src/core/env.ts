@@ -60,11 +60,7 @@ export function readConfigYaml(keys: string[]): Record<string, string> {
   if (!fs.existsSync(TICLAW_CONFIG_PATH)) {
     const dir = path.dirname(TICLAW_CONFIG_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
-      TICLAW_CONFIG_PATH,
-      DEFAULT_CONFIG_YAML,
-      'utf-8',
-    );
+    fs.writeFileSync(TICLAW_CONFIG_PATH, DEFAULT_CONFIG_YAML, 'utf-8');
     logger.info(
       { path: TICLAW_CONFIG_PATH },
       'Created default config.yaml — edit it to set your API keys',
@@ -142,7 +138,7 @@ llm:
  * so they don't leak to child processes.
  */
 export function readEnvFile(keys: string[]): Record<string, string> {
-  // 1. Read from ~/ticlaw/config.yaml (production)
+  // 1. Read from ~/.ticlaw/config.yaml (production)
   const yamlConfig = readConfigYaml(keys);
 
   // 2. Read from .env (dev fallback)

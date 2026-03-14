@@ -17,7 +17,7 @@ pnpm start
 *Look for channel connection messages in the terminal (e.g. `Discord bot connected`, `Feishu long connection active`).*
 
 ### 2. Configuration
-Configure `~/ticlaw/config.yaml` with at least one channel:
+Configure `~/.ticlaw/config.yaml` with at least one channel:
 - **Discord:** Disabled by default. Set `channels.discord.enabled: true` and `channels.discord.token` (or `TC_DISCORD_ENABLED=true` and `TC_DISCORD_TOKEN`) to enable.
 - **Feishu:** `channels.feishu.app_id` and `channels.feishu.app_secret` — see [Feishu Setup](FEISHU_SETUP.md)
 - **LLM:** `llm.api_key` (OpenRouter), `llm.model`
@@ -63,7 +63,7 @@ TiClaw is commanded through your channels (Discord, Feishu, etc.). All task-spec
 - **Feishu:** Same pattern — mention the bot and describe the task.
 - **Legacy `/claw`:** On Discord, `/claw <task>` is converted to `@TiClaw <task>`.
 
-The workspace skill creates `~/ticlaw/factory/{folder}` when needed, clones the repo, and runs the coding CLI (Gemini, Codex, or Claude) in headless mode.
+The workspace skill creates `~/.ticlaw/factory/{folder}` when needed, clones the repo, and runs the coding CLI (Gemini, Codex, or Claude) in headless mode.
 
 ### 📸 `/verify [URL]` (planned)
 
@@ -91,7 +91,7 @@ TiClaw provides three layers of "Live Monitoring":
 
 ## 🛡 Security & Best Practices
 
-- **Physical Isolation:** Each task is isolated in its own folder. TiClaw will never touch files outside of `~/ticlaw/factory/`.
+- **Physical Isolation:** Each task is isolated in its own folder. TiClaw will never touch files outside of `~/.ticlaw/factory/`.
 - **Port Locking:** If your task starts a web server, TiClaw assigns a unique port (3000-3050) to prevent conflicts.
 - **Review Before Merge:** Always review the AI-generated PR before merging. Use the automated Playwright screenshots to verify UI changes visually from your phone or desktop app.
 

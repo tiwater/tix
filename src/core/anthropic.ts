@@ -21,7 +21,7 @@ export function getApiKey(): string {
     process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
   if (!key) {
     throw new Error(
-      'ANTHROPIC_API_KEY is not set. Add it to ~/ticlaw/config.yaml or the environment.',
+      'ANTHROPIC_API_KEY is not set. Add it to ~/.ticlaw/config.yaml or the environment.',
     );
   }
   return key;

@@ -10,7 +10,7 @@ A mind builder with multi-channel support, personality & memory evolution, and p
 |-------|-----------|---------|
 | Runtime | Node.js 20+ | Host process for routing and scheduling |
 | Agent | Claude Agent SDK | Run AI agent with tools and MCP servers |
-| Workspace | Physical directories (`~/ticlaw/factory/`) | Isolated per-task work environments |
+| Workspace | Physical directories (`~/.ticlaw/factory/`) | Isolated per-task work environments |
 | Workspace | LLM Generator (`run-agent.ts`) | Single persistent event loop per prompt |
 | Observability | Gemini 2.0 Flash + Playwright | Delta feed summaries and UI verification |
 | Channel | Channel registry (`src/channels/registry.ts`) | Channels self-register at startup |
@@ -161,7 +161,7 @@ ticlaw/                              # Project root (source code)
 │
 └── .env                               # Environment configuration (gitignored)
 
-~/ticlaw/                            # Runtime data (outside project root)
+~/.ticlaw/                            # Runtime data (outside project root)
 ├── factory/                           # Physical workspaces (one per task)
 │   ├── {thread-id}/                   # Workspace for a Discord thread
 │   │   ├── .git/                      # Cloned repository
@@ -203,10 +203,10 @@ Physical mode executes the agent directly in the host OS. Each task gets an isol
 
 ### Workspace Lifecycle
 
-1. **Creation** — `TcWorkspace` creates `~/ticlaw/factory/{id}/` with subdirectories (`screenshots/`, `logs/`)
+1. **Creation** — `TcWorkspace` creates `~/.ticlaw/factory/{id}/` with subdirectories (`screenshots/`, `logs/`)
 2. **Bootstrap** (if GitHub URL provided):
    - `git clone` → branch checkout
-   - Environment seeding from `~/ticlaw/config/environments/`
+   - Environment seeding from `~/.ticlaw/config/environments/`
    - Auto-detect and run setup scripts (`setup.sh`, `bootstrap.sh`, `init.sh`)
    - Auto-detect package manager (`pnpm install` or `npm install`)
 3. **File Watching** — `chokidar` monitors the workspace, excluding `node_modules/`, `.git/`, `dist/`, `logs/`
@@ -218,7 +218,7 @@ Physical mode executes the agent directly in the host OS. Each task gets an isol
 For repositories with complex environment requirements (e.g., monorepos), TiClaw supports granular environment seeding:
 
 ```
-~/ticlaw/config/environments/
+~/.ticlaw/config/environments/
 ├── my-project.env              # Simple: copies to workspace root as .env
 └── my-monorepo/                # Granular: recursively overlays the workspace
     ├── .env                    # Root .env
@@ -291,8 +291,8 @@ TiClaw uses the OpenClaw mind spec: SOUL, IDENTITY, USER, MEMORY. All four are l
 
 | Level | Path | Scope |
 |-------|------|-------|
-| Global | `~/ticlaw/agents/{SOUL,IDENTITY,USER,MEMORY}.md` | All agents |
-| Per-agent | `~/ticlaw/agents/{folder}/{SOUL,...}.md` | That agent (overrides) |
+| Global | `~/.ticlaw/agents/{SOUL,IDENTITY,USER,MEMORY}.md` | All agents |
+| Per-agent | `~/.ticlaw/agents/{folder}/{SOUL,...}.md` | That agent (overrides) |
 
 When persona or memory evolves through conversation, TiClaw syncs to SOUL.md and MEMORY.md. Legacy `CLAUDE.md` is supported for migration.
 
@@ -307,7 +307,7 @@ Sessions enable conversation continuity — the agent remembers what you talked 
 1. Each group has a session ID tracked in SQLite (`sessions` table)
 2. Session ID is passed to the agent CLI's resume option
 3. The agent continues the conversation with full context
-4. Session transcripts are stored in `~/ticlaw/data/sessions/{group}/.claude/`
+4. Session transcripts are stored in `~/.ticlaw/data/sessions/{group}/.claude/`
 
 In physical mode, tmux sessions provide additional persistence — the agent survives process restarts.
 
@@ -405,7 +405,7 @@ Groups are registered in SQLite with:
 
 ## Database Schema
 
-SQLite database at `~/ticlaw/store/messages.db`:
+SQLite database at `~/.ticlaw/store/messages.db`:
 
 | Table | Purpose |
 |-------|---------|
@@ -465,7 +465,7 @@ launchctl kickstart -k gui/$(id -u)/com.ticlaw
 launchctl list | grep ticlaw
 
 # View logs
-tail -f ~/ticlaw/logs/ticlaw.log
+tail -f ~/.ticlaw/logs/ticlaw.log
 
 # Rebuild after code changes
 pnpm run build && launchctl kickstart -k gui/$(id -u)/com.ticlaw
@@ -480,7 +480,7 @@ pnpm run build && launchctl kickstart -k gui/$(id -u)/com.ticlaw
 | No response to messages | Service not running | Check `launchctl list \| grep ticlaw` |
 | Agent process exits with code 1 | Container runtime not available | Falls back to physical mode; check tmux sessions with `tmux ls` |
 | Agent process exits with code 1 | agent-runner not built | Run `pnpm --filter ticlaw-agent-runner build` |
-| Session not continuing | Session ID not saved | Check SQLite: `sqlite3 ~/ticlaw/store/messages.db "SELECT * FROM sessions"` |
+| Session not continuing | Session ID not saved | Check SQLite: `sqlite3 ~/.ticlaw/store/messages.db "SELECT * FROM sessions"` |
 | No Delta Feed summaries | Missing API key | Set `TC_GEMINI_API_KEY` in `.env` |
 | `/push` fails | GitHub CLI not authenticated | Run `gh auth login` |
 | `/verify` fails | Playwright not installed | Run `npx playwright install chromium` |
