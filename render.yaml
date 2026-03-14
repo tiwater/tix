@@ -2,8 +2,9 @@
 # See: https://render.com/docs/blueprint-spec
 
 services:
-  # 1. Backend Service (TiClaw API & Agent Hub)
-  - type: web
+  # 1. Claw (Agent Worker) — NOT publicly exposed
+  # Connects outbound to the Hub (ticlaw-ui) via WebSocket
+  - type: pserv
     name: ticlaw
     runtime: node
     plan: starter # Persistent disk requires paid plan
@@ -27,13 +28,14 @@ services:
       - key: LLM_BASE_URL
         value: "https://open.bigmodel.cn/api/anthropic"
       - key: HUB_URL
-        sync: false # Set in Render Dashboard for Hub Client Mode
+        sync: false # Hub WebSocket URL — set to wss://ticlaw-ui.onrender.com
       - key: HUB_TRUST_TOKEN
-        sync: false # Set in Render Dashboard for Hub Client Mode
+        sync: false # Set in Render Dashboard
       - key: HUB_REPORTING_INTERVAL
         value: "60000"
 
-  # 2. Frontend (SvelteKit with adapter-node)
+  # 2. Hub + Web UI (public-facing)
+  # Claws connect TO this service. Users access this URL.
   - type: web
     name: ticlaw-ui
     runtime: node
@@ -46,5 +48,3 @@ services:
         value: "22"
       - key: PORT
         value: "10000"
-      - key: VITE_API_BASE
-        value: "https://ticlaw.onrender.com"
