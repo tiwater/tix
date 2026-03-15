@@ -82,9 +82,15 @@ function getPromptMtimeKey(baseDir: string): string {
   const memoryDir = path.join(baseDir, 'memory');
   try {
     const stat = fs.statSync(memoryDir);
-    key += `memory:${stat.mtimeMs}`;
+    key += `memory:${stat.mtimeMs};`;
   } catch {
-    key += 'memory:0';
+    key += 'memory:0;';
+  }
+  try {
+    const stat = fs.statSync(SKILLS_CONFIG.statePath);
+    key += `skills:${stat.mtimeMs}`;
+  } catch {
+    key += 'skills:0';
   }
   return key;
 }
@@ -503,6 +509,30 @@ export class AgentRunner {
           parts.push(`### Date: ${j.replace('.md', '')}\n${content}`);
         }
       }
+    }
+
+    try {
+      const registry = new SkillsRegistry(SKILLS_CONFIG);
+      const available = registry.listAvailable();
+      const enabled = available.filter((a) => a.installed?.enabled);
+
+      if (enabled.length > 0) {
+        let skillsInfo =
+          '## Installed Skills\n\nYou have the following skills enabled and available to use via your Bash tool:\n\n';
+        for (const { skill, installed } of enabled) {
+          skillsInfo += `### ${skill.name} (v${skill.version})\n`;
+          skillsInfo += `${skill.description}\n\n`;
+          if (installed?.entrypoint) {
+            skillsInfo += `**Entrypoint:** \`${installed.entrypoint}\`\n\n`;
+          }
+        }
+        parts.push(skillsInfo.trim());
+      }
+    } catch (err: any) {
+      logger.error(
+        { err: err.message },
+        'Failed to load skills for system prompt',
+      );
     }
 
     const prompt = parts.join('\n\n---\n\n');

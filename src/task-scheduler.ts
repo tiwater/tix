@@ -52,6 +52,14 @@ export function startSchedulerLoop(_deps: SchedulerDependencies): void {
         const current = getScheduleById(schedule.id);
         if (!current || current.status !== 'active') continue;
 
+        if (!current.agent_id) {
+          logger.warn(
+            { schedule_id: current.id },
+            'Schedule missing agent_id, skipping',
+          );
+          continue;
+        }
+
         const agent = getAgent(current.agent_id);
         if (!agent) {
           logger.error(
