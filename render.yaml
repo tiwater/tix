@@ -4,21 +4,18 @@
 services:
   # 1. Node (Agent Worker) — NOT publicly exposed
   # The TiClaw service: connects outbound to the Hub via WebSocket
+  # Upgraded to Docker Runtime to support Built-in Chrome 146
   - type: pserv
     name: ticlaw-node
-    runtime: node
-    plan: starter
-    buildCommand: "pnpm install && pnpm run build"
-    startCommand: "node dist/index.js"
-    disk:
-      name: ticlaw-data
-      mountPath: /data/ticlaw
-      sizeGB: 1
+    runtime: docker
+    plan: starter # Chrome requires ~2GB RAM (Starter) for stability
+    dockerfilePath: ./Dockerfile.ticlaw
+    dockerContext: .
     envVars:
-      - key: NODE_VERSION
-        value: "22"
       - key: TICLAW_HOME
-        value: "/data/ticlaw"
+        value: "/root/.ticlaw"
+      - key: CHROME_PATH
+        value: "/usr/bin/google-chrome-stable"
       - key: NODE_HOSTNAME
         value: "RenderClaw"
       - key: HTTP_PORT
@@ -33,6 +30,10 @@ services:
         sync: false
       - key: HUB_REPORTING_INTERVAL
         value: "60000"
+    disk:
+      name: ticlaw-data
+      mountPath: /root/.ticlaw
+      sizeGB: 1
 
   # 2. Web + Hub (public-facing) — reference TiClaw controller
   # Imports @ticlaw/hub, accepts node connections, serves web UI
