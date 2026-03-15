@@ -243,6 +243,69 @@ async function processMessages(chatJid: string): Promise<boolean> {
       });
 
       let streamedToWeb = false;
+      let statusMessageId: string | null = null;
+      let lastProgressSentAt = 0;
+      let lastProgressKey = '';
+
+      const progressTextFromEvent = (event: Record<string, unknown>): string | null => {
+        const phase = typeof event.phase === 'string' ? event.phase : '';
+        const action = typeof event.action === 'string' ? event.action : '';
+        const target = typeof event.target === 'string' ? event.target : '';
+        const elapsed = typeof event.elapsed_ms === 'number' ? event.elapsed_ms : 0;
+        const secs = Math.max(1, Math.round(elapsed / 1000));
+
+        if (phase === 'stream_event' && action === 'speaking') return null;
+
+        if (action.startsWith('executing_')) {
+          const tool = action.replace(/^executing_/, '');
+          return `🛠 正在调用 ${tool}...（${secs}s）`;
+        }
+
+        if (phase === 'assistant' || action === 'thinking') {
+          return `🧠 正在思考与规划下一步...（${secs}s）`;
+        }
+
+        if (phase === 'result') {
+          return `📦 正在整理最终结果...（${secs}s）`;
+        }
+
+        if (phase === 'error') {
+          return `⚠️ 执行中遇到错误，正在收敛处理...（${secs}s）`;
+        }
+
+        return `⏳ 正在处理中...（${secs}s）`;
+      };
+
+      const emitProgress = async (text: string) => {
+        if (!text || !text.trim()) return;
+
+        if (chatJid.startsWith('web:')) {
+          broadcastToChat(chatJid, {
+            type: 'progress',
+            text,
+          });
+          return;
+        }
+
+        const channel = channels.find((c) => c.ownsJid(chatJid) && c.isConnected());
+        if (statusMessageId && channel?.editMessage) {
+          try {
+            await routeEditMessage(channels, chatJid, statusMessageId, text);
+            return;
+          } catch (err) {
+            logger.debug({ err, chatJid }, 'Progress edit failed, fallback to new message');
+            statusMessageId = null;
+          }
+        }
+
+        if (!statusMessageId) {
+          statusMessageId = await routeSendReturningId(channels, chatJid, text);
+          if (!statusMessageId) {
+            await sendFn(chatJid, text);
+          }
+        }
+      };
+
       await runAgent({
         group,
         session: { ...session, task_id: `run-${Date.now()}` },
@@ -261,12 +324,30 @@ async function processMessages(chatJid: string): Promise<boolean> {
               text: (event as any).target,
             });
           }
-        },
-        onProgress: async (text, elapsed) => {
-          const secs = Math.round(elapsed / 1000);
-          await sendFn(chatJid, `⏳ (${secs}s) Working on it...`);
+
+          const progressText = progressTextFromEvent(event as Record<string, unknown>);
+          if (!progressText) return;
+
+          const now = Date.now();
+          const progressKey = `${(event as any).phase || ''}|${(event as any).action || ''}`;
+          const shouldSend =
+            !lastProgressSentAt ||
+            progressKey !== lastProgressKey ||
+            now - lastProgressSentAt >= 10000;
+
+          if (!shouldSend) return;
+
+          lastProgressSentAt = now;
+          lastProgressKey = progressKey;
+          await emitProgress(progressText);
         },
         onReply: async (text) => {
+          if (chatJid.startsWith('web:')) {
+            broadcastToChat(chatJid, {
+              type: 'progress_end',
+            });
+          }
+
           if (chatJid.startsWith('web:') && streamedToWeb) {
             // Web clients already received the response via stream_delta events.
             // Send stream_end so the client knows streaming is complete,

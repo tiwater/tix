@@ -17,7 +17,6 @@ export interface RunAgentOptions {
   messages: Array<{ role: string; content: string }>;
   signal?: AbortSignal;
   onEvent?: (event: Record<string, unknown>) => void | Promise<void>;
-  onProgress?: (text: string, elapsed: number) => void | Promise<void>;
   onReply?: (text: string) => void | Promise<void>;
 }
 
