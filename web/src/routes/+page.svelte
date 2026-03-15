@@ -231,26 +231,9 @@
           if (isThinking) {
             isThinking = false;
           }
-
-          if (streamingMessageId) {
-            messages = messages.map((m) =>
-              m.id === streamingMessageId
-                ? { ...m, text: m.text + data.activity.target }
-                : m,
-            );
-          } else {
-            streamingMessageId = `bot-${Date.now()}`;
-            messages = [
-              ...messages,
-              {
-                id: streamingMessageId,
-                role: 'bot',
-                text: data.activity.target,
-                time: new Date().toLocaleTimeString(),
-              },
-            ];
-          }
-          scrollToBottom();
+          // Intentionally do not append data.activity.target to messages here.
+          // The event source sends 'stream_delta' concurrently for the actual text chunk.
+          // Appending here causes the mirrored letters duplicate bug.
           return;
         }
 
