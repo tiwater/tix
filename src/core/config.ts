@@ -161,9 +161,14 @@ export const SKILLS_CONFIG: SkillsRuntimeConfig = {
     process.env.SKILLS_AUTO_ENABLE || envConfig.SKILLS_AUTO_ENABLE,
     false,
   ),
-  defaultEnabled: (process.env.SKILLS_DEFAULT_ENABLED || envConfig.SKILLS_DEFAULT_ENABLED)
-    ? (process.env.SKILLS_DEFAULT_ENABLED || envConfig.SKILLS_DEFAULT_ENABLED)!.split(',').map(s => s.trim()).filter(Boolean)
-    : ['web-content', 'web-search', 'browser'],
+  defaultEnabled:
+    process.env.SKILLS_DEFAULT_ENABLED || envConfig.SKILLS_DEFAULT_ENABLED
+      ? (process.env.SKILLS_DEFAULT_ENABLED ||
+          envConfig.SKILLS_DEFAULT_ENABLED)!
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : ['web-content', 'web-search', 'browser'],
   statePath: SKILLS_STATE_PATH,
   auditLogPath: SKILLS_AUDIT_LOG_PATH,
 };

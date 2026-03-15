@@ -11,6 +11,7 @@ import {
   TRIGGER_PATTERN,
   NODE_HOSTNAME,
   SKILLS_CONFIG,
+  MIND_ADMIN_USERS,
 } from './core/config.js';
 import './channels/index.js';
 import { SkillsRegistry } from './skills/registry.js';
@@ -86,6 +87,11 @@ let registeredProjects: Record<string, RegisteredProject> = {};
 const sessions: Record<string, string> = {}; // folder -> sessionId
 const lastAgentTimestamp: Record<string, string> = {}; // chatJid -> iso
 const channels: Channel[] = [];
+
+function isAdminActor(actor?: string): boolean {
+  if (!actor) return false;
+  return MIND_ADMIN_USERS.includes(actor);
+}
 
 /** Check if a registered JID still points to a live channel. */
 async function isChannelAlive(jid: string): Promise<boolean> {
@@ -186,9 +192,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
     if (latestText.startsWith('/skills')) {
       const rawArgs = latestText.replace(/^\/skills\b/, '').trim();
+      const actor = latestMsg?.sender || chatJid;
       const result = executeSkillsCommand(rawArgs, {
-        actor: latestMsg?.sender || chatJid,
-        isAdmin: false,
+        actor,
+        isAdmin: isAdminActor(actor),
       });
       await sendFn(chatJid, result.message);
       return result.ok;
@@ -247,11 +254,14 @@ async function processMessages(chatJid: string): Promise<boolean> {
       let lastProgressSentAt = 0;
       let lastProgressKey = '';
 
-      const progressTextFromEvent = (event: Record<string, unknown>): string | null => {
+      const progressTextFromEvent = (
+        event: Record<string, unknown>,
+      ): string | null => {
         const phase = typeof event.phase === 'string' ? event.phase : '';
         const action = typeof event.action === 'string' ? event.action : '';
         const target = typeof event.target === 'string' ? event.target : '';
-        const elapsed = typeof event.elapsed_ms === 'number' ? event.elapsed_ms : 0;
+        const elapsed =
+          typeof event.elapsed_ms === 'number' ? event.elapsed_ms : 0;
         const secs = Math.max(1, Math.round(elapsed / 1000));
 
         if (phase === 'stream_event' && action === 'speaking') return null;
@@ -287,13 +297,18 @@ async function processMessages(chatJid: string): Promise<boolean> {
           return;
         }
 
-        const channel = channels.find((c) => c.ownsJid(chatJid) && c.isConnected());
+        const channel = channels.find(
+          (c) => c.ownsJid(chatJid) && c.isConnected(),
+        );
         if (statusMessageId && channel?.editMessage) {
           try {
             await routeEditMessage(channels, chatJid, statusMessageId, text);
             return;
           } catch (err) {
-            logger.debug({ err, chatJid }, 'Progress edit failed, fallback to new message');
+            logger.debug(
+              { err, chatJid },
+              'Progress edit failed, fallback to new message',
+            );
             statusMessageId = null;
           }
         }
@@ -325,7 +340,9 @@ async function processMessages(chatJid: string): Promise<boolean> {
             });
           }
 
-          const progressText = progressTextFromEvent(event as Record<string, unknown>);
+          const progressText = progressTextFromEvent(
+            event as Record<string, unknown>,
+          );
           if (!progressText) return;
 
           const now = Date.now();

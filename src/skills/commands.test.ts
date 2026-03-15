@@ -49,6 +49,72 @@ afterEach(() => {
 });
 
 describe('executeSkillsCommand', () => {
+  it('shows audit events via /skills audit', () => {
+    const workspace = makeTempDir();
+    const discoveryRoot = path.join(workspace, 'skills');
+    const sourceDir = path.join(makeTempDir(), 'audit-skill');
+    writeSkillPackage(
+      sourceDir,
+      `---
+name: audit-skill
+description: audit coverage skill
+version: 1.0.0
+skill_api_version: 1.0.0
+permissions:
+  - level2
+entry: index.js
+---
+# Audit Skill
+`,
+      {
+        'index.js': 'console.log("audit");\n',
+      },
+    );
+
+    SKILLS_CONFIG.directories = [discoveryRoot];
+    SKILLS_CONFIG.adminOnly = true;
+    SKILLS_CONFIG.allowLevel3 = false;
+    SKILLS_CONFIG.autoEnableOnInstall = false;
+    SKILLS_CONFIG.statePath = path.join(
+      workspace,
+      '.ticlaw',
+      'skills-state.json',
+    );
+    SKILLS_CONFIG.auditLogPath = path.join(
+      workspace,
+      '.ticlaw',
+      'skills-audit.jsonl',
+    );
+
+    const installed = executeSkillsCommand(['install', sourceDir, '--trust'], {
+      actor: 'admin',
+      isAdmin: true,
+    });
+    expect(installed.ok).toBe(true);
+
+    const audit = executeSkillsCommand(['audit', '--limit', '5'], {
+      actor: 'admin',
+      isAdmin: true,
+    });
+    expect(audit.ok).toBe(true);
+    expect(audit.message).toContain('Recent skills audit events');
+    expect(audit.message).toContain('install audit-skill@1.0.0');
+
+    const auditJson = executeSkillsCommand(['audit', '--json'], {
+      actor: 'admin',
+      isAdmin: true,
+    });
+    expect(auditJson.ok).toBe(true);
+    const parsedAudit = JSON.parse(auditJson.message) as Array<{
+      action: string;
+      skill: string;
+    }>;
+    expect(parsedAudit[0]).toMatchObject({
+      action: 'install',
+      skill: 'audit-skill',
+    });
+  });
+
   it('emits list --json with managed third-party skill metadata', () => {
     const workspace = makeTempDir();
     const discoveryRoot = path.join(workspace, 'skills');

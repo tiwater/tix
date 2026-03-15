@@ -1,7 +1,9 @@
+import fs from 'fs';
 import { SkillsRegistry } from './registry.js';
 import type {
   ListedSkill,
   RegistryActionContext,
+  SkillAuditEvent,
   SkillInstallOptions,
   SkillsCommandResult,
 } from './types.js';
@@ -27,6 +29,7 @@ function helpText(): string {
     '- /skills enable <name> [--approve]',
     '- /skills disable <name>',
     '- /skills remove <name>',
+    '- /skills audit [--limit <n>] [--json]',
   ].join('\n');
 }
 
@@ -148,6 +151,7 @@ function parseFlags(tokens: string[]): {
   trust: boolean;
   json: boolean;
   hash?: string;
+  limit?: number;
   args: string[];
   error?: string;
 } {
@@ -156,6 +160,7 @@ function parseFlags(tokens: string[]): {
   let trust = false;
   let json = false;
   let hash: string | undefined;
+  let limit: number | undefined;
 
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
@@ -179,6 +184,7 @@ function parseFlags(tokens: string[]): {
           trust,
           json,
           hash,
+          limit,
           args,
           error: 'Missing value for --hash.',
         };
@@ -191,10 +197,109 @@ function parseFlags(tokens: string[]): {
       hash = token.slice('--hash='.length);
       continue;
     }
+    if (token === '--limit') {
+      const value = tokens[index + 1];
+      if (!value) {
+        return {
+          approve,
+          trust,
+          json,
+          hash,
+          limit,
+          args,
+          error: 'Missing value for --limit.',
+        };
+      }
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return {
+          approve,
+          trust,
+          json,
+          hash,
+          limit,
+          args,
+          error: 'Invalid value for --limit. Must be a positive number.',
+        };
+      }
+      limit = Math.floor(parsed);
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('--limit=')) {
+      const raw = token.slice('--limit='.length);
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return {
+          approve,
+          trust,
+          json,
+          hash,
+          limit,
+          args,
+          error: 'Invalid value for --limit. Must be a positive number.',
+        };
+      }
+      limit = Math.floor(parsed);
+      continue;
+    }
     args.push(token);
   }
 
-  return { approve, trust, json, hash, args };
+  return { approve, trust, json, hash, limit, args };
+}
+
+function formatAuditEntry(event: SkillAuditEvent): string {
+  return [
+    `- [${event.timestamp}] ${event.action} ${event.skill}@${event.version}`,
+    `  actor=${event.actor}`,
+    `  level=L${event.permissionLevel}`,
+    `  source=${event.sourceType}`,
+    `  managed=${event.managed}`,
+    `  approved=${event.approved}`,
+    event.contentHash ? `  hash=${event.contentHash}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function formatAudit(json = false, limit = 20): SkillsCommandResult {
+  const registry = new SkillsRegistry();
+  const config = registry.getConfig();
+
+  if (!fs.existsSync(config.auditLogPath)) {
+    return ok('No skills audit events found yet.');
+  }
+
+  const raw = fs.readFileSync(config.auditLogPath, 'utf-8');
+  const lines = raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const events: SkillAuditEvent[] = [];
+  for (const line of lines) {
+    try {
+      events.push(JSON.parse(line) as SkillAuditEvent);
+    } catch {
+      // ignore malformed rows
+    }
+  }
+
+  if (events.length === 0) {
+    return ok('No valid skills audit events found.');
+  }
+
+  const recent = events.slice(-limit).reverse();
+
+  if (json) {
+    return ok(JSON.stringify(recent, null, 2));
+  }
+
+  return ok([
+    `Recent skills audit events (latest ${recent.length}/${events.length}):`,
+    ...recent.map((event) => formatAuditEntry(event)),
+  ].join('\n'));
 }
 
 function executeMutation(
@@ -290,6 +395,8 @@ export function executeSkillsCommand(
       return target
         ? executeMutation('remove', target, commandContext)
         : fail('Usage: /skills remove <name>');
+    case 'audit':
+      return formatAudit(parsed.json, parsed.limit || 20);
     default:
       return fail(`${helpText()}\n\nUnknown command: ${command}`);
   }
