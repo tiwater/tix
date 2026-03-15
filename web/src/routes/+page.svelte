@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
+  import { marked } from 'marked';
+  import DOMPurify from 'isomorphic-dompurify';
   import '../app.css';
 
   // --- Types ---
@@ -11,6 +13,7 @@
     text: string;
     time: string;
     streaming?: boolean;
+    showRaw?: boolean;
   }
 
   interface MindState {
@@ -769,11 +772,24 @@
                 {msg.role === 'user' ? '👤' : '🤖'}
               </div>
               <div>
-                <div class="bubble" class:streaming-cursor={msg.streaming}>
-                  {msg.text}
+                <div class="bubble {msg.role === 'user' ? '' : 'markdown-body'}" class:streaming-cursor={msg.streaming}>
+                  {#if msg.role === 'user' || msg.showRaw}
+                    <pre class="raw-text">{msg.text}</pre>
+                  {:else}
+                    {@html DOMPurify.sanitize(marked.parse(msg.text) as string)}
+                  {/if}
                 </div>
-                {#if msg.time}
-                  <div class="bubble-meta">{msg.time}</div>
+                {#if msg.time || msg.role !== 'user'}
+                  <div class="bubble-meta">
+                    {#if msg.time}<span>{msg.time}</span>{/if}
+                    {#if msg.role !== 'user'}
+                      <button 
+                        class="raw-toggle" 
+                        onclick={() => msg.showRaw = !msg.showRaw}>
+                        {msg.showRaw ? 'Rendered' : 'Raw'}
+                      </button>
+                    {/if}
+                  </div>
                 {/if}
               </div>
             </div>
