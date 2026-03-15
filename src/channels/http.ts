@@ -682,17 +682,28 @@ export class HttpChannel implements Channel {
         const registry = new SkillsRegistry(SKILLS_CONFIG);
         const skills = registry.listAvailable();
         writeJson(res, 200, {
-          skills: skills.map((s) => ({
-            name: s.skill.name,
-            version: s.skill.version,
-            description: s.skill.description,
-            source: s.skill.source,
-            installed: !!s.installed,
-            enabled: s.installed?.enabled ?? false,
-            permissionLevel: s.skill.permission.level,
-            directory: s.skill.directory,
-            diagnostics: s.skill.diagnostics,
-          })),
+          skills: skills.map((s) => {
+            const installed = !!s.installed;
+            const enabled = s.installed?.enabled ?? false;
+            const status = installed
+              ? enabled
+                ? 'installed_enabled'
+                : 'installed_disabled'
+              : 'discovered';
+            return {
+              name: s.skill.name,
+              version: s.skill.version,
+              description: s.skill.description,
+              source: s.skill.source,
+              installed,
+              enabled,
+              status,
+              runtimeUsable: installed && enabled,
+              permissionLevel: s.skill.permission.level,
+              directory: s.skill.directory,
+              diagnostics: s.skill.diagnostics,
+            };
+          }),
         });
         return;
       }

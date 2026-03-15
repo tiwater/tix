@@ -35,6 +35,8 @@
     source: string;
     installed: boolean;
     enabled: boolean;
+    status?: 'discovered' | 'installed_disabled' | 'installed_enabled';
+    runtimeUsable?: boolean;
     permissionLevel: number;
     directory: string;
     diagnostics: string[];
@@ -1096,6 +1098,15 @@
                       {#if skill.source}
                         <span class="skill-tag">{skill.source}</span>
                       {/if}
+                      <span class="skill-tag"
+                        >{skill.status ||
+                          (skill.enabled
+                            ? 'installed_enabled'
+                            : 'installed_disabled')}</span
+                      >
+                      {#if skill.runtimeUsable}
+                        <span class="skill-tag">runtime:usable</span>
+                      {/if}
                     </div>
                   </div>
                   <label class="toggle">
@@ -1130,6 +1141,9 @@
                       {#if skill.source}
                         <span class="skill-tag">{skill.source}</span>
                       {/if}
+                      <span class="skill-tag"
+                        >{skill.status || 'discovered'}</span
+                      >
                     </div>
                   </div>
                   <button
