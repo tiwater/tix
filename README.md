@@ -67,6 +67,13 @@ TC_DINGTALK_ACCOUNTS='[{"appId": "dingxxx", "appSecret": "..."}]'
 ticlaw start
 ```
 
+### 4. Developer CLI
+You can test agent behavior instantly from the command line without setting up external chat platforms:
+```bash
+pnpm chat "Hello!" --agent my-agent
+```
+This connects to the local SSE stream and outputs the agent's response in real-time.
+
 ---
 
 ## 🎮 Command Hub & UI

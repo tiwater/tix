@@ -1,6 +1,8 @@
 /**
  * Schedule executor — polls the schedules table and submits tasks.
  */
+import fs from 'fs';
+import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 
 import {
@@ -9,6 +11,7 @@ import {
   getScheduleById,
   updateSchedule,
   updateScheduleAfterRun,
+  deleteSchedule,
 } from './core/store.js';
 import { logger } from './core/logger.js';
 import { SCHEDULER_POLL_INTERVAL, TIMEZONE } from './core/config.js';
@@ -21,6 +24,14 @@ export interface SchedulerDependencies {
 }
 
 let schedulerRunning = false;
+let timeoutId: NodeJS.Timeout | null = null;
+let loopRef: (() => Promise<void>) | null = null;
+
+export function forceSchedulerCheck(): void {
+  logger.info('Manually triggering scheduler check');
+  if (timeoutId) clearTimeout(timeoutId);
+  if (loopRef) void loopRef();
+}
 
 export function startSchedulerLoop(_deps: SchedulerDependencies): void {
   if (schedulerRunning) {
@@ -30,7 +41,7 @@ export function startSchedulerLoop(_deps: SchedulerDependencies): void {
   schedulerRunning = true;
   logger.info('Scheduler loop started');
 
-  const loop = async () => {
+  loopRef = async () => {
     try {
       const dueSchedules = getDueSchedules();
       if (dueSchedules.length > 0) {
@@ -54,31 +65,39 @@ export function startSchedulerLoop(_deps: SchedulerDependencies): void {
         // Submit the task
         submitScheduleTask(current);
 
-        // Compute next run time
-        let nextRun: string | null = null;
-        try {
-          const interval = CronExpressionParser.parse(current.cron, {
-            tz: TIMEZONE,
-          });
-          nextRun = interval.next().toISOString();
-        } catch (err) {
-          logger.error(
-            { schedule_id: current.id, cron: current.cron, err },
-            'Invalid cron expression, pausing schedule',
-          );
+        // Compute next run time or delete
+        if (current.delete_after_run) {
+          logger.info({ schedule_id: current.id }, 'Deleting one-shot schedule after run');
+          deleteSchedule(current.id);
+        } else {
+          let nextRun: string | null = null;
+          try {
+            const interval = CronExpressionParser.parse(current.cron, {
+              tz: TIMEZONE,
+            });
+            nextRun = interval.next().toISOString();
+          } catch (err) {
+            logger.error(
+              { schedule_id: current.id, cron: current.cron, err },
+              'Invalid cron expression, pausing schedule',
+            );
+          }
+          updateScheduleAfterRun(current.id, nextRun);
         }
-        updateScheduleAfterRun(current.id, nextRun);
       }
     } catch (err) {
       logger.error({ err }, 'Error in scheduler loop');
     }
 
-    setTimeout(loop, SCHEDULER_POLL_INTERVAL);
+    timeoutId = setTimeout(loopRef, SCHEDULER_POLL_INTERVAL);
   };
 
-  void loop();
+  void loopRef();
 }
 
 export function _resetSchedulerLoopForTests(): void {
   schedulerRunning = false;
+  if (timeoutId) clearTimeout(timeoutId);
+  timeoutId = null;
+  loopRef = null;
 }

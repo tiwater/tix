@@ -134,6 +134,7 @@ export interface SkillsRuntimeConfig {
   adminOnly: boolean;
   allowLevel3: boolean;
   autoEnableOnInstall: boolean;
+  defaultEnabled: string[];
   statePath: string;
   auditLogPath: string;
 }
@@ -154,11 +155,15 @@ export const SKILLS_CONFIG: SkillsRuntimeConfig = {
   ),
   allowLevel3: parseBoolean(
     process.env.SKILLS_ALLOW_LEVEL3 || envConfig.SKILLS_ALLOW_LEVEL3,
-    false,
+    true,
   ),
   autoEnableOnInstall: parseBoolean(
     process.env.SKILLS_AUTO_ENABLE || envConfig.SKILLS_AUTO_ENABLE,
     false,
+  ),
+  defaultEnabled: parsePathList(
+    process.env.SKILLS_DEFAULT_ENABLED || envConfig.SKILLS_DEFAULT_ENABLED,
+    ['web-content', 'web-search', 'browser'], // Default fallback if not defined
   ),
   statePath: SKILLS_STATE_PATH,
   auditLogPath: SKILLS_AUDIT_LOG_PATH,

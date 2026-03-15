@@ -1,0 +1,113 @@
+import { Command } from 'commander';
+import crypto from 'crypto';
+import http from 'http';
+
+export function registerChatCommand(program: Command) {
+  program
+    .command('chat <message>')
+    .description('Send a chat message to a local TiClaw agent and stream the response')
+    .option('-a, --agent <id>', 'Target agent ID (defaults to "default")')
+    .action(async (message: string, options) => {
+      const agentId = options.agent || 'default';
+      const sessionId = `cli-${crypto.randomUUID()}`;
+      const taskId = crypto.randomUUID();
+
+      console.log(`\x1b[36mConnecting to agent '${agentId}'...\x1b[0m`);
+
+      try {
+        // Step 1: Connect to the SSE stream to listen for events
+        const streamUrl = new URL(`http://localhost:2755/runs/${agentId}/stream`);
+        streamUrl.searchParams.set('agent_id', agentId);
+        streamUrl.searchParams.set('session_id', sessionId);
+
+        const sseReq = http.get(streamUrl.toString(), (res) => {
+          if (res.statusCode !== 200) {
+            console.error(`\x1b[31mFailed to connect to stream: ${res.statusCode}\x1b[0m`);
+            process.exit(1);
+          }
+
+          let buffer = '';
+
+          res.on('data', (chunk) => {
+            buffer += chunk.toString();
+            let newlineIndex;
+
+            while ((newlineIndex = buffer.indexOf('\n\n')) >= 0) {
+              const messageChunk = buffer.slice(0, newlineIndex);
+              buffer = buffer.slice(newlineIndex + 2);
+
+              if (messageChunk.startsWith('data: ')) {
+                const dataString = messageChunk.slice(6);
+                if (dataString === ': ping') continue;
+
+                try {
+                  const event = JSON.parse(dataString);
+                  
+                  if (event.type === 'connected') {
+                    // Ready to push the message now that the stream is open!
+                    dispatchMessage();
+                  } else if (event.type === 'stream_delta') {
+                    process.stdout.write(event.text);
+                  } else if (event.type === 'stream_end') {
+                    console.log('\n');
+                    process.exit(0);
+                  }
+                } catch (e) {
+                  // Ignore parse errors on malformed chunks or bare ping messages
+                }
+              }
+            }
+          });
+
+          res.on('error', (err) => {
+            console.error(`\x1b[31mStream error: ${err.message}\x1b[0m`);
+            process.exit(1);
+          });
+        });
+
+        sseReq.on('error', (err: any) => {
+          if (err.code === 'ECONNREFUSED') {
+            console.error(`\x1b[31mConnection refused: Is the TiClaw service running (pnpm dev)?\x1b[0m`);
+          } else {
+            console.error(`\x1b[31mFailed to connect: ${err.message}\x1b[0m`);
+          }
+          process.exit(1);
+        });
+
+        // Step 2: Fire the message into the channel
+        const dispatchMessage = async () => {
+          try {
+            const response = await fetch('http://localhost:2755/runs', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                agent_id: agentId,
+                session_id: sessionId,
+                task_id: taskId,
+                content: message,
+                sender: 'cli',
+                sender_name: 'CLI User'
+              }),
+            });
+
+            if (!response.ok) {
+              const text = await response.text();
+              console.error(`\x1b[31mFailed to send message: HTTP ${response.status}\x1b[0m`);
+              console.error(text);
+              process.exit(1);
+            }
+            console.log(`\x1b[32mMessage sent! Waiting for response...\x1b[0m\n`);
+          } catch (err: any) {
+            console.error(`\x1b[31mError dispatching message: ${err.message}\x1b[0m`);
+            process.exit(1);
+          }
+        };
+
+      } catch (err: any) {
+        console.error(`\x1b[31mUnexpected Error: ${err.message}\x1b[0m`);
+        process.exit(1);
+      }
+    });
+}

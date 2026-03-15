@@ -48,6 +48,7 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   SKILLS_ADMIN_ONLY: ['skills', 'admin_only'],
   SKILLS_ALLOW_LEVEL3: ['skills', 'allow_level3'],
   SKILLS_AUTO_ENABLE: ['skills', 'auto_enable'],
+  SKILLS_DEFAULT_ENABLED: ['skills', 'default_enabled'],
 };
 
 /**

@@ -14,6 +14,7 @@
   "scripts": {
     "auth": "tsx src/whatsapp-auth.ts",
     "build": "tsc",
+    "chat": "node cli/dist/index.js chat",
     "dev": "tsx watch src/index.ts",
     "dev:web": "pnpm --filter web run dev",
     "dev:all": "pnpm --filter @ticlaw/hub run build && concurrently \"pnpm --filter web run dev\" \"sleep 2 && pnpm run dev\"",
@@ -42,6 +43,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
     "concurrently": "^9.2.1",
     "prettier": "^3.8.1",

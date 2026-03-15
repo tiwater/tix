@@ -159,10 +159,14 @@ export interface CreateTaskInput {
 export interface ScheduleRecord {
   id: string;
   agent_id: string;
-  prompt: string;
   cron: string;
+  prompt: string;
+  type?: 'cron' | 'one-shot';
+  session?: 'main' | 'isolated';
   status: 'active' | 'paused';
+  delete_after_run?: boolean;
   next_run: string | null;
+  last_run?: string | null;
   created_at: string;
 }
 

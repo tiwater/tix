@@ -41,6 +41,13 @@ pnpm install
 pnpm start
 ```
 
+### 开发者 CLI
+无需配置外部聊天平台，即可在命令行中即时测试代理行为：
+```bash
+pnpm chat "你好！" --agent my-agent
+```
+该命令会连接本地的 SSE 流，并实时输出代理的响应。
+
 ## 我们为什么构建 TiClaw
 
 TiClaw 在 [NanoClaw](https://github.com/qwibitai/nanoclaw) 基础上增加了**心智系统**：人格与记忆在交互中形成、跨会话持久化，并可锁定用于生产。透明度和可靠性是不可逾越的底线。

@@ -74,6 +74,7 @@ import type {
 } from '../core/types.js';
 
 import { app } from '../core/app.js';
+import { forceSchedulerCheck } from '../task-scheduler.js';
 
 const WEB_JID_PREFIX = 'web:';
 
@@ -705,7 +706,7 @@ export class HttpChannel implements Channel {
         const skillName = parts[3];
         const action = parts[4] as 'enable' | 'disable';
         const registry = new SkillsRegistry(SKILLS_CONFIG);
-        const ctx = { actor: 'web-ui', isAdmin: true };
+        const ctx = { actor: 'web-ui', isAdmin: true, approveLevel3: true };
         try {
           let result;
           if (action === 'enable') {
@@ -877,6 +878,12 @@ export class HttpChannel implements Channel {
           cron,
         });
         writeJson(res, 201, { schedule });
+        return;
+      }
+
+      if (pathname === '/api/schedules/refresh' && req.method === 'POST') {
+        forceSchedulerCheck();
+        writeJson(res, 200, { success: true });
         return;
       }
 

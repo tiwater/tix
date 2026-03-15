@@ -20,6 +20,7 @@ import { registerSkillsCommand } from './skills.js';
 import { start, stop, status } from './service.js';
 import { registerEnvCommand } from './env.js';
 import { registerEnrollCommand } from './enroll.js';
+import { registerChatCommand } from './chat.js';
 
 const program = new Command();
 
@@ -51,5 +52,6 @@ program
 registerSkillsCommand(program);
 registerEnvCommand(program);
 registerEnrollCommand(program);
+registerChatCommand(program);
 
 program.parse();

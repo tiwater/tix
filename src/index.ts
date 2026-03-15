@@ -10,8 +10,10 @@ import {
   POLL_INTERVAL,
   TRIGGER_PATTERN,
   NODE_HOSTNAME,
+  SKILLS_CONFIG,
 } from './core/config.js';
 import './channels/index.js';
+import { SkillsRegistry } from './skills/registry.js';
 import {
   getChannelFactory,
   getRegisteredChannelNames,
@@ -592,12 +594,37 @@ async function main(): Promise<void> {
   };
 
   recoverPendingMessages();
+
+  // --- Auto-enable default skills ---
+  try {
+    const registry = new SkillsRegistry(SKILLS_CONFIG);
+    const defaultSkills = SKILLS_CONFIG.defaultEnabled;
+    const ctx = { actor: 'system-init', isAdmin: true, approveLevel3: true };
+    for (const skillName of defaultSkills) {
+      try {
+        if (!registry.getInstalled(skillName)) {
+           registry.installSkill(skillName, ctx);
+        }
+        const installed = registry.getInstalled(skillName);
+        if (installed && !installed.enabled) {
+          registry.enableSkill(skillName, ctx);
+          logger.info(`Auto-enabled default skill: ${skillName}`);
+        }
+      } catch (err: any) {
+        logger.warn(`Failed to auto-enable skill ${skillName}: ${err.message}`);
+      }
+    }
+  } catch (err: any) {
+    logger.warn(`Failed to initialize default skills: ${err.message}`);
+  }
+
   startMessageLoop();
 
   startSchedulerLoop({
     registeredProjects: () => registeredProjects,
     sendMessage: sendFn,
   });
+
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');

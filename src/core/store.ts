@@ -15,6 +15,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import yaml from 'js-yaml';
 
 import { AGENTS_DIR, TICLAW_HOME } from './config.js';
 import { logger } from './logger.js';
@@ -100,6 +101,27 @@ function listJsonFiles(dir: string): string[] {
   }
 }
 
+function readYaml<T>(filePath: string): T | undefined {
+  try {
+    if (!fs.existsSync(filePath)) return undefined;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return yaml.load(content) as T;
+  } catch (err: any) {
+    logger.error({ filePath, err: err.message }, 'Failed to read YAML');
+    return undefined;
+  }
+}
+
+function writeYaml<T>(filePath: string, data: T): void {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const content = yaml.dump(data, { lineWidth: -1, noRefs: true });
+    fs.writeFileSync(filePath, content, 'utf-8');
+  } catch (err: any) {
+    logger.error({ filePath, err: err.message }, 'Failed to write YAML');
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Path helpers
 // ═══════════════════════════════════════════════════════════════
@@ -128,8 +150,8 @@ function schedulesDir(agentId: string): string {
   return path.join(agentDir(agentId), 'schedules');
 }
 
-function scheduleJsonPath(agentId: string, scheduleId: string): string {
-  return path.join(schedulesDir(agentId), `${scheduleId}.json`);
+function scheduleYamlPath(agentId: string, scheduleId: string): string {
+  return path.join(schedulesDir(agentId), `${scheduleId}.yaml`);
 }
 
 const routerStatePath = path.join(TICLAW_HOME, 'router-state.json');
@@ -440,8 +462,10 @@ export function getNewMessages(
 
 export function createSchedule(input: {
   agent_id: string;
-  prompt: string;
   cron: string;
+  prompt: string;
+  type?: 'cron' | 'one-shot';
+  session?: 'main' | 'isolated';
   next_run?: string;
 }): ScheduleRecord {
   const id = crypto.randomUUID();
@@ -452,20 +476,23 @@ export function createSchedule(input: {
   const record: ScheduleRecord = {
     id,
     agent_id: input.agent_id,
-    prompt: input.prompt,
     cron: input.cron,
+    prompt: input.prompt,
+    type: input.type || 'cron',
+    session: input.session || 'isolated',
     status: 'active',
+    delete_after_run: false,
     next_run: input.next_run || null,
     created_at: now,
   };
 
-  writeJson(scheduleJsonPath(input.agent_id, id), record);
+  writeYaml(scheduleYamlPath(input.agent_id, id), record);
   return record;
 }
 
 export function getScheduleById(id: string): ScheduleRecord | undefined {
   for (const agentId of listDirs(AGENTS_DIR)) {
-    const schedule = readJson<ScheduleRecord>(scheduleJsonPath(agentId, id));
+    const schedule = readYaml<ScheduleRecord>(scheduleYamlPath(agentId, id));
     if (schedule) return schedule;
   }
   return undefined;
@@ -484,8 +511,16 @@ export function getAllSchedules(): ScheduleRecord[] {
 export function getSchedulesForAgent(agentId: string): ScheduleRecord[] {
   const dir = schedulesDir(agentId);
   const schedules: ScheduleRecord[] = [];
-  for (const id of listJsonFiles(dir)) {
-    const schedule = readJson<ScheduleRecord>(scheduleJsonPath(agentId, id));
+  if (!fs.existsSync(dir)) return schedules;
+  
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith('.yaml')) continue;
+    
+    // Fallback: migrate .json if they still exist
+    if (file.endsWith('.json')) continue; 
+    
+    const id = file.replace('.yaml', '');
+    const schedule = readYaml<ScheduleRecord>(scheduleYamlPath(agentId, id));
     if (schedule) schedules.push(schedule);
   }
   return schedules.sort((a, b) =>
@@ -503,15 +538,15 @@ export function getDueSchedules(): ScheduleRecord[] {
 export function updateSchedule(
   id: string,
   updates: Partial<
-    Pick<ScheduleRecord, 'prompt' | 'cron' | 'next_run' | 'status'>
+    Pick<ScheduleRecord, 'prompt' | 'cron' | 'next_run' | 'status' | 'type' | 'session' | 'delete_after_run' | 'last_run'>
   >,
 ): void {
   for (const agentId of listDirs(AGENTS_DIR)) {
-    const jsonPath = scheduleJsonPath(agentId, id);
-    const schedule = readJson<ScheduleRecord>(jsonPath);
+    const yamlPath = scheduleYamlPath(agentId, id);
+    const schedule = readYaml<ScheduleRecord>(yamlPath);
     if (schedule) {
       const updated = { ...schedule, ...updates };
-      writeJson(jsonPath, updated);
+      writeYaml(yamlPath, updated);
       return;
     }
   }
@@ -522,12 +557,13 @@ export function updateScheduleAfterRun(
   nextRun: string | null,
 ): void {
   for (const agentId of listDirs(AGENTS_DIR)) {
-    const jsonPath = scheduleJsonPath(agentId, id);
-    const schedule = readJson<ScheduleRecord>(jsonPath);
+    const yamlPath = scheduleYamlPath(agentId, id);
+    const schedule = readYaml<ScheduleRecord>(yamlPath);
     if (schedule) {
+      schedule.last_run = new Date().toISOString();
       schedule.next_run = nextRun;
       if (!nextRun) schedule.status = 'paused';
-      writeJson(jsonPath, schedule);
+      writeYaml(yamlPath, schedule);
       return;
     }
   }
@@ -535,9 +571,9 @@ export function updateScheduleAfterRun(
 
 export function deleteSchedule(id: string): void {
   for (const agentId of listDirs(AGENTS_DIR)) {
-    const jsonPath = scheduleJsonPath(agentId, id);
-    if (fs.existsSync(jsonPath)) {
-      fs.unlinkSync(jsonPath);
+    const yamlPath = scheduleYamlPath(agentId, id);
+    if (fs.existsSync(yamlPath)) {
+      fs.unlinkSync(yamlPath);
       return;
     }
   }
