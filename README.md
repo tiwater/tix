@@ -6,11 +6,16 @@
    | | / _` | '_ \(_-<|  _/ -_) '_|
    |_|_\__,_|_.__//__/ \__\___|_|
    
-      /\|___/\      TiClaw v1.3.0
-     (  o   o  )     [ The Enterprise Shell ]
-      \  -^-  /      
-       /|   |\       Status: ONLINE 🟢
-      (_|___|_)
+       //          \\       TiClaw v1.3.0
+     _//_          _\\_     [ The Enterprise Shell ]
+    | // |        | \\ |
+    |//__|        |__\\|    Status: ONLINE 🟢
+     \/\\\\        ////\/
+        \\\\      ////
+         \\\\    ////
+          \\\\__////
+           \      /
+            \____/
 ```
 
 > **The Most Polished Enterprise AI Agent Base.** 
