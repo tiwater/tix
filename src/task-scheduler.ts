@@ -67,7 +67,10 @@ export function startSchedulerLoop(_deps: SchedulerDependencies): void {
 
         // Compute next run time or delete
         if (current.delete_after_run) {
-          logger.info({ schedule_id: current.id }, 'Deleting one-shot schedule after run');
+          logger.info(
+            { schedule_id: current.id },
+            'Deleting one-shot schedule after run',
+          );
           deleteSchedule(current.id);
         } else {
           let nextRun: string | null = null;

@@ -512,13 +512,13 @@ export function getSchedulesForAgent(agentId: string): ScheduleRecord[] {
   const dir = schedulesDir(agentId);
   const schedules: ScheduleRecord[] = [];
   if (!fs.existsSync(dir)) return schedules;
-  
+
   for (const file of fs.readdirSync(dir)) {
     if (!file.endsWith('.yaml')) continue;
-    
+
     // Fallback: migrate .json if they still exist
-    if (file.endsWith('.json')) continue; 
-    
+    if (file.endsWith('.json')) continue;
+
     const id = file.replace('.yaml', '');
     const schedule = readYaml<ScheduleRecord>(scheduleYamlPath(agentId, id));
     if (schedule) schedules.push(schedule);
@@ -538,7 +538,17 @@ export function getDueSchedules(): ScheduleRecord[] {
 export function updateSchedule(
   id: string,
   updates: Partial<
-    Pick<ScheduleRecord, 'prompt' | 'cron' | 'next_run' | 'status' | 'type' | 'session' | 'delete_after_run' | 'last_run'>
+    Pick<
+      ScheduleRecord,
+      | 'prompt'
+      | 'cron'
+      | 'next_run'
+      | 'status'
+      | 'type'
+      | 'session'
+      | 'delete_after_run'
+      | 'last_run'
+    >
   >,
 ): void {
   for (const agentId of listDirs(AGENTS_DIR)) {

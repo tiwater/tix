@@ -603,7 +603,7 @@ async function main(): Promise<void> {
     for (const skillName of defaultSkills) {
       try {
         if (!registry.getInstalled(skillName)) {
-           registry.installSkill(skillName, ctx);
+          registry.installSkill(skillName, ctx);
         }
         const installed = registry.getInstalled(skillName);
         if (installed && !installed.enabled) {
@@ -624,7 +624,6 @@ async function main(): Promise<void> {
     registeredProjects: () => registeredProjects,
     sendMessage: sendFn,
   });
-
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');

@@ -28,23 +28,35 @@ export function submitScheduleTask(schedule: ScheduleRecord): any {
   (async () => {
     try {
       let runSessionId = `cron_${schedule.id}`; // Default isolated
-      
+
       if (schedule.session === 'main') {
-         const activeSessions = getSessionsForAgent(schedule.agent_id);
-         if (activeSessions.length > 0) {
-           runSessionId = activeSessions[0].session_id;
-         }
+        const activeSessions = getSessionsForAgent(schedule.agent_id);
+        if (activeSessions.length > 0) {
+          runSessionId = activeSessions[0].session_id;
+        }
       }
 
       const runner = new AgentRunner(schedule.agent_id, runSessionId, {
         onReply: async (text) => {
-          logger.info({ scheduleId: schedule.id, text }, 'Schedule Execution Reply');
+          logger.info(
+            { scheduleId: schedule.id, text },
+            'Schedule Execution Reply',
+          );
         },
       });
-      logger.info({ scheduleId: schedule.id, runSessionId, prompt: schedule.prompt }, 'Starting scheduled task');
-      await runner.run(schedule.prompt, `schedule-${schedule.id}-${Date.now()}`);
+      logger.info(
+        { scheduleId: schedule.id, runSessionId, prompt: schedule.prompt },
+        'Starting scheduled task',
+      );
+      await runner.run(
+        schedule.prompt,
+        `schedule-${schedule.id}-${Date.now()}`,
+      );
     } catch (err) {
-      logger.error({ err, scheduleId: schedule.id }, 'Scheduled task execution failed');
+      logger.error(
+        { err, scheduleId: schedule.id },
+        'Scheduled task execution failed',
+      );
     }
   })();
   return { id: `schedule-task-${schedule.id}` };
