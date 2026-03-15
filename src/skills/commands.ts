@@ -296,10 +296,12 @@ function formatAudit(json = false, limit = 20): SkillsCommandResult {
     return ok(JSON.stringify(recent, null, 2));
   }
 
-  return ok([
-    `Recent skills audit events (latest ${recent.length}/${events.length}):`,
-    ...recent.map((event) => formatAuditEntry(event)),
-  ].join('\n'));
+  return ok(
+    [
+      `Recent skills audit events (latest ${recent.length}/${events.length}):`,
+      ...recent.map((event) => formatAuditEntry(event)),
+    ].join('\n'),
+  );
 }
 
 function executeMutation(
