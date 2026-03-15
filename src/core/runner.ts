@@ -184,6 +184,7 @@ function buildQueryOptions(
     persistSession: false,
     env: {
       ...process.env,
+      PWD: workspace,
       ANTHROPIC_API_KEY: effectiveApiKey,
       ...(effectiveBaseUrl ? { ANTHROPIC_BASE_URL: effectiveBaseUrl } : {}),
       TICLAW_AGENT_ID: agentId,
@@ -304,7 +305,7 @@ export class AgentRunner {
     const key = buildSessionKey(this.state.agent_id, this.state.session_id);
 
     try {
-      const systemPrompt = this.preparePrompt(paths.base);
+      const systemPrompt = this.preparePrompt(paths.base, paths.workspace);
       const warm = warmSessions.get(key);
       const isWarm = warm?.alive === true;
 
@@ -467,7 +468,7 @@ export class AgentRunner {
   /**
    * Builds the system prompt with caching (invalidated by mtime).
    */
-  private preparePrompt(baseDir: string): string {
+  private preparePrompt(baseDir: string, workspaceDir: string): string {
     const mtimeKey = getPromptMtimeKey(baseDir);
     const cached = _promptCache.get(this.state.agent_id);
     if (cached && cached.mtimeKey === mtimeKey) {
@@ -479,7 +480,8 @@ export class AgentRunner {
     }
 
     const parts: string[] = [
-      `You are ${ASSISTANT_NAME}. Work strictly within your assigned workspace.`,
+      `You are ${ASSISTANT_NAME}. Work strictly within your assigned workspace: ${workspaceDir}`,
+      `Do not create, modify, or interact with files outside of this workspace directory unless specifically requested by the user.`,
       `Your core persona and memory are defined in the following Markdown files.`,
     ];
 
