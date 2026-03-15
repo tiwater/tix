@@ -2,15 +2,75 @@ import { Command } from 'commander';
 import crypto from 'crypto';
 import http from 'http';
 
+class StreamMarkdownPrinter {
+  private inCodeBlock = false;
+  private buffer = '';
+  private rawMode: boolean;
+
+  constructor(rawMode: boolean) {
+    this.rawMode = rawMode;
+  }
+
+  public print(chunk: string) {
+    if (this.rawMode) {
+      process.stdout.write(chunk);
+      return;
+    }
+    
+    this.buffer += chunk;
+    let newlineIndex: number;
+    while ((newlineIndex = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, newlineIndex + 1);
+      this.buffer = this.buffer.slice(newlineIndex + 1);
+      this.processLine(line);
+    }
+  }
+  
+  public flush() {
+    if (this.rawMode) return;
+    if (this.buffer.length > 0) {
+      this.processLine(this.buffer);
+      this.buffer = '';
+    }
+  }
+
+  private processLine(line: string) {
+    if (line.trim().startsWith('```')) {
+      this.inCodeBlock = !this.inCodeBlock;
+      process.stdout.write(`\x1b[90m${line}\x1b[0m`);
+      return;
+    }
+    
+    if (this.inCodeBlock) {
+      process.stdout.write(`\x1b[36m${line}\x1b[0m`);
+      return;
+    }
+    
+    let formatted = line;
+    if (/^#+\s/.test(formatted)) {
+      formatted = `\x1b[1m\x1b[34m${formatted}\x1b[0m`;
+      process.stdout.write(formatted);
+      return;
+    }
+    
+    formatted = formatted.replace(/\*\*(.*?)\*\*/g, '\x1b[1m$1\x1b[0m');
+    formatted = formatted.replace(/`([^`]+)`/g, '\x1b[33m`$1`\x1b[0m');
+    
+    process.stdout.write(formatted);
+  }
+}
+
 export function registerChatCommand(program: Command) {
   program
     .command('chat <message>')
     .description('Send a chat message to a local TiClaw agent and stream the response')
     .option('-a, --agent <id>', 'Target agent ID (defaults to "default")')
+    .option('-r, --raw', 'Output raw markdown instead of rendering it')
     .action(async (message: string, options) => {
       const agentId = options.agent || 'default';
       const sessionId = `cli-${crypto.randomUUID()}`;
       const taskId = crypto.randomUUID();
+      const printer = new StreamMarkdownPrinter(!!options.raw);
 
       console.log(`\x1b[36mConnecting to agent '${agentId}'...\x1b[0m`);
 
@@ -47,8 +107,9 @@ export function registerChatCommand(program: Command) {
                     // Ready to push the message now that the stream is open!
                     dispatchMessage();
                   } else if (event.type === 'stream_delta') {
-                    process.stdout.write(event.text);
+                    printer.print(event.text);
                   } else if (event.type === 'stream_end') {
+                    printer.flush();
                     console.log('\n');
                     process.exit(0);
                   }

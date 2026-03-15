@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "commander": "^13.0.0"
+    "commander": "^13.0.0",
+    "marked": "^17.0.4",
+    "marked-terminal": "^7.3.0"
   },
   "peerDependencies": {
     "ticlaw": "workspace:*"
@@ -21,6 +23,7 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/marked-terminal": "^6.1.1"
   }
 }
