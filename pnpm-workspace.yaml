@@ -3,3 +3,6 @@ packages:
   - 'cli'
   - 'hub'
   - 'web'
+allowBuilds:
+  esbuild: true
+  protobufjs: true
