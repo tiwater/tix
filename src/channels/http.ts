@@ -832,6 +832,7 @@ export class HttpChannel implements Channel {
             text: m.content,
             sender: m.sender_name || m.sender,
             time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : '',
+            attachments: m.attachments,
           })),
         });
         return;

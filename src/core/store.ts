@@ -318,6 +318,7 @@ interface StoredMessage {
   sender_name: string;
   text: string;
   is_from_me?: boolean;
+  attachments?: Attachment[];
 }
 
 /** Convert internal JSONL format → NewMessage for API compatibility */
@@ -331,6 +332,7 @@ function storedToNewMessage(m: StoredMessage, chatJid: string): NewMessage {
     timestamp: m.ts,
     is_from_me: m.is_from_me ?? m.role === 'bot',
     is_bot_message: m.role === 'bot',
+    attachments: m.attachments,
   };
 }
 
@@ -391,6 +393,7 @@ export function storeMessage(msg: NewMessage): void {
     sender_name: msg.sender_name,
     text: msg.content,
     is_from_me: msg.is_from_me,
+    attachments: msg.attachments,
   };
   appendJsonl(msgPath, stored);
 }

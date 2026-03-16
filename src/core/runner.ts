@@ -735,8 +735,20 @@ export class AgentRunner {
     }
 
     const prompt = parts.join('\n\n---\n\n');
-    _promptCache.set(this.state.agent_id, { prompt, mtimeKey });
-    return prompt;
+    
+    // Inject ticlaw multimedia protocol instructions
+    const multimediaPrompt = `
+---
+## Multimedia & TICLAW Protocol
+When you capture screenshots, generate images, or discover files that should be SHOWN to the user, you MUST include a specific URI in your text reply.
+- To show an image: \`ticlaw://image/<absolute_path_or_filename>\`
+- To share a file: \`ticlaw://file/<absolute_path_or_filename>\`
+The platform will automatically extract these links and render the content visually. Do not just describe the items; link them using this protocol.
+---
+`;
+    const finalPrompt = prompt + multimediaPrompt;
+    _promptCache.set(this.state.agent_id, { prompt: finalPrompt, mtimeKey });
+    return finalPrompt;
   }
 
   /**

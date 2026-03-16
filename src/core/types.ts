@@ -170,6 +170,15 @@ export interface ScheduleRecord {
   created_at: string;
 }
 
+export interface Attachment {
+  type: 'image' | 'video' | 'audio' | 'file';
+  url?: string;
+  base64?: string;
+  mime_type?: string;
+  filename?: string;
+  size?: number;
+}
+
 export interface NewMessage {
   id: string;
   chat_jid: string;
@@ -182,6 +191,7 @@ export interface NewMessage {
   agent_id?: string;
   session_id?: string;
   task_id?: string;
+  attachments?: Attachment[];
 }
 
 export interface AvailableProject {
