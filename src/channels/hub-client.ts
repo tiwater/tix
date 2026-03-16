@@ -201,24 +201,46 @@ export class HubClientChannel implements Channel {
       }
 
       const res = await fetch(localUrl, fetchOpts);
-      const body = await res.text();
+      const contentType = res.headers.get('content-type') || '';
+      const isJson = contentType.includes('application/json');
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        parsed = body;
+      if (isJson) {
+        // JSON responses: relay as-is
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          parsed = body;
+        }
+        this.ws?.send(
+          JSON.stringify({
+            type: 'api_response',
+            request_id: payload.request_id,
+            status: res.status,
+            headers: {},
+            body: parsed,
+          }),
+        );
+      } else {
+        // Binary responses (images, PDFs, etc.): base64-encode
+        const buffer = Buffer.from(await res.arrayBuffer());
+        this.ws?.send(
+          JSON.stringify({
+            type: 'api_response',
+            request_id: payload.request_id,
+            status: res.status,
+            headers: {
+              'content-type': contentType,
+              'content-disposition': res.headers.get('content-disposition') || '',
+              'content-length': String(buffer.length),
+              'cache-control': res.headers.get('cache-control') || '',
+            },
+            body: buffer.toString('base64'),
+            encoding: 'base64',
+          }),
+        );
       }
-
-      this.ws?.send(
-        JSON.stringify({
-          type: 'api_response',
-          request_id: payload.request_id,
-          status: res.status,
-          headers: {},
-          body: parsed,
-        }),
-      );
     } catch (err) {
       logger.error({ err, path: payload.path }, 'Failed to relay API request');
       this.ws?.send(

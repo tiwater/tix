@@ -23,6 +23,7 @@ export interface RelayResult {
   status: number;
   headers: Record<string, string>;
   body: unknown;
+  encoding?: 'base64';
 }
 
 export interface HubOptions {
@@ -140,6 +141,7 @@ function handleNodeMessage(
           status: (msg.status as number) || 200,
           headers: (msg.headers as Record<string, string>) || {},
           body: msg.body,
+          encoding: msg.encoding === 'base64' ? 'base64' : undefined,
         });
       }
       break;
@@ -316,14 +318,27 @@ export function handleHubRequest(
         url.pathname + url.search,
         parsedBody,
       );
-      res.writeHead(result.status, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        ...result.headers,
-      });
-      res.end(
-        typeof result.body === 'string' ? result.body : JSON.stringify(result.body),
-      );
+
+      if (result.encoding === 'base64' && typeof result.body === 'string') {
+        // Binary response from node — decode base64 and stream
+        const buffer = Buffer.from(result.body, 'base64');
+        res.writeHead(result.status, {
+          'Access-Control-Allow-Origin': '*',
+          ...result.headers,
+          'Content-Length': String(buffer.length),
+        });
+        res.end(buffer);
+      } else {
+        // JSON response
+        res.writeHead(result.status, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          ...result.headers,
+        });
+        res.end(
+          typeof result.body === 'string' ? result.body : JSON.stringify(result.body),
+        );
+      }
     });
     return true;
   }
