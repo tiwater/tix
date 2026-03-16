@@ -3,6 +3,7 @@
  * Previously in executor/group-folder.ts — moved here when executor/ was removed.
  */
 import path from 'path';
+import crypto from 'crypto';
 import { TICLAW_HOME } from './config.js';
 
 const VALID_FOLDER_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -16,4 +17,8 @@ export function resolveGroupFolderPath(folder: string): string {
     throw new Error(`Invalid group folder: ${JSON.stringify(folder)}`);
   }
   return path.join(TICLAW_HOME, 'factory', folder);
+}
+
+export function generateSecureId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
 }

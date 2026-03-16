@@ -8,6 +8,7 @@ import {
 } from '../core/enrollment.js';
 import { NODE_HOSTNAME, HTTP_PORT } from '../core/config.js';
 import { Channel, NewMessage, RegisteredProject } from '../core/types.js';
+import { generateSecureId } from '../core/utils.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 
 const HUB_JID_PREFIX = 'hub:';
@@ -142,9 +143,7 @@ export class HubClientChannel implements Channel {
         const chatJid = `${HUB_JID_PREFIX}${agent_id}:${session_id}`;
 
         const msg: NewMessage = {
-          id:
-            payload.id ||
-            `hub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: payload.id || generateSecureId('hub'),
           chat_jid: chatJid,
           sender: sender || 'hub-user',
           sender_name: sender_name || 'Hub User',

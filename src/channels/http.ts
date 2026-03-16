@@ -72,6 +72,7 @@ import type {
   RegisteredProject,
   SessionContext,
 } from '../core/types.js';
+import { generateSecureId } from '../core/utils.js';
 
 import { app } from '../core/app.js';
 import { forceSchedulerCheck } from '../task-scheduler.js';
@@ -314,7 +315,7 @@ export class HttpChannel implements Channel {
           });
 
           const msg: NewMessage = {
-            id: `ws-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: generateSecureId('ws'),
             chat_jid: chatJid,
             sender: sender || 'ws-user',
             sender_name: sender_name || 'WS User',
@@ -650,7 +651,7 @@ export class HttpChannel implements Channel {
         this.opts.onChatMetadata(chatJid, timestamp, undefined, 'http', false);
 
         const msg: NewMessage = {
-          id: `web-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: generateSecureId('web'),
           chat_jid: chatJid,
           sender: senderId,
           sender_name: senderName,

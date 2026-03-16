@@ -43,6 +43,7 @@ import {
   readEnrollmentState,
   verifyEnrollmentToken,
 } from './core/enrollment.js';
+import { generateSecureId } from './core/utils.js';
 import {
   routeOutbound,
   routeOutboundFile,
@@ -378,7 +379,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
             lastAgentTimestamp[chatJid] = ts;
             setRouterState(chatJid, ts);
             storeMessage({
-              id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              id: generateSecureId('bot'),
               chat_jid: chatJid,
               sender: ASSISTANT_NAME,
               sender_name: ASSISTANT_NAME,
@@ -667,7 +668,7 @@ async function main(): Promise<void> {
     // Store bot response so conversation history includes assistant turns
     if (text.trim()) {
       storeMessage({
-        id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: generateSecureId('bot'),
         chat_jid: jid,
         sender: ASSISTANT_NAME,
         sender_name: ASSISTANT_NAME,
