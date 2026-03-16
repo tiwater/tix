@@ -175,8 +175,18 @@ function createAppState() {
             text: m.text || '',
             time: m.time || '',
           }));
-          const historyIds = new Set(history.map((m: Message) => m.id));
-          messages = [...history, ...messages.filter((m) => m.id !== 'welcome' && !historyIds.has(m.id))];
+          const historyIds = new Set(history.map((m: any) => m.id));
+          const historyTexts = new Set(history.map((m: any) => m.text));
+          messages = [
+            ...history,
+            ...messages.filter((m) => {
+              if (m.id === 'welcome') return false;
+              if (historyIds.has(m.id)) return false;
+              if (m.role === 'bot' && m.id.startsWith('bot-')) return false; // discard temporary SSE bubbles
+              if (m.role === 'user' && historyTexts.has(m.text)) return false; // discard local user bubbles now in DB
+              return true;
+            }),
+          ];
         }
       } catch { /* ignore */ }
     }
@@ -228,9 +238,16 @@ function createAppState() {
           return;
         }
 
-        // message: the authoritative final response
+        // message: the authoritative final response or standalone file
         if (data.type === 'message' && data.text) {
           if (isThinking) { isThinking = false; progressCategory = ''; }
+
+          if (data.is_file) {
+            pushBotMessage(data.text);
+            fetchMindFiles();
+            return;
+          }
+
           if (streamingMessageId) {
             // Streaming was active — replace with authoritative text
             messages = messages.map((m) => m.id === streamingMessageId ? { ...m, text: data.text, streaming: false } : m);

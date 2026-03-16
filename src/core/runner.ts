@@ -312,8 +312,8 @@ function startOutputLoop(key: string, warm: WarmSession): void {
             // Track files created by Bash tool executions
             if (block.type === 'tool_use' && block.name === 'Bash') {
               const cmd = block.input?.command || block.input?.cmd || '';
-              // Extract --path argument from screenshot commands
-              const pathMatch = cmd.match(/--path\s+["']?([^"'\s]+)/i);
+              // Extract file arguments from screenshot and other tool commands
+              const pathMatch = cmd.match(/--(?:path|out|screenshot)\s+["']?([^"'\s]+)/i);
               if (pathMatch) {
                 handler.pendingFiles.add(pathMatch[1]);
               }

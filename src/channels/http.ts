@@ -1117,6 +1117,7 @@ export class HttpChannel implements Channel {
       agent_id: agentId,
       session_id: session?.session_id,
       text,
+      is_file: true,
     });
 
     logger.info({ jid, ticlawUrl, mime }, 'File sent to web client');
