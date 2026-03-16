@@ -235,6 +235,16 @@ function buildQueryOptions(
     systemPrompt,
     cwd: workspace,
     allowedTools: ['Read', 'Edit', 'Bash', 'Glob', 'Grep', 'Write'],
+    mcpServers: {
+      scheduler: {
+        command: 'node',
+        args: [path.join(process.cwd(), 'dist/bin/mcp-scheduler.js')],
+      },
+      os: {
+        command: 'node',
+        args: [path.join(process.cwd(), 'dist/bin/mcp-os.js')],
+      },
+    },
     permissionMode: 'acceptEdits' as const,
     model: DEFAULT_LLM_MODEL,
     settingSources: [] as any[],
@@ -249,6 +259,7 @@ function buildQueryOptions(
       TICLAW_AGENT_ID: agentId,
       TICLAW_SESSION_ID: sessionId,
       TICLAW_TASK_ID: taskId,
+      PATH: `${path.join(TICLAW_HOME, 'bin')}:${process.env.PATH}`,
     } as Record<string, string>,
   };
 }
