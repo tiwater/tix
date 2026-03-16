@@ -3,6 +3,12 @@
   import { marked } from 'marked';
   import DOMPurify from 'isomorphic-dompurify';
   import { appState } from '$lib/stores/app-state.svelte';
+  import { resolveProtocolUrls } from '$lib/ticlaw-protocol';
+
+  function renderMarkdown(text: string): string {
+    const html = DOMPurify.sanitize(marked.parse(text) as string);
+    return resolveProtocolUrls(html);
+  }
   import { Send, Loader2, User, Bot, PanelRightOpen, PanelRightClose, FileText, Brain, UserCircle, BookOpen, RefreshCw, ChevronDown, ChevronRight, Puzzle, ToggleLeft, ToggleRight } from 'lucide-svelte';
 
   let messagesEl = $state<HTMLElement>(null!);
@@ -89,7 +95,7 @@
                 {#if msg.role === 'user' || msg.showRaw}
                   <pre class="whitespace-pre-wrap font-sans text-[13px] m-0">{msg.text}</pre>
                 {:else}
-                  {@html DOMPurify.sanitize(marked.parse(msg.text) as string)}
+                  {@html renderMarkdown(msg.text)}
                 {/if}
               </div>
               {#if msg.time || msg.role !== 'user'}

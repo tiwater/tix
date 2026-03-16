@@ -439,7 +439,7 @@ export class AgentRunner {
               handler.textParts.join('\n').trim() ||
               '(done)';
 
-            // Rewrite workspace file paths to /api/workspace URLs
+            // Rewrite workspace file paths to ticlaw:// protocol URLs
             const workspace = agentPaths(this.state.agent_id).workspace;
             const agentId = this.state.agent_id;
             const allText = handler.textParts.join('\n');
@@ -453,7 +453,7 @@ export class AgentRunner {
               const absPath = path.join(workspace, relPath);
               if (fs.existsSync(absPath)) {
                 rewrittenPaths.add(absPath);
-                return `/api/workspace/${encodeURIComponent(relPath)}?agent_id=${encodeURIComponent(agentId)}`;
+                return `ticlaw://workspace/${agentId}/${relPath}`;
               }
               return _match;
             });

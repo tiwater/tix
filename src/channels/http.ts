@@ -1094,22 +1094,22 @@ export class HttpChannel implements Channel {
     const mime = inferMimeType(filePath);
     const label = caption || path.basename(filePath);
 
-    let fileUrl: string;
+    let ticlawUrl: string;
     if (filePath.startsWith(workspace)) {
       const relPath = path.relative(workspace, filePath);
-      fileUrl = `/api/workspace/${encodeURIComponent(relPath)}?agent_id=${encodeURIComponent(agentId)}`;
+      ticlawUrl = `ticlaw://workspace/${agentId}/${relPath}`;
     } else {
       // File outside workspace — copy to workspace first
       const destName = `${randomUUID()}${path.extname(filePath)}`;
       const destPath = path.join(workspace, '.files', destName);
       fs.mkdirSync(path.join(workspace, '.files'), { recursive: true });
       fs.copyFileSync(filePath, destPath);
-      fileUrl = `/api/workspace/.files/${encodeURIComponent(destName)}?agent_id=${encodeURIComponent(agentId)}`;
+      ticlawUrl = `ticlaw://workspace/${agentId}/.files/${destName}`;
     }
 
     const text = mime.startsWith('image/')
-      ? `![${label}](${fileUrl})`
-      : `[${label}](${fileUrl})`;
+      ? `![${label}](${ticlawUrl})`
+      : `[${label}](${ticlawUrl})`;
 
     broadcastToChat(jid, {
       type: 'message',
@@ -1119,7 +1119,7 @@ export class HttpChannel implements Channel {
       text,
     });
 
-    logger.info({ jid, fileUrl, mime }, 'File sent to web client');
+    logger.info({ jid, ticlawUrl, mime }, 'File sent to web client');
   }
 
   isConnected(): boolean {
