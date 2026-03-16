@@ -122,4 +122,33 @@ export function registerSkillsCommand(program: Command): void {
       'Remove an installed skill and delete managed copies when present',
     )
     .action(async (name: string) => runCoreSkillsCommand(['remove', name]));
+
+  const auth = skills
+    .command('auth')
+    .description('Check and manage authentication per skill');
+
+  auth
+    .command('status [name]')
+    .description('Show auth status for one skill or all skills')
+    .option('--json', 'Emit machine-readable JSON')
+    .action(async (name: string | undefined, options: { json?: boolean }) => {
+      const args = ['auth', 'status'];
+      if (name) args.push(name);
+      if (options.json) args.push('--json');
+      await runCoreSkillsCommand(args);
+    });
+
+  auth
+    .command('login <name>')
+    .description('Authenticate one skill')
+    .action(async (name: string) =>
+      runCoreSkillsCommand(['auth', 'login', name]),
+    );
+
+  auth
+    .command('logout <name>')
+    .description('Clear authentication for one skill')
+    .action(async (name: string) =>
+      runCoreSkillsCommand(['auth', 'logout', name]),
+    );
 }

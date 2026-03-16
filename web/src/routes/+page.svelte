@@ -96,6 +96,7 @@
   let sseLog = $state<string[]>([]);
   let sending = $state(false);
   let isThinking = $state(false);
+  let progressText = $state('');
   let mindFiles = $state<Record<string, WorkspaceFile>>({});
 
   // Tab data
@@ -120,6 +121,9 @@
   let messagesEl = $state<HTMLElement>(null!);
   let inputEl = $state<HTMLTextAreaElement>(null!);
   let eventSource: EventSource | null = null;
+  let streamingMessageId: string | null = $state(null);
+  let activeStreamId = $state<string | null>(null);
+  let lastStreamSeq = $state(0);
 
   const staticTabs: { id: Tab; icon: string; label: string }[] = [
     { id: 'sessions', icon: '🤖', label: 'Agents' },
@@ -173,10 +177,13 @@
             text: m.text || '',
             time: m.time || '',
           }));
-          // Prepend history before the welcome message, replacing welcome
+          const historyIds = new Set(history.map((m: Message) => m.id));
+          // Prepend persisted history and preserve any live-only streaming message.
           messages = [
             ...history,
-            ...messages.filter((m) => m.id !== 'welcome'),
+            ...messages.filter(
+              (m) => m.id !== 'welcome' && !historyIds.has(m.id),
+            ),
           ];
           scrollToBottom();
         }
@@ -193,17 +200,52 @@
           return;
         }
 
+        if (data.type === 'progress' && data.text) {
+          progressText = data.text;
+          if (!streamingMessageId) {
+            isThinking = true;
+          }
+          return;
+        }
+
+        if (data.type === 'progress_end') {
+          progressText = '';
+          return;
+        }
+
         // Streaming: handle token-level stream_delta events
         if (data.type === 'stream_delta' && data.text) {
+          const { isDuplicate, isNewStream } = advanceStreamEvent(data);
+          if (isDuplicate) {
+            return;
+          }
           if (isThinking) {
             isThinking = false;
+            progressText = '';
+          }
+          if (isNewStream && streamingMessageId) {
+            messages = messages.map((m) =>
+              m.id === streamingMessageId ? { ...m, streaming: false } : m,
+            );
+          }
+          if (isNewStream) {
+            streamingMessageId = null;
           }
 
-          // Append to existing streaming message or create a new one
+          const currentText =
+            streamingMessageId
+              ? messages.find((m) => m.id === streamingMessageId)?.text || ''
+              : '';
+          const nextText =
+            typeof data.full_text === 'string'
+              ? data.full_text
+              : currentText + data.text;
+
+          // Replace the in-flight message with the server's current snapshot.
           if (streamingMessageId) {
             messages = messages.map((m) =>
               m.id === streamingMessageId
-                ? { ...m, text: m.text + data.text }
+                ? { ...m, text: nextText, streaming: true }
                 : m,
             );
           } else {
@@ -213,8 +255,9 @@
               {
                 id: streamingMessageId,
                 role: 'bot',
-                text: data.text,
+                text: nextText,
                 time: new Date().toLocaleTimeString(),
+                streaming: true,
               },
             ];
           }
@@ -230,6 +273,7 @@
         ) {
           if (isThinking) {
             isThinking = false;
+            progressText = '';
           }
           // Intentionally do not append data.activity.target to messages here.
           // The event source sends 'stream_delta' concurrently for the actual text chunk.
@@ -239,15 +283,26 @@
 
         // Stream complete — finalize the streaming message with authoritative text
         if (data.type === 'stream_end') {
+          const { isDuplicate } = advanceStreamEvent(data);
+          if (isDuplicate) {
+            return;
+          }
           if (isThinking) {
             isThinking = false;
+            progressText = '';
           }
-          if (streamingMessageId && data.text) {
+          const finalText =
+            typeof data.full_text === 'string' ? data.full_text : data.text;
+          if (streamingMessageId && finalText) {
             messages = messages.map((m) =>
-              m.id === streamingMessageId ? { ...m, text: data.text } : m,
+              m.id === streamingMessageId
+                ? { ...m, text: finalText, streaming: false }
+                : m,
             );
+          } else if (finalText) {
+            pushBotMessage(finalText);
           }
-          streamingMessageId = null;
+          resetStreamingState();
           fetchMindFiles();
           return;
         }
@@ -256,14 +311,17 @@
         if (data.type === 'message' && data.text) {
           if (isThinking) {
             isThinking = false;
+            progressText = '';
             fetchMindFiles();
           }
           if (streamingMessageId) {
             // Replace the streaming message with the final text
             messages = messages.map((m) =>
-              m.id === streamingMessageId ? { ...m, text: data.text } : m,
+              m.id === streamingMessageId
+                ? { ...m, text: data.text, streaming: false }
+                : m,
             );
-            streamingMessageId = null;
+            resetStreamingState();
           } else {
             pushBotMessage(data.text);
           }
@@ -277,6 +335,7 @@
 
     eventSource.onerror = () => {
       sseConnected = false;
+      progressText = '';
       addLog('SSE disconnected — retrying…');
     };
   }
@@ -285,6 +344,7 @@
     eventSource?.close();
     eventSource = null;
     sseConnected = false;
+    progressText = '';
   }
 
   // --- Helpers ---
@@ -292,7 +352,47 @@
     sseLog = [...sseLog.slice(-8), `${new Date().toLocaleTimeString()} ${msg}`];
   }
 
-  let streamingMessageId: string | null = $state(null);
+  function advanceStreamEvent(data: {
+    stream_id?: string;
+    seq?: number;
+  }): {
+    isDuplicate: boolean;
+    isNewStream: boolean;
+  } {
+    const streamId =
+      typeof data.stream_id === 'string' && data.stream_id.trim()
+        ? data.stream_id
+        : null;
+    const seq = typeof data.seq === 'number' ? data.seq : null;
+
+    if (!streamId || seq === null) {
+      return {
+        isDuplicate: false,
+        isNewStream: false,
+      };
+    }
+
+    const isNewStream = streamId !== activeStreamId;
+    if (!isNewStream && seq <= lastStreamSeq) {
+      return {
+        isDuplicate: true,
+        isNewStream: false,
+      };
+    }
+
+    activeStreamId = streamId;
+    lastStreamSeq = seq;
+    return {
+      isDuplicate: false,
+      isNewStream,
+    };
+  }
+
+  function resetStreamingState() {
+    streamingMessageId = null;
+    activeStreamId = null;
+    lastStreamSeq = 0;
+  }
 
   function pushBotMessage(text: string) {
     messages = [
@@ -330,6 +430,7 @@
     scrollToBottom();
     sending = true;
     isThinking = true;
+    progressText = '';
 
     try {
       const res = await fetch(`/runs`, {
@@ -344,6 +445,7 @@
       });
       if (!res.ok) {
         isThinking = false;
+        progressText = '';
         if (res.status === 403) {
           try {
             const errData = await res.json();
@@ -393,6 +495,7 @@
       }
     } catch (e: any) {
       isThinking = false;
+      progressText = '';
       messages = [
         ...messages,
         {
@@ -633,16 +736,18 @@
     sessionId = sess.session_id;
     // Clear previous session state
     messages = [];
-    streamingMessageId = null;
+    resetStreamingState();
     isThinking = false;
+    progressText = '';
     activeTab = 'chat';
     connectSSE();
   }
 
   function reconnect() {
     messages = [];
-    streamingMessageId = null;
+    resetStreamingState();
     isThinking = false;
+    progressText = '';
     connectSSE();
   }
 
@@ -784,9 +889,10 @@
             <div class="avatar bot">🤖</div>
             <div>
               <div class="bubble thinking">
-                Thinking<span class="dots"
-                  ><span>.</span><span>.</span><span>.</span></span
-                >
+                {progressText || 'Thinking'}
+                {#if !progressText}
+                  <span class="dots"><span>.</span><span>.</span><span>.</span></span>
+                {/if}
               </div>
             </div>
           </div>

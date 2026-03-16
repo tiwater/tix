@@ -1,4 +1,6 @@
 import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
 import { SkillsRegistry } from './registry.js';
 import type {
   ListedSkill,
@@ -29,9 +31,50 @@ function helpText(): string {
     '- /skills enable <name> [--approve]',
     '- /skills disable <name>',
     '- /skills remove <name>',
+    '- /skills auth status [name] [--json]',
+    '- /skills auth login <name>',
+    '- /skills auth logout <name>',
     '- /skills audit [--limit <n>] [--json]',
   ].join('\n');
 }
+
+type SkillAuthAction = 'status' | 'login' | 'logout';
+type SkillAuthState =
+  | 'authenticated'
+  | 'unauthenticated'
+  | 'unsupported'
+  | 'error';
+
+interface SkillAuthResult {
+  skill: string;
+  action: SkillAuthAction;
+  state: SkillAuthState;
+  authenticated: boolean | null;
+  exit_code: number | null;
+  script: string | null;
+  output?: string;
+  error?: string;
+}
+
+const AUTH_SCRIPT_CANDIDATES: Record<SkillAuthAction, string[]> = {
+  status: [
+    'scripts/auth-status.sh',
+    'scripts/auth-status.mjs',
+    'scripts/auth-status.js',
+    'scripts/auth.sh',
+  ],
+  login: [
+    'scripts/auth-login.sh',
+    'scripts/auth-login.mjs',
+    'scripts/auth-login.js',
+    'scripts/auth.sh',
+  ],
+  logout: [
+    'scripts/auth-logout.sh',
+    'scripts/auth-logout.mjs',
+    'scripts/auth-logout.js',
+  ],
+};
 
 function ok(message: string): SkillsCommandResult {
   return { ok: true, exitCode: 0, message };
@@ -249,6 +292,270 @@ function parseFlags(tokens: string[]): {
   return { approve, trust, json, hash, limit, args };
 }
 
+function authHelpText(): string {
+  return [
+    'Skills auth commands:',
+    '- /skills auth status [name] [--json]',
+    '- /skills auth login <name>',
+    '- /skills auth logout <name>',
+    '',
+    'Conventions:',
+    '- status scripts should exit 0 when authenticated and 10 when unauthenticated.',
+  ].join('\n');
+}
+
+function resolveAuthScriptPath(
+  entry: ListedSkill,
+  action: SkillAuthAction,
+): string | undefined {
+  for (const relativePath of AUTH_SCRIPT_CANDIDATES[action]) {
+    const fullPath = path.join(entry.skill.directory, relativePath);
+    if (fs.existsSync(fullPath)) {
+      return fullPath;
+    }
+  }
+  return undefined;
+}
+
+function executeAuthScript(
+  entry: ListedSkill,
+  action: SkillAuthAction,
+  scriptPath: string,
+): { exitCode: number; stdout: string; stderr: string } {
+  const extension = path.extname(scriptPath).toLowerCase();
+  const runner = extension === '.sh' ? 'bash' : 'node';
+  const interactive =
+    action !== 'status' && process.stdin.isTTY && process.stdout.isTTY;
+
+  const result = spawnSync(runner, [scriptPath], {
+    cwd: entry.skill.directory,
+    env: process.env,
+    encoding: 'utf-8',
+    stdio: interactive ? 'inherit' : 'pipe',
+  });
+
+  if (result.error) {
+    return {
+      exitCode: 1,
+      stdout: '',
+      stderr: result.error.message,
+    };
+  }
+
+  return {
+    exitCode: typeof result.status === 'number' ? result.status : 1,
+    stdout:
+      interactive || typeof result.stdout !== 'string'
+        ? ''
+        : result.stdout.trim(),
+    stderr:
+      interactive || typeof result.stderr !== 'string'
+        ? ''
+        : result.stderr.trim(),
+  };
+}
+
+function classifyStatusResult(
+  entry: ListedSkill,
+  scriptPath: string | undefined,
+  execution?: { exitCode: number; stdout: string; stderr: string },
+): SkillAuthResult {
+  if (!scriptPath) {
+    return {
+      skill: entry.skill.name,
+      action: 'status',
+      state: 'unsupported',
+      authenticated: null,
+      exit_code: null,
+      script: null,
+      error: 'No auth status script found.',
+    };
+  }
+
+  if (!execution) {
+    return {
+      skill: entry.skill.name,
+      action: 'status',
+      state: 'error',
+      authenticated: null,
+      exit_code: 1,
+      script: scriptPath,
+      error: 'Auth status script did not execute.',
+    };
+  }
+
+  if (execution.exitCode === 0) {
+    return {
+      skill: entry.skill.name,
+      action: 'status',
+      state: 'authenticated',
+      authenticated: true,
+      exit_code: 0,
+      script: scriptPath,
+      output: execution.stdout || undefined,
+    };
+  }
+
+  if (execution.exitCode === 10) {
+    return {
+      skill: entry.skill.name,
+      action: 'status',
+      state: 'unauthenticated',
+      authenticated: false,
+      exit_code: 10,
+      script: scriptPath,
+      output: execution.stdout || undefined,
+      error: execution.stderr || undefined,
+    };
+  }
+
+  return {
+    skill: entry.skill.name,
+    action: 'status',
+    state: 'error',
+    authenticated: null,
+    exit_code: execution.exitCode,
+    script: scriptPath,
+    output: execution.stdout || undefined,
+    error: execution.stderr || undefined,
+  };
+}
+
+function summarizeStatus(result: SkillAuthResult): string {
+  const detail = (result.error || result.output || '').split('\n')[0].trim();
+  return detail ? `${result.state} (${detail})` : result.state;
+}
+
+function formatAuthStatus(
+  skillName: string | undefined,
+  json = false,
+): SkillsCommandResult {
+  const registry = new SkillsRegistry();
+
+  if (skillName) {
+    const entry = registry.inspectSkill(skillName);
+    if (!entry) {
+      return fail(`Skill "${skillName}" was not found.`);
+    }
+
+    const scriptPath = resolveAuthScriptPath(entry, 'status');
+    const execution = scriptPath
+      ? executeAuthScript(entry, 'status', scriptPath)
+      : undefined;
+    const result = classifyStatusResult(entry, scriptPath, execution);
+
+    if (json) {
+      return ok(JSON.stringify(result, null, 2));
+    }
+
+    return ok(
+      [
+        `Auth status for ${result.skill}: ${result.state}`,
+        result.script ? `- script: ${result.script}` : undefined,
+        result.output ? `- output: ${result.output}` : undefined,
+        result.error ? `- error: ${result.error}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
+  }
+
+  const entries = registry.listAvailable();
+  const results = entries.map((entry) => {
+    const scriptPath = resolveAuthScriptPath(entry, 'status');
+    const execution = scriptPath
+      ? executeAuthScript(entry, 'status', scriptPath)
+      : undefined;
+    return classifyStatusResult(entry, scriptPath, execution);
+  });
+
+  if (json) {
+    return ok(JSON.stringify(results, null, 2));
+  }
+
+  if (results.length === 0) {
+    return ok('No OpenClaw-compatible skills found.');
+  }
+
+  return ok(
+    [
+      'Skill auth status:',
+      ...results.map(
+        (result) => `- ${result.skill}: ${summarizeStatus(result)}`,
+      ),
+    ].join('\n'),
+  );
+}
+
+function executeAuthAction(
+  action: Exclude<SkillAuthAction, 'status'>,
+  skillName: string,
+): SkillsCommandResult {
+  const registry = new SkillsRegistry();
+  const entry = registry.inspectSkill(skillName);
+  if (!entry) {
+    return fail(`Skill "${skillName}" was not found.`);
+  }
+
+  const scriptPath = resolveAuthScriptPath(entry, action);
+  if (!scriptPath) {
+    return fail(
+      `Skill "${skillName}" does not implement auth ${action}. Expected one of: ${AUTH_SCRIPT_CANDIDATES[action].join(', ')}`,
+    );
+  }
+
+  const result = executeAuthScript(entry, action, scriptPath);
+  if (result.exitCode === 0) {
+    const verb = action === 'login' ? 'Authenticated' : 'Logged out';
+    return ok(`${verb} skill "${skillName}".`);
+  }
+
+  const details = [result.stdout, result.stderr].filter(Boolean).join('\n');
+  return fail(
+    [
+      `Skill "${skillName}" auth ${action} failed (exit ${result.exitCode}).`,
+      details || undefined,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  );
+}
+
+function executeAuthCommand(
+  args: string[],
+  context: RegistryActionContext,
+  json = false,
+): SkillsCommandResult {
+  if (!context.isAdmin) {
+    return fail('Only admin users can run /skills auth commands.');
+  }
+
+  const [subcommand, skillName] = args;
+  switch (subcommand) {
+    case undefined:
+    case 'help':
+      return ok(authHelpText());
+    case 'status':
+      return formatAuthStatus(skillName, json);
+    case 'login':
+      if (json) {
+        return fail('--json is only supported for /skills auth status.');
+      }
+      return skillName
+        ? executeAuthAction('login', skillName)
+        : fail('Usage: /skills auth login <name>');
+    case 'logout':
+      if (json) {
+        return fail('--json is only supported for /skills auth status.');
+      }
+      return skillName
+        ? executeAuthAction('logout', skillName)
+        : fail('Usage: /skills auth logout <name>');
+    default:
+      return fail(`${authHelpText()}\n\nUnknown auth command: ${subcommand}`);
+  }
+}
+
 function formatAuditEntry(event: SkillAuditEvent): string {
   return [
     `- [${event.timestamp}] ${event.action} ${event.skill}@${event.version}`,
@@ -397,6 +704,12 @@ export function executeSkillsCommand(
       return target
         ? executeMutation('remove', target, commandContext)
         : fail('Usage: /skills remove <name>');
+    case 'auth':
+      return executeAuthCommand(
+        parsed.args.slice(1),
+        commandContext,
+        parsed.json,
+      );
     case 'audit':
       return formatAudit(parsed.json, parsed.limit || 20);
     default:

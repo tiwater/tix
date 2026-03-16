@@ -181,4 +181,159 @@ entry: index.js
       ]),
     );
   });
+
+  it('reports auth status for all skills as json', () => {
+    const workspace = makeTempDir();
+    const discoveryRoot = path.join(workspace, 'skills');
+
+    writeSkillPackage(
+      path.join(discoveryRoot, 'auth-ok'),
+      `---
+name: auth-ok
+description: authenticated skill
+version: 1.0.0
+skill_api_version: 1.0.0
+permissions:
+  - execute
+entry: index.js
+---
+# Auth OK
+`,
+      {
+        'index.js': 'console.log("auth-ok");\n',
+        'scripts/auth-status.sh': 'echo "authenticated"\n',
+      },
+    );
+
+    writeSkillPackage(
+      path.join(discoveryRoot, 'auth-missing'),
+      `---
+name: auth-missing
+description: unauthenticated skill
+version: 1.0.0
+skill_api_version: 1.0.0
+permissions:
+  - execute
+entry: index.js
+---
+# Auth Missing
+`,
+      {
+        'index.js': 'console.log("auth-missing");\n',
+        'scripts/auth-status.sh': 'echo "not logged in" >&2\nexit 10\n',
+      },
+    );
+
+    writeSkillPackage(
+      path.join(discoveryRoot, 'auth-unsupported'),
+      `---
+name: auth-unsupported
+description: no auth script
+version: 1.0.0
+skill_api_version: 1.0.0
+permissions:
+  - execute
+entry: index.js
+---
+# Auth Unsupported
+`,
+      {
+        'index.js': 'console.log("auth-unsupported");\n',
+      },
+    );
+
+    SKILLS_CONFIG.directories = [discoveryRoot];
+    SKILLS_CONFIG.adminOnly = true;
+    SKILLS_CONFIG.allowLevel3 = false;
+    SKILLS_CONFIG.autoEnableOnInstall = false;
+    SKILLS_CONFIG.statePath = path.join(
+      workspace,
+      '.ticlaw',
+      'skills-state.json',
+    );
+    SKILLS_CONFIG.auditLogPath = path.join(
+      workspace,
+      '.ticlaw',
+      'skills-audit.jsonl',
+    );
+
+    const result = executeSkillsCommand(['auth', 'status', '--json'], {
+      actor: 'admin',
+      isAdmin: true,
+    });
+
+    expect(result.ok).toBe(true);
+    const parsed = JSON.parse(result.message) as Array<{
+      skill: string;
+      state: string;
+      authenticated: boolean | null;
+    }>;
+
+    expect(parsed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          skill: 'auth-ok',
+          state: 'authenticated',
+          authenticated: true,
+        }),
+        expect.objectContaining({
+          skill: 'auth-missing',
+          state: 'unauthenticated',
+          authenticated: false,
+        }),
+        expect.objectContaining({
+          skill: 'auth-unsupported',
+          state: 'unsupported',
+          authenticated: null,
+        }),
+      ]),
+    );
+  });
+
+  it('runs skill auth login script', () => {
+    const workspace = makeTempDir();
+    const discoveryRoot = path.join(workspace, 'skills');
+
+    writeSkillPackage(
+      path.join(discoveryRoot, 'auth-login'),
+      `---
+name: auth-login
+description: auth login skill
+version: 1.0.0
+skill_api_version: 1.0.0
+permissions:
+  - execute
+entry: index.js
+---
+# Auth Login
+`,
+      {
+        'index.js': 'console.log("auth-login");\n',
+        'scripts/auth-login.sh': 'echo "login ok"\n',
+      },
+    );
+
+    SKILLS_CONFIG.directories = [discoveryRoot];
+    SKILLS_CONFIG.adminOnly = true;
+    SKILLS_CONFIG.allowLevel3 = false;
+    SKILLS_CONFIG.autoEnableOnInstall = false;
+    SKILLS_CONFIG.statePath = path.join(
+      workspace,
+      '.ticlaw',
+      'skills-state.json',
+    );
+    SKILLS_CONFIG.auditLogPath = path.join(
+      workspace,
+      '.ticlaw',
+      'skills-audit.jsonl',
+    );
+
+    const result = executeSkillsCommand(['auth', 'login', 'auth-login'], {
+      actor: 'admin',
+      isAdmin: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain('Authenticated skill "auth-login".');
+  });
 });

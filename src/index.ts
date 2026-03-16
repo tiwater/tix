@@ -67,6 +67,12 @@ import {
   scheduleSupabasePush,
   startPeriodicSupabasePush,
 } from './sync/supabase-sync.js';
+import {
+  appendStreamChunk,
+  createStreamState,
+  finishStream,
+} from './core/streaming.js';
+import { formatProgressText, progressKeyFromEvent } from './core/progress.js';
 
 // Define ChannelOpts locally as it was removed from registry.ts
 export interface ChannelOpts {
@@ -239,7 +245,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
         ? 'discord'
         : chatJid.startsWith('web:')
           ? 'http'
-          : chatJid.startsWith('fs:')
+          : chatJid.startsWith('feishu:')
             ? 'feishu'
             : 'unknown';
       const session = ensureSession({
@@ -253,38 +259,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
       let statusMessageId: string | null = null;
       let lastProgressSentAt = 0;
       let lastProgressKey = '';
-
-      const progressTextFromEvent = (
-        event: Record<string, unknown>,
-      ): string | null => {
-        const phase = typeof event.phase === 'string' ? event.phase : '';
-        const action = typeof event.action === 'string' ? event.action : '';
-        const target = typeof event.target === 'string' ? event.target : '';
-        const elapsed =
-          typeof event.elapsed_ms === 'number' ? event.elapsed_ms : 0;
-        const secs = Math.max(1, Math.round(elapsed / 1000));
-
-        if (phase === 'stream_event' && action === 'speaking') return null;
-
-        if (action.startsWith('executing_')) {
-          const tool = action.replace(/^executing_/, '');
-          return `🛠 正在调用 ${tool}...（${secs}s）`;
-        }
-
-        if (phase === 'assistant' || action === 'thinking') {
-          return `🧠 正在思考与规划下一步...（${secs}s）`;
-        }
-
-        if (phase === 'result') {
-          return `📦 正在整理最终结果...（${secs}s）`;
-        }
-
-        if (phase === 'error') {
-          return `⚠️ 执行中遇到错误，正在收敛处理...（${secs}s）`;
-        }
-
-        return `⏳ 正在处理中...（${secs}s）`;
-      };
+      let lastProgressEvent: Record<string, unknown> | null = null;
+      const runStartedAt = Date.now();
+      let heartbeatInFlight = false;
+      let heartbeatTimer: NodeJS.Timeout | null = null;
 
       const emitProgress = async (text: string) => {
         if (!text || !text.trim()) return;
@@ -321,77 +299,141 @@ async function processMessages(chatJid: string): Promise<boolean> {
         }
       };
 
-      await runAgent({
-        group,
-        session: { ...session, task_id: `run-${Date.now()}` },
-        messages: aiMessages,
-        onEvent: async (event) => {
-          // Forward streaming text deltas to SSE clients
-          // Runner emits: phase='stream_event', action='speaking', target=deltaText
-          if (
-            (event as any).phase === 'stream_event' &&
-            (event as any).action === 'speaking' &&
-            (event as any).target
-          ) {
-            streamedToWeb = true;
-            broadcastToChat(chatJid, {
-              type: 'stream_delta',
-              text: (event as any).target,
+      const emitProgressHeartbeat = async () => {
+        if (heartbeatInFlight) return;
+        heartbeatInFlight = true;
+        try {
+          const elapsed = Date.now() - runStartedAt;
+          const heartbeatBase = lastProgressEvent
+            ? {
+                ...lastProgressEvent,
+                elapsed_ms: elapsed,
+              }
+            : {
+                phase: 'assistant',
+                action: 'thinking',
+                elapsed_ms: elapsed,
+              };
+          let heartbeatText = formatProgressText(heartbeatBase);
+          if (!heartbeatText) {
+            heartbeatText = formatProgressText({
+              phase: 'assistant',
+              action: 'thinking',
+              elapsed_ms: elapsed,
             });
           }
+          if (!heartbeatText) return;
+          await emitProgress(heartbeatText);
+        } catch (err) {
+          logger.debug({ err, chatJid }, 'Progress heartbeat failed');
+        } finally {
+          heartbeatInFlight = false;
+        }
+      };
 
-          const progressText = progressTextFromEvent(
-            event as Record<string, unknown>,
-          );
-          if (!progressText) return;
+      const taskId = `run-${Date.now()}`;
+      const streamState = createStreamState(`${chatJid}:${taskId}`);
+      heartbeatTimer = setInterval(() => {
+        void emitProgressHeartbeat();
+      }, 15_000);
 
-          const now = Date.now();
-          const progressKey = `${(event as any).phase || ''}|${(event as any).action || ''}`;
-          const shouldSend =
-            !lastProgressSentAt ||
-            progressKey !== lastProgressKey ||
-            now - lastProgressSentAt >= 10000;
+      try {
+        await runAgent({
+          group,
+          session: { ...session, task_id: taskId },
+          messages: aiMessages,
+          onEvent: async (event) => {
+            const eventData = event as Record<string, unknown>;
+            lastProgressEvent = { ...eventData };
 
-          if (!shouldSend) return;
+            // Forward streaming text deltas to SSE clients
+            // Runner emits: phase='stream_event', action='speaking', target=textDelta
+            if (
+              eventData.phase === 'stream_event' &&
+              eventData.action === 'speaking' &&
+              typeof eventData.target === 'string'
+            ) {
+              const frame = appendStreamChunk(streamState, eventData.target);
+              if (frame) {
+                streamedToWeb = true;
+                broadcastToChat(chatJid, {
+                  type: 'stream_delta',
+                  ...frame,
+                });
+              }
+            }
 
-          lastProgressSentAt = now;
-          lastProgressKey = progressKey;
-          await emitProgress(progressText);
-        },
-        onReply: async (text) => {
-          if (chatJid.startsWith('web:')) {
-            broadcastToChat(chatJid, {
-              type: 'progress_end',
-            });
-          }
+            const progressText = formatProgressText(eventData);
+            if (!progressText) return;
 
-          if (chatJid.startsWith('web:') && streamedToWeb) {
-            // Web clients already received the response via stream_delta events.
-            // Send stream_end so the client knows streaming is complete,
-            // and store the bot message without re-broadcasting the full text.
-            broadcastToChat(chatJid, {
-              type: 'stream_end',
-              text,
-            });
-            // Still store the bot message for history
-            const ts = new Date().toISOString();
-            lastAgentTimestamp[chatJid] = ts;
-            setRouterState(chatJid, ts);
-            storeMessage({
-              id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              chat_jid: chatJid,
-              sender: ASSISTANT_NAME,
-              sender_name: ASSISTANT_NAME,
-              content: text,
-              timestamp: ts,
-              is_from_me: true,
-            });
-          } else {
-            // Non-web channels (Discord, Feishu, etc.) or no streaming happened
-            await sendFn(chatJid, text);
-          }
-        },
-      });
+            const now = Date.now();
+            const targetKey =
+              typeof eventData.target === 'string'
+                ? eventData.target.slice(0, 120)
+                : '';
+            const progressKey = `${progressKeyFromEvent(eventData)}|${targetKey}`;
+            const shouldSend =
+              !lastProgressSentAt ||
+              progressKey !== lastProgressKey ||
+              now - lastProgressSentAt >= 10_000;
+
+            if (!shouldSend) return;
+
+            lastProgressSentAt = now;
+            lastProgressKey = progressKey;
+            await emitProgress(progressText);
+          },
+          onReply: async (text) => {
+            if (chatJid.startsWith('web:')) {
+              broadcastToChat(chatJid, {
+                type: 'progress_end',
+              });
+            } else if (statusMessageId) {
+              try {
+                await routeEditMessage(
+                  channels,
+                  chatJid,
+                  statusMessageId,
+                  '✅ 已完成，正在发送最终回复...',
+                );
+              } catch {
+                // Keep going; final answer will still be delivered.
+              }
+            }
+
+            if (chatJid.startsWith('web:') && streamedToWeb) {
+              // Web clients already received the response via stream_delta events.
+              // Send stream_end so the client knows streaming is complete,
+              // and store the bot message without re-broadcasting the full text.
+              broadcastToChat(chatJid, {
+                type: 'stream_end',
+                ...finishStream(streamState, text),
+              });
+              // Still store the bot message for history
+              const ts = new Date().toISOString();
+              lastAgentTimestamp[chatJid] = ts;
+              setRouterState(chatJid, ts);
+              storeMessage({
+                id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                chat_jid: chatJid,
+                sender: ASSISTANT_NAME,
+                sender_name: ASSISTANT_NAME,
+                content: text,
+                timestamp: ts,
+                is_from_me: true,
+              });
+            } else {
+              // Non-web channels (Discord, Feishu, etc.) or no streaming happened
+              await sendFn(chatJid, text);
+            }
+          },
+        });
+      } finally {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+      }
       return true;
     } catch (err: any) {
       logger.error({ err }, 'Agent failed');
