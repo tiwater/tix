@@ -128,6 +128,7 @@ interface ActiveHandler {
   onResult: (event: any) => void;
   startTime: number;
   textParts: string[];
+  pendingFiles: Set<string>;
   resolve: () => void;
   reject: (err: Error) => void;
 }
@@ -308,6 +309,20 @@ function startOutputLoop(key: string, warm: WarmSession): void {
             if (block.type === 'text' && block.text) {
               handler.textParts.push(block.text);
             }
+            // Track files created by Bash tool executions
+            if (block.type === 'tool_use' && block.name === 'Bash') {
+              const cmd = block.input?.command || block.input?.cmd || '';
+              // Extract --path argument from screenshot commands
+              const pathMatch = cmd.match(/--path\s+["']?([^"'\s]+)/i);
+              if (pathMatch) {
+                handler.pendingFiles.add(pathMatch[1]);
+              }
+              // Detect redirect outputs (> file.png)
+              const redirectMatch = cmd.match(/>\s*["']?([^"'\s]+\.(?:png|jpg|jpeg|gif|webp|svg|pdf))/i);
+              if (redirectMatch) {
+                handler.pendingFiles.add(redirectMatch[1]);
+              }
+            }
           }
         }
 
@@ -428,6 +443,7 @@ export class AgentRunner {
         const handler: ActiveHandler = {
           startTime: Date.now(),
           textParts: [],
+          pendingFiles: new Set(),
           resolve,
           reject,
           onEvent: async (event: any, elapsed: number) => {
@@ -442,33 +458,26 @@ export class AgentRunner {
             // Rewrite workspace file paths to ticlaw:// protocol URLs
             const workspace = agentPaths(this.state.agent_id).workspace;
             const agentId = this.state.agent_id;
-            const allText = handler.textParts.join('\n');
 
             // Match absolute paths within the workspace
             const wsEscaped = workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const wsPathRegex = new RegExp(`${wsEscaped}/([^\\s)"\`]+)`, 'g');
-            const rewrittenPaths = new Set<string>();
 
             finalText = finalText.replace(wsPathRegex, (_match, relPath) => {
               const absPath = path.join(workspace, relPath);
               if (fs.existsSync(absPath)) {
-                rewrittenPaths.add(absPath);
                 return `ticlaw://workspace/${agentId}/${relPath}`;
               }
               return _match;
             });
 
-            // Also detect relative image paths and deliver via onFile
-            if (this.events.onFile) {
-              const imgExts = /\.(png|jpg|jpeg|gif|webp|svg)$/i;
-              const pathMatches = allText.match(/(?:[\/\w.-]+\/)?[\w.-]+\.(png|jpg|jpeg|gif|webp|svg)\b/gi) || [];
-              const seen = new Set<string>();
-              for (const rawPath of pathMatches) {
+            // Deliver files detected from tool_use commands (e.g., screenshots)
+            if (this.events.onFile && handler.pendingFiles.size > 0) {
+              for (const rawPath of handler.pendingFiles) {
                 const absPath = path.isAbsolute(rawPath)
                   ? rawPath
                   : path.join(workspace, rawPath);
-                if (!seen.has(absPath) && !rewrittenPaths.has(absPath) && imgExts.test(absPath) && fs.existsSync(absPath)) {
-                  seen.add(absPath);
+                if (fs.existsSync(absPath)) {
                   this.events.onFile(absPath, path.basename(absPath));
                 }
               }
