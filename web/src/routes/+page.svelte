@@ -3,6 +3,11 @@
   import { marked } from 'marked';
   import DOMPurify from 'isomorphic-dompurify';
   import '../app.css';
+  import {
+    Send, Loader2, RefreshCw, Bot, MessageSquare, Clock, Puzzle,
+    Server, Play, Pause, Trash2, Plus, Wifi, WifiOff, Lock, Unlock,
+    ChevronRight,
+  } from 'lucide-svelte';
 
   // --- Types ---
   type Tab = 'chat' | 'sessions' | 'schedules' | 'skills' | 'node';
@@ -127,13 +132,13 @@
 
   const staticTabs: { id: Tab; icon: string; label: string }[] = [
     { id: 'sessions', icon: '🤖', label: 'Agents' },
-    { id: 'chat', icon: '💬', label: 'Chat' },
-    { id: 'schedules', icon: '⏰', label: 'Schedules' },
-    { id: 'skills', icon: '🧩', label: 'Skills' },
+    { id: 'chat' as Tab, icon: 'chat', label: 'Chat' },
+    { id: 'schedules' as Tab, icon: 'schedules', label: 'Schedules' },
+    { id: 'skills' as Tab, icon: 'skills', label: 'Skills' },
   ];
 
   const tabs = $derived([
-    { id: 'node' as Tab, icon: '🦀', label: nodeInfo?.hostname || 'Node' },
+    { id: 'node' as Tab, icon: 'node', label: nodeInfo?.hostname || 'Node' },
     ...staticTabs,
   ]);
 
@@ -798,17 +803,25 @@
         onclick={() => switchTab(tab.id)}
         title={tab.label}
       >
-        <span class="nav-btn-icon">{tab.icon}</span>
+        {#if tab.icon === 'chat'}<MessageSquare size={15} />
+        {:else if tab.icon === 'schedules'}<Clock size={15} />
+        {:else if tab.icon === 'skills'}<Puzzle size={15} />
+        {:else if tab.icon === 'node'}<Server size={15} />
+        {:else}<Bot size={15} />
+        {/if}
         <span class="nav-btn-label">{tab.label}</span>
       </button>
     {/each}
     <div
       style="margin-top:auto;display:flex;align-items:center;gap:8px;padding:12px 16px"
     >
-      <div class="nav-status-dot" class:offline={!sseConnected}></div>
-      <span style="font-size:11px;color:var(--text-dim)"
-        >{sseConnected ? 'Connected' : 'Offline'}</span
-      >
+      {#if sseConnected}
+        <Wifi size={12} style="color:var(--green)" />
+        <span style="font-size:11px;color:var(--green)">Connected</span>
+      {:else}
+        <WifiOff size={12} style="color:var(--text-dim)" />
+        <span style="font-size:11px;color:var(--text-dim)">Offline</span>
+      {/if}
     </div>
   </nav>
 
@@ -816,13 +829,10 @@
   <div class="main-content">
     {#if nodeInfo && nodeInfo.enrollment.trust_state !== 'trusted'}
       <div class="trust-banner">
-        <span
-          >🔒 This node is not trusted ({nodeInfo.enrollment.trust_state}).
-          Messaging is disabled.</span
-        >
-        <button class="btn-sm btn-accent" onclick={trustNode}
-          >🔓 Trust this Node</button
-        >
+        <span>🔒 This node is not trusted ({nodeInfo.enrollment.trust_state}). Messaging is disabled.</span>
+        <button class="btn-sm btn-accent" onclick={trustNode}>
+          <Unlock size={12} /> Trust this Node
+        </button>
       </div>
     {/if}
 
@@ -915,22 +925,26 @@
           disabled={sending || !inputText.trim()}
           title="Send"
         >
-          {sending ? '⏳' : '➤'}
+          {#if sending}
+            <Loader2 size={18} class="spin" />
+          {:else}
+            <Send size={18} />
+          {/if}
         </button>
       </div>
     {:else if activeTab === 'sessions'}
       <!-- Agents & Sessions Browser -->
       <div class="tab-header">
-        <span class="tab-header-icon">🤖</span>
+        <Bot size={18} style="color:var(--accent)" />
         <h2>Agents & Sessions</h2>
         <div style="margin-left:auto;display:flex;gap:8px">
           <button
             class="btn-sm btn-accent"
             onclick={() => {
               showNewAgent = true;
-            }}>＋ New Agent</button
+            }}><Plus size={12} /> New Agent</button
           >
-          <button class="btn-sm" onclick={fetchAgents}>↻ Refresh</button>
+          <button class="btn-sm" onclick={fetchAgents}><RefreshCw size={12} /> Refresh</button>
         </div>
       </div>
 
@@ -971,7 +985,7 @@
                 onclick={() => {
                   newSessionAgentId = selectedAgentId || '';
                   showNewSession = true;
-                }}>＋ New Session</button
+                }}><Plus size={12} /> New Session</button
               >
             </div>
             {#if sessions.length === 0}
@@ -1084,10 +1098,10 @@
     {:else if activeTab === 'schedules'}
       <!-- Schedules View -->
       <div class="tab-header">
-        <span class="tab-header-icon">⏰</span>
+        <Clock size={18} style="color:var(--accent)" />
         <h2>Schedules</h2>
         <div style="margin-left:auto;display:flex;gap:8px">
-          <button class="btn-sm" onclick={fetchSchedules}>↻ Refresh</button>
+          <button class="btn-sm" onclick={fetchSchedules}><RefreshCw size={12} /> Refresh</button>
         </div>
       </div>
       <div class="schedules-wrapper">
@@ -1139,12 +1153,12 @@
                         title={sched.status === 'active' ? 'Pause' : 'Resume'}
                         onclick={() => toggleSchedule(sched.id, sched.status)}
                       >
-                        {sched.status === 'active' ? '⏸' : '▶'}
+                        {#if sched.status === 'active'}<Pause size={13} />{:else}<Play size={13} />{/if}
                       </button>
                       <button
                         class="btn-icon btn-danger"
                         title="Delete"
-                        onclick={() => removeSchedule(sched.id)}>🗑</button
+                        onclick={() => removeSchedule(sched.id)}><Trash2 size={13} /></button
                       >
                     </div>
                   </td>
@@ -1157,10 +1171,10 @@
     {:else if activeTab === 'skills'}
       <!-- Skills View -->
       <div class="tab-header">
-        <span class="tab-header-icon">🧩</span>
+        <Puzzle size={18} style="color:var(--accent)" />
         <h2>Skills</h2>
         <div style="margin-left:auto">
-          <button class="btn-sm" onclick={fetchSkills}>↻ Refresh</button>
+          <button class="btn-sm" onclick={fetchSkills}><RefreshCw size={12} /> Refresh</button>
         </div>
       </div>
 
@@ -1266,10 +1280,10 @@
     {:else if activeTab === 'node'}
       <!-- Node View -->
       <div class="tab-header">
-        <span class="tab-header-icon">🦀</span>
+        <Server size={18} style="color:var(--accent)" />
         <h2>Node</h2>
         <div style="margin-left:auto">
-          <button class="btn-sm" onclick={fetchNode}>↻ Refresh</button>
+          <button class="btn-sm" onclick={fetchNode}><RefreshCw size={12} /> Refresh</button>
         </div>
       </div>
       <div class="runtime-content">
@@ -1300,7 +1314,7 @@
                 <button
                   class="btn-sm"
                   style="color:var(--green);border-color:var(--green)"
-                  onclick={trustNode}>🔓 Trust this Node</button
+                  onclick={trustNode}><Unlock size={12} /> Trust this Node</button
                 >
               </div>
             {/if}
