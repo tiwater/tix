@@ -62,7 +62,7 @@ import {
   verifyEnrollmentToken,
 } from '../core/enrollment.js';
 import { logger } from '../core/logger.js';
-import { getTaskLogPath } from '../run-agent.js';
+import { getTaskLogPath } from '../core/utils.js';
 import { getExecutorStats, listActiveTasks } from '../task-executor.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { maybeHandleAcpRequest } from './acp.js';

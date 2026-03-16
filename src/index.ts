@@ -58,7 +58,7 @@ import {
   RegisteredProject,
 } from './core/types.js';
 
-import { runAgent } from './run-agent.js';
+import { AgentRunner } from './core/runner.js';
 import { broadcastToChat } from './channels/http.js';
 import { getEnabledChannelsFromConfig, readEnvFile } from './core/env.js';
 import {
@@ -341,100 +341,110 @@ async function processMessages(chatJid: string): Promise<boolean> {
       );
 
       try {
-        await runAgent({
-          group,
-          session: { ...session, task_id: taskId },
-          messages: aiMessages,
-          onEvent: async (event) => {
-            const eventData = event as Record<string, unknown>;
-            lastProgressEvent = { ...eventData };
+        const agentId = (group as any).agent_id || group.folder;
+        const runner = new AgentRunner(
+          agentId,
+          { ...session, task_id: taskId }.session_id,
+          {
+            onStateChange: async (state) => {
+              const eventData: Record<string, unknown> = {
+                phase: state.activity?.phase,
+                action: state.activity?.action,
+                target: state.activity?.target,
+                elapsed_ms: state.activity?.elapsed_ms,
+                status: state.status,
+              };
+              lastProgressEvent = { ...eventData };
 
-            // Forward streaming text deltas to SSE clients
-            // Runner emits: phase='stream_event', action='speaking', target=textDelta
-            if (
-              eventData.phase === 'stream_event' &&
-              eventData.action === 'speaking' &&
-              typeof eventData.target === 'string'
-            ) {
-              const frame = appendStreamChunk(streamState, eventData.target);
-              if (frame) {
-                streamedToWeb = true;
+              // Forward streaming text deltas to SSE clients
+              if (
+                eventData.phase === 'stream_event' &&
+                eventData.action === 'speaking' &&
+                typeof eventData.target === 'string'
+              ) {
+                const frame = appendStreamChunk(streamState, eventData.target);
+                if (frame) {
+                  streamedToWeb = true;
+                  broadcastToChat(chatJid, {
+                    type: 'stream_delta',
+                    ...frame,
+                  });
+                }
+              }
+
+              const progressText = formatProgressText(eventData);
+              if (!progressText) return;
+
+              const now = Date.now();
+              const targetKey =
+                typeof eventData.target === 'string'
+                  ? eventData.target.slice(0, 120)
+                  : '';
+              const progressKey = `${progressKeyFromEvent(eventData)}|${targetKey}`;
+
+              const isWeb = chatJid.startsWith('web:');
+              const throttleMs = isWeb ? 1000 : 10_000;
+
+              const shouldSend =
+                !lastProgressSentAt ||
+                progressKey !== lastProgressKey ||
+                now - lastProgressSentAt >= throttleMs;
+
+              if (!shouldSend) return;
+
+              lastProgressSentAt = now;
+              lastProgressKey = progressKey;
+              await emitProgress(progressText);
+            },
+            onReply: async (text) => {
+              if (chatJid.startsWith('web:')) {
                 broadcastToChat(chatJid, {
-                  type: 'stream_delta',
-                  ...frame,
+                  type: 'progress_end',
                 });
+              } else if (statusMessageId) {
+                try {
+                  await routeEditMessage(
+                    channels,
+                    chatJid,
+                    statusMessageId,
+                    '✅ 已完成，正在发送最终回复...',
+                  );
+                } catch {
+                  // Keep going; final answer will still be delivered.
+                }
               }
-            }
 
-            const progressText = formatProgressText(eventData);
-            if (!progressText) return;
-
-            const now = Date.now();
-            const targetKey =
-              typeof eventData.target === 'string'
-                ? eventData.target.slice(0, 120)
-                : '';
-            const progressKey = `${progressKeyFromEvent(eventData)}|${targetKey}`;
-
-            const isWeb = chatJid.startsWith('web:');
-            const throttleMs = isWeb ? 1000 : 10_000;
-
-            const shouldSend =
-              !lastProgressSentAt ||
-              progressKey !== lastProgressKey ||
-              now - lastProgressSentAt >= throttleMs;
-
-            if (!shouldSend) return;
-
-            lastProgressSentAt = now;
-            lastProgressKey = progressKey;
-            await emitProgress(progressText);
-          },
-          onReply: async (text) => {
-            if (chatJid.startsWith('web:')) {
-              broadcastToChat(chatJid, {
-                type: 'progress_end',
-              });
-            } else if (statusMessageId) {
-              try {
-                await routeEditMessage(
-                  channels,
-                  chatJid,
-                  statusMessageId,
-                  '✅ 已完成，正在发送最终回复...',
-                );
-              } catch {
-                // Keep going; final answer will still be delivered.
+              if (chatJid.startsWith('web:') && streamedToWeb) {
+                // Web clients already received the response via stream_delta events.
+                // Send stream_end so the client knows streaming is complete,
+                // and store the bot message without re-broadcasting the full text.
+                broadcastToChat(chatJid, {
+                  type: 'stream_end',
+                  ...finishStream(streamState, text),
+                });
+                // Still store the bot message for history
+                const ts = new Date().toISOString();
+                lastAgentTimestamp[chatJid] = ts;
+                setRouterState(chatJid, ts);
+                storeMessage({
+                  id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  chat_jid: chatJid,
+                  sender: ASSISTANT_NAME,
+                  sender_name: ASSISTANT_NAME,
+                  content: text,
+                  timestamp: ts,
+                  is_from_me: true,
+                });
+              } else {
+                // Non-web channels (Discord, Feishu, etc.) or no streaming happened
+                await sendFn(chatJid, text);
               }
-            }
-
-            if (chatJid.startsWith('web:') && streamedToWeb) {
-              // Web clients already received the response via stream_delta events.
-              // Send stream_end so the client knows streaming is complete,
-              // and store the bot message without re-broadcasting the full text.
-              broadcastToChat(chatJid, {
-                type: 'stream_end',
-                ...finishStream(streamState, text),
-              });
-              // Still store the bot message for history
-              const ts = new Date().toISOString();
-              lastAgentTimestamp[chatJid] = ts;
-              setRouterState(chatJid, ts);
-              storeMessage({
-                id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                chat_jid: chatJid,
-                sender: ASSISTANT_NAME,
-                sender_name: ASSISTANT_NAME,
-                content: text,
-                timestamp: ts,
-                is_from_me: true,
-              });
-            } else {
-              // Non-web channels (Discord, Feishu, etc.) or no streaming happened
-              await sendFn(chatJid, text);
-            }
+            },
           },
-        });
+        );
+
+        const userMessages = aiMessages.filter((m) => m.role === 'user');
+        await runner.run(userMessages, taskId);
       } finally {
         if (heartbeatTimer) {
           clearInterval(heartbeatTimer);
