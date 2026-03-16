@@ -78,21 +78,35 @@ export function formatProgressText(
   if (action.startsWith('executing_')) {
     const tool = action.replace(/^executing_/, '') || 'tool';
     const targetSummary = summarizeToolTarget(tool, target);
+
+    // Detect skill invocations: Bash calls to skills/<name>/scripts/...
+    if (tool.toLowerCase().includes('bash') && targetSummary) {
+      const skillMatch = targetSummary.match(
+        /skills\/([^/]+)\/scripts\/[^\s"]+\s*(.*)$/,
+      );
+      if (skillMatch) {
+        const skillName = skillMatch[1];
+        const args = skillMatch[2]?.replace(/['"]/g, '').trim();
+        const argsSuffix = args ? ` for "${truncate(args, 60)}"` : '';
+        return `Using skill "${skillName}"${argsSuffix}... (${secs}s)`;
+      }
+    }
+
     const suffix = targetSummary ? `: ${targetSummary}` : '';
-    return `🛠 Calling ${tool}${suffix}... (${secs}s)`;
+    return `Running ${tool}${suffix}... (${secs}s)`;
   }
 
   if (phase === 'assistant' || action === 'thinking') {
-    return `🧠 Thinking and planning next steps... (${secs}s)`;
+    return `Thinking and planning next steps... (${secs}s)`;
   }
 
   if (phase === 'result') {
-    return `📦 Formatting final result... (${secs}s)`;
+    return `Formatting final result... (${secs}s)`;
   }
 
   if (phase === 'error') {
-    return `⚠️ Encountered an error, recovering... (${secs}s)`;
+    return `Encountered an error, recovering... (${secs}s)`;
   }
 
-  return `⏳ Processing... (${secs}s)`;
+  return `Processing... (${secs}s)`;
 }

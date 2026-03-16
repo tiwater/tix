@@ -144,15 +144,20 @@
 }
 
 /* ── Markdown content styling ── */
-.markdown-body h1, .markdown-body h2, .markdown-body h3 { @apply font-semibold mt-3 mb-1.5; }
+.markdown-body { white-space: normal; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { @apply font-semibold mt-2 mb-1; }
 .markdown-body h1 { @apply text-lg; }
 .markdown-body h2 { @apply text-base; }
 .markdown-body h3 { @apply text-sm; }
-.markdown-body p { @apply my-1.5; }
-.markdown-body ul, .markdown-body ol { @apply my-1.5 pl-5; }
+.markdown-body p { @apply my-1; }
+.markdown-body ul, .markdown-body ol { @apply my-1 pl-5; }
 .markdown-body li { @apply my-0.5; }
+.markdown-body li > p { @apply my-0; }
 .markdown-body code { @apply bg-muted px-1.5 py-0.5 rounded text-[0.9em] font-mono; }
-.markdown-body pre { @apply bg-muted/50 rounded-lg p-3 overflow-x-auto my-2; }
+.markdown-body pre { @apply bg-muted/50 rounded-lg p-3 overflow-x-auto my-1.5; }
 .markdown-body pre code { @apply bg-transparent p-0; }
 .markdown-body a { @apply text-primary hover:underline; }
-.markdown-body blockquote { @apply border-l-3 border-primary pl-3 text-muted-foreground my-2; }
+.markdown-body blockquote { @apply border-l-3 border-primary pl-3 text-muted-foreground my-1.5; }
+.markdown-body hr { @apply my-2 border-border; }
+.markdown-body > *:first-child { @apply mt-0; }
+.markdown-body > *:last-child { @apply mb-0; }
