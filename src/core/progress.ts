@@ -73,25 +73,26 @@ export function formatProgressText(
   const secs = Math.max(1, Math.round(elapsed / 1000));
 
   if (phase === 'stream_event' && action === 'speaking') return null;
+  if (phase === 'done') return null;
 
   if (action.startsWith('executing_')) {
     const tool = action.replace(/^executing_/, '') || 'tool';
     const targetSummary = summarizeToolTarget(tool, target);
     const suffix = targetSummary ? `: ${targetSummary}` : '';
-    return `🛠 正在调用 ${tool}${suffix}...（${secs}s）`;
+    return `🛠 Calling ${tool}${suffix}... (${secs}s)`;
   }
 
   if (phase === 'assistant' || action === 'thinking') {
-    return `🧠 正在思考与规划下一步...（${secs}s）`;
+    return `🧠 Thinking and planning next steps... (${secs}s)`;
   }
 
   if (phase === 'result') {
-    return `📦 正在整理最终结果...（${secs}s）`;
+    return `📦 Formatting final result... (${secs}s)`;
   }
 
   if (phase === 'error') {
-    return `⚠️ 执行中遇到错误，正在收敛处理...（${secs}s）`;
+    return `⚠️ Encountered an error, recovering... (${secs}s)`;
   }
 
-  return `⏳ 正在处理中...（${secs}s）`;
+  return `⏳ Processing... (${secs}s)`;
 }
