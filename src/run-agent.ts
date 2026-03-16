@@ -48,9 +48,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<void> {
   // Only send the latest user message to the runner to avoid massive query concatenation.
   // The warm subprocess inherently maintains its own conversation history.
   const userMessages = messages.filter((m) => m.role === 'user');
-  const prompt = userMessages.length > 0 
-    ? userMessages[userMessages.length - 1].content 
-    : '';
+  const prompt =
+    userMessages.length > 0
+      ? userMessages[userMessages.length - 1].content
+      : '';
 
   await runner.run(prompt, session.task_id);
 }

@@ -333,9 +333,12 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
       const taskId = `run-${Date.now()}`;
       const streamState = createStreamState(`${chatJid}:${taskId}`);
-      heartbeatTimer = setInterval(() => {
-        void emitProgressHeartbeat();
-      }, chatJid.startsWith('web:') ? 1000 : 15_000);
+      heartbeatTimer = setInterval(
+        () => {
+          void emitProgressHeartbeat();
+        },
+        chatJid.startsWith('web:') ? 1000 : 15_000,
+      );
 
       try {
         await runAgent({
@@ -372,10 +375,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
                 ? eventData.target.slice(0, 120)
                 : '';
             const progressKey = `${progressKeyFromEvent(eventData)}|${targetKey}`;
-            
+
             const isWeb = chatJid.startsWith('web:');
             const throttleMs = isWeb ? 1000 : 10_000;
-            
+
             const shouldSend =
               !lastProgressSentAt ||
               progressKey !== lastProgressKey ||
