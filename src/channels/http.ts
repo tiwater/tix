@@ -37,8 +37,21 @@ import {
   HTTP_ENABLED,
   HTTP_PORT,
   SKILLS_CONFIG,
+  TICLAW_HOME,
   agentPaths,
 } from '../core/config.js';
+
+const FILES_DIR = path.join(TICLAW_HOME, 'files');
+
+function inferMimeType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  const mimes: Record<string, string> = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+    '.mp4': 'video/mp4', '.webm': 'video/webm', '.pdf': 'application/pdf',
+  };
+  return mimes[ext] || 'application/octet-stream';
+}
 import {
   ensureAgent,
   ensureSession,
@@ -364,6 +377,31 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/health') {
         writeJson(res, 200, { status: 'ok' });
+        return;
+      }
+
+      // ── File serving for media content ──
+      const filesMatch = pathname.match(/^\/api\/files\/(.+)$/);
+      if (filesMatch && req.method === 'GET') {
+        const fileId = decodeURIComponent(filesMatch[1]);
+        // Prevent path traversal
+        if (fileId.includes('..') || fileId.includes('/')) {
+          writeJson(res, 400, { error: 'Invalid file ID' });
+          return;
+        }
+        const filePath = path.join(FILES_DIR, fileId);
+        if (!fs.existsSync(filePath)) {
+          writeJson(res, 404, { error: 'File not found' });
+          return;
+        }
+        const mime = inferMimeType(filePath);
+        const stat = fs.statSync(filePath);
+        res.writeHead(200, {
+          'Content-Type': mime,
+          'Content-Length': stat.size,
+          'Cache-Control': 'public, max-age=86400',
+        });
+        fs.createReadStream(filePath).pipe(res);
         return;
       }
 
@@ -1014,10 +1052,44 @@ export class HttpChannel implements Channel {
 
   async sendFile(
     jid: string,
-    _filePath: string,
-    _caption?: string,
+    filePath: string,
+    caption?: string,
   ): Promise<void> {
-    logger.warn({ jid }, 'HttpChannel.sendFile not implemented');
+    if (!fs.existsSync(filePath)) {
+      logger.warn({ jid, filePath }, 'sendFile: file not found');
+      return;
+    }
+
+    // Copy file to managed directory with unique name
+    fs.mkdirSync(FILES_DIR, { recursive: true });
+    const ext = path.extname(filePath);
+    const fileId = `${randomUUID()}${ext}`;
+    const destPath = path.join(FILES_DIR, fileId);
+    fs.copyFileSync(filePath, destPath);
+
+    const fileUrl = `/api/files/${fileId}`;
+    const mime = inferMimeType(filePath);
+    const label = caption || path.basename(filePath);
+
+    // Broadcast as a message with markdown image syntax
+    const session = getSession(jid);
+    const text = mime.startsWith('image/')
+      ? `![${label}](${fileUrl})`
+      : `[${label}](${fileUrl})`;
+
+    broadcastToChat(jid, {
+      type: 'message',
+      chat_jid: jid,
+      agent_id: session?.agent_id,
+      session_id: session?.session_id,
+      text,
+      files: [{ id: fileId, url: fileUrl, mime, name: path.basename(filePath), caption }],
+    });
+
+    logger.info(
+      { jid, fileId, mime, size: fs.statSync(destPath).size },
+      'File sent to web client',
+    );
   }
 
   isConnected(): boolean {

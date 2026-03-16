@@ -159,5 +159,7 @@
 .markdown-body a { @apply text-primary hover:underline; }
 .markdown-body blockquote { @apply border-l-3 border-primary pl-3 text-muted-foreground my-1.5; }
 .markdown-body hr { @apply my-2 border-border; }
+.markdown-body img { @apply max-w-full rounded-lg my-1.5; max-height: 400px; }
+.markdown-body video { @apply max-w-full rounded-lg my-1.5; max-height: 400px; }
 .markdown-body > *:first-child { @apply mt-0; }
 .markdown-body > *:last-child { @apply mb-0; }
