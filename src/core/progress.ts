@@ -36,7 +36,7 @@ function summarizeToolTarget(tool: string, target: string): string | null {
       ? ['command', 'cmd']
       : lowered.includes('read')
         ? ['file_path', 'path', 'file']
-      : lowered.includes('edit') || lowered.includes('write')
+        : lowered.includes('edit') || lowered.includes('write')
           ? ['file_path', 'path', 'file']
           : lowered.includes('glob')
             ? ['pattern', 'path']

@@ -18,7 +18,9 @@ describe('progress helpers', () => {
     const text = formatProgressText({
       phase: 'assistant',
       action: 'executing_Bash',
-      target: JSON.stringify({ command: 'pnpm test src/core/progress.test.ts' }),
+      target: JSON.stringify({
+        command: 'pnpm test src/core/progress.test.ts',
+      }),
       elapsed_ms: 4500,
     });
     expect(text).toContain('正在调用 Bash');
@@ -36,9 +38,9 @@ describe('progress helpers', () => {
   });
 
   it('builds a stable progress key from phase/action', () => {
-    expect(progressKeyFromEvent({ phase: 'assistant', action: 'thinking' })).toBe(
-      'assistant|thinking',
-    );
+    expect(
+      progressKeyFromEvent({ phase: 'assistant', action: 'thinking' }),
+    ).toBe('assistant|thinking');
     expect(progressKeyFromEvent({ phase: 'assistant' })).toBe('assistant|');
     expect(progressKeyFromEvent({ action: 'thinking' })).toBe('|thinking');
   });
