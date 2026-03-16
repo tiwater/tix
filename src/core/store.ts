@@ -468,6 +468,9 @@ export function createSchedule(input: {
   session?: 'main' | 'isolated';
   next_run?: string;
 }): ScheduleRecord {
+  if (!input.agent_id) {
+    throw new Error('agent_id is required to create a schedule');
+  }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
