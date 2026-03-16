@@ -67,29 +67,39 @@ export function registerChatCommand(program: Command) {
       'Send a chat message to a local TiClaw agent and stream the response',
     )
     .option('-a, --agent <id>', 'Target agent ID (defaults to "default")')
+    .option('-s, --session <id>', 'Session ID (reuse for multi-turn context)')
     .option('-r, --raw', 'Output raw markdown instead of rendering it')
+    .option('-j, --json', 'Output JSON with response, task_id, and elapsed_ms')
+    .option('-t, --timeout <seconds>', 'Timeout in seconds (default: 120)', '120')
+    .option('-p, --port <port>', 'Server port (default: 2755)', '2755')
     .action(async (message: string, options) => {
       const agentId = options.agent || 'default';
-      const sessionId = `cli-${crypto.randomUUID()}`;
+      const sessionId = options.session || `cli-${crypto.randomUUID()}`;
       const taskId = crypto.randomUUID();
-      const printer = new StreamMarkdownPrinter(!!options.raw);
+      const port = parseInt(options.port, 10) || 2755;
+      const timeoutMs = (parseInt(options.timeout, 10) || 120) * 1000;
+      const jsonMode = !!options.json;
+      const rawMode = !!options.raw || jsonMode;
+      const printer = new StreamMarkdownPrinter(rawMode);
       let activeStreamId: string | null = null;
       let lastStreamSeq = 0;
       let renderedText = '';
-      const ttyProgress = !!process.stderr.isTTY;
+      const ttyProgress = !!process.stderr.isTTY && !jsonMode;
       let activeProgress = '';
+      const startTime = Date.now();
 
       const clearProgress = () => {
         if (!activeProgress) return;
         if (ttyProgress) {
           process.stderr.write('\r\x1b[2K');
-        } else {
+        } else if (!jsonMode) {
           process.stderr.write('\n');
         }
         activeProgress = '';
       };
 
       const showProgress = (text: string) => {
+        if (jsonMode) return;
         const normalized = text.replace(/\s+/g, ' ').trim();
         if (!normalized || normalized === activeProgress) return;
         activeProgress = normalized;
@@ -100,7 +110,9 @@ export function registerChatCommand(program: Command) {
         }
       };
 
-      console.log(`\x1b[36mConnecting to agent '${agentId}'...\x1b[0m`);
+      if (!jsonMode) {
+        console.log(`\x1b[36mConnecting to agent '${agentId}' (session: ${sessionId})...\x1b[0m`);
+      }
 
       const advanceStreamEvent = (event: {
         stream_id?: string;
@@ -154,31 +166,81 @@ export function registerChatCommand(program: Command) {
             ? fullText.slice(renderedText.length)
             : fullText;
           if (suffix) {
-            printer.print(suffix);
+            if (!jsonMode) printer.print(suffix);
           }
           renderedText = fullText;
           return;
         }
 
         if (typeof event.text === 'string' && event.text) {
-          printer.print(event.text);
+          if (!jsonMode) printer.print(event.text);
           renderedText += event.text;
         }
       };
 
+      const finish = (responseText: string) => {
+        clearProgress();
+        if (jsonMode) {
+          const result = {
+            response: responseText.trim(),
+            agent_id: agentId,
+            session_id: sessionId,
+            task_id: taskId,
+            elapsed_ms: Date.now() - startTime,
+          };
+          // Wait for stdout to flush before exiting — prevents data loss in $() subshells
+          const ok = process.stdout.write(JSON.stringify(result) + '\n');
+          if (ok) {
+            process.exit(0);
+          } else {
+            process.stdout.once('drain', () => process.exit(0));
+          }
+        } else {
+          printer.flush();
+          console.log('\n');
+          process.exit(0);
+        }
+      };
+
+      // Timeout handler
+      const timeoutTimer = setTimeout(() => {
+        clearProgress();
+        if (jsonMode) {
+          const result = {
+            error: 'timeout',
+            message: `No response within ${options.timeout}s`,
+            agent_id: agentId,
+            session_id: sessionId,
+            task_id: taskId,
+            elapsed_ms: Date.now() - startTime,
+          };
+          process.stdout.write(JSON.stringify(result) + '\n');
+        } else {
+          console.error(
+            `\x1b[31mTimeout: No response within ${options.timeout} seconds\x1b[0m`,
+          );
+        }
+        process.exit(2);
+      }, timeoutMs);
+
       try {
         // Step 1: Connect to the SSE stream to listen for events
         const streamUrl = new URL(
-          `http://localhost:2755/runs/${agentId}/stream`,
+          `http://localhost:${port}/runs/${agentId}/stream`,
         );
         streamUrl.searchParams.set('agent_id', agentId);
         streamUrl.searchParams.set('session_id', sessionId);
 
         const sseReq = http.get(streamUrl.toString(), (res) => {
           if (res.statusCode !== 200) {
-            console.error(
-              `\x1b[31mFailed to connect to stream: ${res.statusCode}\x1b[0m`,
-            );
+            clearTimeout(timeoutTimer);
+            if (jsonMode) {
+              process.stdout.write(JSON.stringify({ error: 'stream_failed', status: res.statusCode }) + '\n');
+            } else {
+              console.error(
+                `\x1b[31mFailed to connect to stream: ${res.statusCode}\x1b[0m`,
+              );
+            }
             process.exit(1);
           }
 
@@ -211,24 +273,20 @@ export function registerChatCommand(program: Command) {
                       printStreamEvent(event);
                     }
                   } else if (event.type === 'stream_end') {
-                    clearProgress();
+                    clearTimeout(timeoutTimer);
                     const { isDuplicate } = advanceStreamEvent(event);
                     if (!isDuplicate) {
                       printStreamEvent(event);
                     }
-                    printer.flush();
-                    console.log('\n');
-                    process.exit(0);
+                    finish(renderedText);
                   } else if (event.type === 'progress_end') {
                     clearProgress();
                   } else if (event.type === 'message' && event.text) {
-                    clearProgress();
+                    clearTimeout(timeoutTimer);
                     if (!renderedText) {
-                      printer.print(event.text);
+                      renderedText = event.text;
                     }
-                    printer.flush();
-                    console.log('\n');
-                    process.exit(0);
+                    finish(renderedText || event.text);
                   }
                 } catch (e) {
                   // Ignore parse errors on malformed chunks or bare ping messages
@@ -238,20 +296,33 @@ export function registerChatCommand(program: Command) {
           });
 
           res.on('error', (err) => {
+            clearTimeout(timeoutTimer);
             clearProgress();
-            console.error(`\x1b[31mStream error: ${err.message}\x1b[0m`);
+            if (jsonMode) {
+              process.stdout.write(JSON.stringify({ error: 'stream_error', message: err.message }) + '\n');
+            } else {
+              console.error(`\x1b[31mStream error: ${err.message}\x1b[0m`);
+            }
             process.exit(1);
           });
         });
 
         sseReq.on('error', (err: any) => {
+          clearTimeout(timeoutTimer);
           clearProgress();
-          if (err.code === 'ECONNREFUSED') {
-            console.error(
-              `\x1b[31mConnection refused: Is the TiClaw service running (pnpm dev)?\x1b[0m`,
-            );
+          if (jsonMode) {
+            process.stdout.write(JSON.stringify({
+              error: err.code === 'ECONNREFUSED' ? 'connection_refused' : 'connection_error',
+              message: err.message,
+            }) + '\n');
           } else {
-            console.error(`\x1b[31mFailed to connect: ${err.message}\x1b[0m`);
+            if (err.code === 'ECONNREFUSED') {
+              console.error(
+                `\x1b[31mConnection refused: Is the TiClaw service running (pnpm dev)?\x1b[0m`,
+              );
+            } else {
+              console.error(`\x1b[31mFailed to connect: ${err.message}\x1b[0m`);
+            }
           }
           process.exit(1);
         });
@@ -259,7 +330,7 @@ export function registerChatCommand(program: Command) {
         // Step 2: Fire the message into the channel
         const dispatchMessage = async () => {
           try {
-            const response = await fetch('http://localhost:2755/runs', {
+            const response = await fetch(`http://localhost:${port}/runs`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -275,28 +346,45 @@ export function registerChatCommand(program: Command) {
             });
 
             if (!response.ok) {
+              clearTimeout(timeoutTimer);
               clearProgress();
               const text = await response.text();
-              console.error(
-                `\x1b[31mFailed to send message: HTTP ${response.status}\x1b[0m`,
-              );
-              console.error(text);
+              if (jsonMode) {
+                process.stdout.write(JSON.stringify({ error: 'send_failed', status: response.status, detail: text }) + '\n');
+              } else {
+                console.error(
+                  `\x1b[31mFailed to send message: HTTP ${response.status}\x1b[0m`,
+                );
+                console.error(text);
+              }
               process.exit(1);
             }
-            console.log(
-              `\x1b[32mMessage sent! Waiting for response...\x1b[0m\n`,
-            );
+            if (!jsonMode) {
+              console.log(
+                `\x1b[32mMessage sent! Waiting for response...\x1b[0m\n`,
+              );
+            }
           } catch (err: any) {
+            clearTimeout(timeoutTimer);
             clearProgress();
-            console.error(
-              `\x1b[31mError dispatching message: ${err.message}\x1b[0m`,
-            );
+            if (jsonMode) {
+              process.stdout.write(JSON.stringify({ error: 'dispatch_error', message: err.message }) + '\n');
+            } else {
+              console.error(
+                `\x1b[31mError dispatching message: ${err.message}\x1b[0m`,
+              );
+            }
             process.exit(1);
           }
         };
       } catch (err: any) {
+        clearTimeout(timeoutTimer);
         clearProgress();
-        console.error(`\x1b[31mUnexpected Error: ${err.message}\x1b[0m`);
+        if (jsonMode) {
+          process.stdout.write(JSON.stringify({ error: 'unexpected', message: err.message }) + '\n');
+        } else {
+          console.error(`\x1b[31mUnexpected Error: ${err.message}\x1b[0m`);
+        }
         process.exit(1);
       }
     });
