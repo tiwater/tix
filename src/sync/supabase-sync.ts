@@ -160,11 +160,13 @@ async function pushAgentFiles(supabase: SupabaseClient): Promise<void> {
     });
   };
 
+  const promises: Promise<void>[] = [];
+
   // Global: all OpenClaw mind files
   for (const filename of AGENT_MIND_FILES) {
     const content = readAgentMindFile(AGENTS_DIR, filename);
     if (content)
-      await uploadFile(`${STORAGE_AGENTS_PREFIX}/${filename}`, content);
+      promises.push(uploadFile(`${STORAGE_AGENTS_PREFIX}/${filename}`, content));
   }
 
   // Per-agent: all OpenClaw mind files
@@ -175,12 +177,16 @@ async function pushAgentFiles(supabase: SupabaseClient): Promise<void> {
     for (const filename of AGENT_MIND_FILES) {
       const content = readAgentMindFile(agentDir, filename);
       if (content)
-        await uploadFile(
-          `${STORAGE_AGENTS_PREFIX}/${ent.name}/${filename}`,
-          content,
+        promises.push(
+          uploadFile(
+            `${STORAGE_AGENTS_PREFIX}/${ent.name}/${filename}`,
+            content,
+          ),
         );
     }
   }
+
+  await Promise.all(promises);
 }
 
 /** Pull from Supabase into local SQLite and files. Best-effort: if Supabase is unreachable, agent continues from last local copy. */
@@ -291,7 +297,7 @@ async function pullAgentFiles(supabase: SupabaseClient): Promise<void> {
   const folders = Object.values(projects).map((p) => p.folder);
 
   // Global: all OpenClaw mind files (try agents/ first, fall back to groups/)
-  for (const filename of AGENT_MIND_FILES) {
+  const globalPromises = AGENT_MIND_FILES.map(async (filename) => {
     const outPath = path.join(AGENTS_DIR, filename);
     const ok =
       (await pullAgentFile(
@@ -316,19 +322,24 @@ async function pullAgentFiles(supabase: SupabaseClient): Promise<void> {
           outPath,
         ));
     }
-  }
+  });
+  await Promise.all(globalPromises);
 
   // Per-agent: all OpenClaw mind files
+  const agentPromises: Promise<void>[] = [];
   for (const folder of folders) {
     const agentDir = path.join(AGENTS_DIR, folder);
     fs.mkdirSync(agentDir, { recursive: true });
     for (const filename of AGENT_MIND_FILES) {
-      await pullWithLegacy(
-        filename,
-        agentDir,
-        `${STORAGE_AGENTS_PREFIX}/${folder}`,
-        `${STORAGE_GROUPS_PREFIX}/${folder}`,
+      agentPromises.push(
+        pullWithLegacy(
+          filename,
+          agentDir,
+          `${STORAGE_AGENTS_PREFIX}/${folder}`,
+          `${STORAGE_GROUPS_PREFIX}/${folder}`,
+        ),
       );
     }
   }
+  await Promise.all(agentPromises);
 }
