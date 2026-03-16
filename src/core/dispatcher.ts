@@ -92,7 +92,7 @@ export class Dispatcher {
 
     // 4. Execution: Pass the message into the Agent Loop
     try {
-      await runner.run(content, task_id);
+      await runner.run([{ role: 'user', content }], task_id);
     } catch (err: any) {
       if (err.message?.includes('aborted')) {
         logger.debug(

@@ -11,7 +11,7 @@ export async function executeTask(task: any) {
         logger.info({ taskId: task.id, text }, 'Task Reply');
       },
     });
-    await runner.run(task.prompt, task.id);
+    await runner.run([{ role: 'user', content: task.prompt }], task.id);
   } catch (err) {
     logger.error({ err }, 'Task Execution Failed');
   }
@@ -49,7 +49,7 @@ export function submitScheduleTask(schedule: ScheduleRecord): any {
         'Starting scheduled task',
       );
       await runner.run(
-        schedule.prompt,
+        [{ role: 'user', content: schedule.prompt }],
         `schedule-${schedule.id}-${Date.now()}`,
       );
     } catch (err) {
