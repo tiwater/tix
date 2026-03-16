@@ -3,8 +3,8 @@
  * TiClaw System Tools CLI.
  * Injected into Agent context to provide built-in capabilities.
  */
-import { builtInTools } from '../src/tools/index.js';
-import { logger } from '../src/core/logger.js';
+import { builtInTools } from '../tools/index.js';
+import { logger } from '../core/logger.js';
 
 async function main() {
   const [,, toolName, ...args] = process.argv;
