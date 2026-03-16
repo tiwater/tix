@@ -37,11 +37,8 @@ import {
   HTTP_ENABLED,
   HTTP_PORT,
   SKILLS_CONFIG,
-  TICLAW_HOME,
   agentPaths,
 } from '../core/config.js';
-
-const FILES_DIR = path.join(TICLAW_HOME, 'files');
 
 function inferMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
@@ -380,26 +377,56 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── File serving for media content ──
-      const filesMatch = pathname.match(/^\/api\/files\/(.+)$/);
-      if (filesMatch && req.method === 'GET') {
-        const fileId = decodeURIComponent(filesMatch[1]);
-        // Prevent path traversal
-        if (fileId.includes('..') || fileId.includes('/')) {
-          writeJson(res, 400, { error: 'Invalid file ID' });
+      // ── Workspace file access ──
+      const workspaceMatch = pathname.match(/^\/api\/workspace\/(.+)$/);
+      if (workspaceMatch && req.method === 'GET') {
+        const agentId = url.searchParams.get('agent_id');
+        if (!agentId) {
+          writeJson(res, 400, { error: 'agent_id query parameter is required' });
           return;
         }
-        const filePath = path.join(FILES_DIR, fileId);
+        const relPath = decodeURIComponent(workspaceMatch[1]);
+        // Prevent path traversal
+        const normalized = path.normalize(relPath);
+        if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
+          writeJson(res, 400, { error: 'Invalid path' });
+          return;
+        }
+        const workspace = agentPaths(agentId).workspace;
+        const filePath = path.join(workspace, normalized);
+        // Verify resolved path is within workspace
+        if (!filePath.startsWith(workspace + path.sep) && filePath !== workspace) {
+          writeJson(res, 403, { error: 'Path outside workspace' });
+          return;
+        }
         if (!fs.existsSync(filePath)) {
           writeJson(res, 404, { error: 'File not found' });
           return;
         }
-        const mime = inferMimeType(filePath);
         const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+          // List directory contents
+          const entries = fs.readdirSync(filePath).map((name) => {
+            const entryPath = path.join(filePath, name);
+            const entryStat = fs.statSync(entryPath);
+            return {
+              name,
+              type: entryStat.isDirectory() ? 'directory' : 'file',
+              size: entryStat.isDirectory() ? undefined : entryStat.size,
+              modified: entryStat.mtime.toISOString(),
+            };
+          });
+          writeJson(res, 200, { path: relPath, entries });
+          return;
+        }
+        const mime = inferMimeType(filePath);
         res.writeHead(200, {
           'Content-Type': mime,
           'Content-Length': stat.size,
-          'Cache-Control': 'public, max-age=86400',
+          'Cache-Control': 'public, max-age=60',
+          'Content-Disposition': mime === 'application/octet-stream'
+            ? `attachment; filename="${path.basename(filePath)}"`
+            : 'inline',
         });
         fs.createReadStream(filePath).pipe(res);
         return;
@@ -1060,19 +1087,26 @@ export class HttpChannel implements Channel {
       return;
     }
 
-    // Copy file to managed directory with unique name
-    fs.mkdirSync(FILES_DIR, { recursive: true });
-    const ext = path.extname(filePath);
-    const fileId = `${randomUUID()}${ext}`;
-    const destPath = path.join(FILES_DIR, fileId);
-    fs.copyFileSync(filePath, destPath);
-
-    const fileUrl = `/api/files/${fileId}`;
+    // Resolve file URL relative to the agent's workspace
+    const session = getSession(jid);
+    const agentId = session?.agent_id || 'default';
+    const workspace = agentPaths(agentId).workspace;
     const mime = inferMimeType(filePath);
     const label = caption || path.basename(filePath);
 
-    // Broadcast as a message with markdown image syntax
-    const session = getSession(jid);
+    let fileUrl: string;
+    if (filePath.startsWith(workspace)) {
+      const relPath = path.relative(workspace, filePath);
+      fileUrl = `/api/workspace/${encodeURIComponent(relPath)}?agent_id=${encodeURIComponent(agentId)}`;
+    } else {
+      // File outside workspace — copy to workspace first
+      const destName = `${randomUUID()}${path.extname(filePath)}`;
+      const destPath = path.join(workspace, '.files', destName);
+      fs.mkdirSync(path.join(workspace, '.files'), { recursive: true });
+      fs.copyFileSync(filePath, destPath);
+      fileUrl = `/api/workspace/.files/${encodeURIComponent(destName)}?agent_id=${encodeURIComponent(agentId)}`;
+    }
+
     const text = mime.startsWith('image/')
       ? `![${label}](${fileUrl})`
       : `[${label}](${fileUrl})`;
@@ -1080,16 +1114,12 @@ export class HttpChannel implements Channel {
     broadcastToChat(jid, {
       type: 'message',
       chat_jid: jid,
-      agent_id: session?.agent_id,
+      agent_id: agentId,
       session_id: session?.session_id,
       text,
-      files: [{ id: fileId, url: fileUrl, mime, name: path.basename(filePath), caption }],
     });
 
-    logger.info(
-      { jid, fileId, mime, size: fs.statSync(destPath).size },
-      'File sent to web client',
-    );
+    logger.info({ jid, fileUrl, mime }, 'File sent to web client');
   }
 
   isConnected(): boolean {

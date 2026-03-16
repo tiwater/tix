@@ -434,23 +434,40 @@ export class AgentRunner {
             await this.handleExecutorEvent(event, elapsed);
           },
           onResult: (event: any) => {
-            const finalText =
+            let finalText =
               event.result?.trim() ||
               handler.textParts.join('\n').trim() ||
               '(done)';
 
-            // Detect image file paths in the conversation text and deliver them
+            // Rewrite workspace file paths to /api/workspace URLs
+            const workspace = agentPaths(this.state.agent_id).workspace;
+            const agentId = this.state.agent_id;
+            const allText = handler.textParts.join('\n');
+
+            // Match absolute paths within the workspace
+            const wsEscaped = workspace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const wsPathRegex = new RegExp(`${wsEscaped}/([^\\s)"\`]+)`, 'g');
+            const rewrittenPaths = new Set<string>();
+
+            finalText = finalText.replace(wsPathRegex, (_match, relPath) => {
+              const absPath = path.join(workspace, relPath);
+              if (fs.existsSync(absPath)) {
+                rewrittenPaths.add(absPath);
+                return `/api/workspace/${encodeURIComponent(relPath)}?agent_id=${encodeURIComponent(agentId)}`;
+              }
+              return _match;
+            });
+
+            // Also detect relative image paths and deliver via onFile
             if (this.events.onFile) {
-              const allText = handler.textParts.join('\n');
               const imgExts = /\.(png|jpg|jpeg|gif|webp|svg)$/i;
-              // Match file paths like /path/to/image.png or relative paths
               const pathMatches = allText.match(/(?:[\/\w.-]+\/)?[\w.-]+\.(png|jpg|jpeg|gif|webp|svg)\b/gi) || [];
               const seen = new Set<string>();
               for (const rawPath of pathMatches) {
                 const absPath = path.isAbsolute(rawPath)
                   ? rawPath
-                  : path.join(agentPaths(this.state.agent_id).workspace, rawPath);
-                if (!seen.has(absPath) && imgExts.test(absPath) && fs.existsSync(absPath)) {
+                  : path.join(workspace, rawPath);
+                if (!seen.has(absPath) && !rewrittenPaths.has(absPath) && imgExts.test(absPath) && fs.existsSync(absPath)) {
                   seen.add(absPath);
                   this.events.onFile(absPath, path.basename(absPath));
                 }
