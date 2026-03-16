@@ -104,6 +104,7 @@ function createAppState() {
   let progressArgs = $state<string | undefined>(undefined);
   let progressElapsed = $state(0);
   let streamingMessageId: string | null = $state(null);
+  let lastFinalizedMessageId: string | null = $state(null);
   let activeStreamId = $state<string | null>(null);
   let lastStreamSeq = $state(0);
 
@@ -230,6 +231,7 @@ function createAppState() {
           const finalText = typeof data.full_text === 'string' ? data.full_text : data.text;
           if (streamingMessageId && finalText) {
             messages = messages.map((m) => m.id === streamingMessageId ? { ...m, text: finalText, streaming: false } : m);
+            lastFinalizedMessageId = streamingMessageId;
           } else if (finalText) { pushBotMessage(finalText); }
           resetStreamingState();
           fetchMindFiles();
@@ -238,6 +240,11 @@ function createAppState() {
 
         if (data.type === 'message' && data.text) {
           if (isThinking) { isThinking = false; progressText = ''; fetchMindFiles(); }
+          // Skip if we already finalized this response via stream_end
+          if (lastFinalizedMessageId) {
+            lastFinalizedMessageId = null;
+            return;
+          }
           if (streamingMessageId) {
             messages = messages.map((m) => m.id === streamingMessageId ? { ...m, text: data.text, streaming: false } : m);
             resetStreamingState();
