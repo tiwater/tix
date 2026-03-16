@@ -209,7 +209,7 @@ export interface Channel {
   sendMessage(
     jid: string,
     text: string,
-    options?: { embeds?: any[]; card?: any },
+    options?: { embeds?: any[]; card?: any; message_id?: string },
   ): Promise<void>;
   sendFile(jid: string, filePath: string, caption?: string): Promise<void>;
   isConnected(): boolean;

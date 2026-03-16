@@ -147,8 +147,9 @@ function createAppState() {
     lastStreamSeq = 0;
   }
 
-  function pushBotMessage(text: string) {
-    messages = [...messages, { id: `bot-${Date.now()}`, role: 'bot', text, time: new Date().toLocaleTimeString() }];
+  function pushBotMessage(text: string, id?: string) {
+    if (id && messages.some((m) => m.id === id)) return; // Strict deduplication
+    messages = [...messages, { id: id || `bot-${Date.now()}`, role: 'bot', text, time: new Date().toLocaleTimeString() }];
   }
 
   // --- SSE Connection ---
@@ -243,17 +244,17 @@ function createAppState() {
           if (isThinking) { isThinking = false; progressCategory = ''; }
 
           if (data.is_file) {
-            pushBotMessage(data.text);
+            pushBotMessage(data.text, data.id);
             fetchMindFiles();
             return;
           }
 
           if (streamingMessageId) {
             // Streaming was active — replace with authoritative text
-            messages = messages.map((m) => m.id === streamingMessageId ? { ...m, text: data.text, streaming: false } : m);
+            messages = messages.map((m) => m.id === streamingMessageId ? { ...m, id: data.id || m.id, text: data.text, streaming: false } : m);
             resetStreamingState();
           } else {
-            pushBotMessage(data.text);
+            pushBotMessage(data.text, data.id);
           }
           fetchMindFiles();
           return;

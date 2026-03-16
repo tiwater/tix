@@ -679,15 +679,16 @@ async function main(): Promise<void> {
     }
   }
 
-  sendFn = async (jid: string, text: string, options?: { embeds?: any[] }) => {
-    await routeOutbound(channels, jid, text, options);
+  sendFn = async (jid: string, text: string, options?: { embeds?: any[]; message_id?: string }) => {
+    const messageId = options?.message_id || `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await routeOutbound(channels, jid, text, { ...options, message_id: messageId });
     const ts = new Date().toISOString();
     lastAgentTimestamp[jid] = ts;
     setRouterState(jid, ts);
     // Store bot response so conversation history includes assistant turns
     if (text.trim()) {
       storeMessage({
-        id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: messageId,
         chat_jid: jid,
         sender: ASSISTANT_NAME,
         sender_name: ASSISTANT_NAME,

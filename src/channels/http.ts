@@ -1055,12 +1055,13 @@ export class HttpChannel implements Channel {
   async sendMessage(
     jid: string,
     text: string,
-    options?: { embeds?: any[] },
+    options?: { embeds?: any[]; message_id?: string },
   ): Promise<void> {
     if (!text.trim()) return;
     const session = getSession(jid);
     broadcastToChat(jid, {
       type: 'message',
+      id: options?.message_id,
       chat_jid: jid,
       agent_id: session?.agent_id,
       session_id: session?.session_id,

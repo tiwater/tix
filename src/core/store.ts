@@ -21,6 +21,7 @@ import { AGENTS_DIR, TICLAW_HOME } from './config.js';
 import { logger } from './logger.js';
 import type {
   AgentRecord,
+  Attachment,
   InteractionEvent,
   NewMessage,
   RegisteredProject,

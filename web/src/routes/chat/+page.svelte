@@ -83,94 +83,98 @@
     </div>
 
     <!-- Messages -->
-    <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-2.5 scroll-smooth" bind:this={messagesEl}>
-      {#each appState.messages as msg (msg.id)}
-        {#if msg.role === 'system'}
-          <div class="text-center text-[11px] text-muted-foreground py-1 px-3">{msg.text}</div>
-        {:else}
-          <div class="flex gap-2.5 max-w-[720px] {msg.role === 'user' ? 'self-end flex-row-reverse' : ''}">
-            <div class="w-[30px] h-[30px] rounded-lg flex items-center justify-center shrink-0 text-white {msg.role === 'user' ? 'bg-gradient-to-br from-primary to-chart-4' : 'bg-gradient-to-br from-green-500 to-cyan-400'}">
-              {#if msg.role === 'user'}<User size={15} />{:else}<Bot size={15} />{/if}
-            </div>
-            <div>
-              <div class="bg-card border border-border rounded-xl px-3.5 py-2 max-w-[600px] break-words whitespace-pre-wrap text-[13px] leading-relaxed {msg.role === 'user' ? 'bg-primary/10 border-primary/30 rounded-br-sm' : 'rounded-bl-sm'} {msg.streaming ? 'streaming-cursor' : ''} {msg.role !== 'user' && !msg.showRaw ? 'markdown-body' : ''}">
-                {#if msg.role === 'user' || msg.showRaw}
-                  <pre class="whitespace-pre-wrap font-sans text-[13px] m-0">{msg.text}</pre>
-                {:else}
-                  {@html renderMarkdown(msg.text)}
-                {/if}
+    <div class="flex-1 overflow-y-auto w-full flex flex-col items-center scroll-smooth bg-background" bind:this={messagesEl}>
+      <div class="w-full max-w-4xl px-5 py-6 flex flex-col gap-6 pb-8">
+        {#each appState.messages as msg (msg.id)}
+          {#if msg.role === 'system'}
+            <div class="text-center text-[12px] font-medium text-muted-foreground py-1 px-3 bg-muted/50 rounded-full self-center my-2">{msg.text}</div>
+          {:else}
+            <div class="flex gap-3 max-w-[85%] {msg.role === 'user' ? 'self-end flex-row-reverse' : 'self-start'}">
+              <div class="w-[32px] h-[32px] rounded-lg flex items-center justify-center shrink-0 text-white shadow-sm {msg.role === 'user' ? 'bg-gradient-to-br from-primary to-chart-4' : 'bg-gradient-to-br from-green-500 to-cyan-400'}">
+                {#if msg.role === 'user'}<User size={16} />{:else}<Bot size={16} />{/if}
               </div>
-              {#if msg.time || msg.role !== 'user'}
-                <div class="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-2">
-                  {#if msg.time}<span>{msg.time}</span>{/if}
-                  {#if msg.role !== 'user'}
-                    <button class="text-[10px] text-muted-foreground hover:text-foreground bg-transparent border-none cursor-pointer" onclick={() => msg.showRaw = !msg.showRaw}>
-                      {msg.showRaw ? 'Rendered' : 'Raw'}
-                    </button>
+              <div class="flex flex-col gap-1.5 min-w-0 {msg.role === 'user' ? 'items-end' : 'items-start'}">
+                <div class="bg-card border border-border shadow-sm px-4 py-3 break-words whitespace-pre-wrap text-[14px] leading-relaxed {msg.role === 'user' ? 'bg-primary/5 border-primary/20 rounded-2xl rounded-tr-sm' : 'rounded-2xl rounded-tl-sm'} {msg.streaming ? 'streaming-cursor' : ''} {msg.role !== 'user' && !msg.showRaw ? 'markdown-body' : ''}">
+                  {#if msg.role === 'user' || msg.showRaw}
+                    <pre class="whitespace-pre-wrap font-sans text-[14px] m-0">{msg.text}</pre>
+                  {:else}
+                    {@html renderMarkdown(msg.text)}
                   {/if}
                 </div>
-              {/if}
+                {#if msg.time || msg.role !== 'user'}
+                  <div class="text-[11px] text-muted-foreground flex items-center gap-2 px-1">
+                    {#if msg.time}<span>{msg.time}</span>{/if}
+                    {#if msg.role !== 'user'}
+                      <button class="hover:text-foreground bg-transparent border-none cursor-pointer transition-colors" onclick={() => msg.showRaw = !msg.showRaw}>
+                        {msg.showRaw ? 'Rendered' : 'Raw'}
+                      </button>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        {/each}
+
+        {#if appState.isThinking}
+          <div class="flex gap-3 max-w-[85%] self-start">
+            <div class="w-[32px] h-[32px] rounded-lg flex items-center justify-center shrink-0 text-white shadow-sm bg-gradient-to-br from-green-500 to-cyan-400"><Bot size={16} /></div>
+            <div>
+              <div class="bg-card border border-border shadow-sm text-muted-foreground px-4 py-3 rounded-2xl rounded-tl-sm text-[13px] flex items-center gap-2.5">
+                {#if appState.progressCategory === 'skill'}
+                  <Puzzle size={15} class="text-primary shrink-0" />
+                  <span>Using skill <strong>{appState.progressSkill}</strong>{appState.progressArgs ? ` for "${appState.progressArgs}"` : ''}... ({appState.progressElapsed}s)</span>
+                {:else if appState.progressCategory === 'tool'}
+                  <RefreshCw size={15} class="text-muted-foreground shrink-0 spin" />
+                  <span>Running {appState.progressTool}{appState.progressArgs ? `: ${appState.progressArgs}` : ''}... ({appState.progressElapsed}s)</span>
+                {:else if appState.progressCategory === 'thinking'}
+                  <Brain size={15} class="text-primary shrink-0" />
+                  <span>Thinking... ({appState.progressElapsed}s)</span>
+                {:else if appState.progressCategory === 'formatting'}
+                  <Loader2 size={15} class="text-muted-foreground shrink-0 spin" />
+                  <span>Formatting result... ({appState.progressElapsed}s)</span>
+                {:else if appState.progressCategory === 'error'}
+                  <Loader2 size={15} class="text-destructive shrink-0" />
+                  <span>Recovering from error... ({appState.progressElapsed}s)</span>
+                {:else if appState.progressCategory === 'processing' || appState.progressCategory}
+                  <Loader2 size={15} class="text-muted-foreground shrink-0 spin" />
+                  <span>Processing... ({appState.progressElapsed}s)</span>
+                {:else}
+                  <span>Thinking</span>
+                  <span class="inline-flex gap-1.5 ml-1">{#each [0, 1, 2] as i}<span class="inline-block w-1.5 h-1.5 bg-primary rounded-full" style="animation: dot-bounce 1.2s ease-in-out infinite; animation-delay: {i * 0.2}s"></span>{/each}</span>
+                {/if}
+              </div>
             </div>
           </div>
         {/if}
-      {/each}
-
-      {#if appState.isThinking}
-        <div class="flex gap-2.5">
-          <div class="w-[30px] h-[30px] rounded-lg flex items-center justify-center shrink-0 text-white bg-gradient-to-br from-green-500 to-cyan-400"><Bot size={15} /></div>
-          <div>
-            <div class="bg-muted text-muted-foreground px-3.5 py-2 rounded-xl text-[13px] flex items-center gap-2">
-              {#if appState.progressCategory === 'skill'}
-                <Puzzle size={14} class="text-primary shrink-0" />
-                <span>Using skill <strong>{appState.progressSkill}</strong>{appState.progressArgs ? ` for "${appState.progressArgs}"` : ''}... ({appState.progressElapsed}s)</span>
-              {:else if appState.progressCategory === 'tool'}
-                <RefreshCw size={14} class="text-muted-foreground shrink-0 spin" />
-                <span>Running {appState.progressTool}{appState.progressArgs ? `: ${appState.progressArgs}` : ''}... ({appState.progressElapsed}s)</span>
-              {:else if appState.progressCategory === 'thinking'}
-                <Brain size={14} class="text-primary shrink-0" />
-                <span>Thinking... ({appState.progressElapsed}s)</span>
-              {:else if appState.progressCategory === 'formatting'}
-                <Loader2 size={14} class="text-muted-foreground shrink-0 spin" />
-                <span>Formatting result... ({appState.progressElapsed}s)</span>
-              {:else if appState.progressCategory === 'error'}
-                <Loader2 size={14} class="text-destructive shrink-0" />
-                <span>Recovering from error... ({appState.progressElapsed}s)</span>
-              {:else if appState.progressCategory === 'processing' || appState.progressCategory}
-                <Loader2 size={14} class="text-muted-foreground shrink-0 spin" />
-                <span>Processing... ({appState.progressElapsed}s)</span>
-              {:else}
-                <span>Thinking</span>
-                <span class="inline-flex gap-1">{#each [0, 1, 2] as i}<span class="inline-block w-[5px] h-[5px] bg-primary rounded-full" style="animation: dot-bounce 1.2s ease-in-out infinite; animation-delay: {i * 0.2}s"></span>{/each}</span>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {/if}
+      </div>
     </div>
 
     <!-- Input Area -->
-    <div class="flex gap-2.5 px-5 py-3 border-t border-border bg-card items-end">
-      <textarea
-        class="flex-1 px-3.5 py-2.5 bg-muted border border-border rounded-xl text-foreground text-[13px] resize-none outline-none min-h-[42px] max-h-[120px] leading-relaxed focus:border-primary transition-colors placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-        bind:this={inputEl}
-        bind:value={appState.inputText}
-        onkeydown={handleKeydown}
-        placeholder="Type a message… (Enter to send)"
-        rows="1"
-        disabled={appState.sending}
-      ></textarea>
-      <button
-        class="w-[42px] h-[42px] rounded-xl bg-gradient-to-br from-primary to-chart-4 border-none text-primary-foreground flex items-center justify-center cursor-pointer shrink-0 transition-all hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-        onclick={handleSend}
-        disabled={appState.sending || !appState.inputText.trim()}
-        title="Send"
-      >
-        {#if appState.sending}
-          <Loader2 size={18} class="spin" />
-        {:else}
-          <Send size={18} />
-        {/if}
-      </button>
+    <div class="px-5 py-4 border-t border-border bg-background flex flex-col items-center">
+      <div class="w-full max-w-4xl flex gap-3 items-end">
+        <textarea
+          class="flex-1 px-4 py-3.5 bg-card border border-border rounded-xl text-foreground text-[14px] resize-none outline-none min-h-[52px] max-h-[200px] leading-relaxed focus:border-primary focus:ring-1 focus:ring-primary transition-shadow placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          bind:this={inputEl}
+          bind:value={appState.inputText}
+          onkeydown={handleKeydown}
+          placeholder="Type a message… (Enter to send)"
+          rows="1"
+          disabled={appState.sending}
+        ></textarea>
+        <button
+          class="w-[52px] h-[52px] rounded-xl bg-gradient-to-br from-primary to-chart-4 border-none text-primary-foreground flex items-center justify-center cursor-pointer shrink-0 transition-all hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+          onclick={handleSend}
+          disabled={appState.sending || !appState.inputText.trim()}
+          title="Send"
+        >
+          {#if appState.sending}
+            <Loader2 size={22} class="spin" />
+          {:else}
+            <Send size={22} />
+          {/if}
+        </button>
+      </div>
     </div>
   </div>
 
