@@ -123,6 +123,47 @@
   body {
     @apply bg-background text-foreground font-sans;
   }
+
+  /* ── Global Scrollbar Styling ── */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+  }
+
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+}
+
+/* ── Attachments Styling ── */
+.attachments {
+  @apply mt-2 flex flex-wrap gap-2;
+}
+.attachment-image img {
+  @apply rounded-lg border border-border max-w-full cursor-zoom-in transition-transform hover:scale-[1.01] active:scale-100;
+  max-height: 320px;
+}
+.attachment-file {
+  @apply flex items-center gap-2 px-3 py-1.5 bg-muted rounded-md border border-border text-xs font-medium hover:bg-accent transition-colors cursor-pointer;
 }
 
 /* ── Spin animation for Loader2 ── */
