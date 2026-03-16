@@ -125,9 +125,9 @@
   }
 }
 
-/* ── Spin animation for Loader2 ── */
-@keyframes spin { to { transform: rotate(360deg); } }
-:global(.spin) { animation: spin 1s linear infinite; }
+/* ── Spin animation for Loader2 / RefreshCw ── */
+@keyframes tc-spin { to { transform: rotate(360deg); } }
+:global(.spin) { animation: tc-spin 1s linear infinite; display: inline-block; }
 
 /* ── Streaming cursor ── */
 @keyframes blink-cursor { 50% { opacity: 0; } }
