@@ -97,7 +97,7 @@ function createAppState() {
   let mindFiles = $state<Record<string, WorkspaceFile>>({});
   let sending = $state(false);
   let isThinking = $state(false);
-  let progressText = $state('');
+
   let progressCategory = $state<string>('');
   let progressSkill = $state<string | undefined>(undefined);
   let progressTool = $state<string | undefined>(undefined);
@@ -185,22 +185,21 @@ function createAppState() {
       try {
         const data = JSON.parse(ev.data);
         if (data.type === 'connected') { addLog(`Stream ready: ${data.chat_jid}`); return; }
-        if (data.type === 'progress' && data.text) {
-          progressText = data.text;
+        if (data.type === 'progress') {
           progressCategory = data.category || '';
           progressSkill = data.skill;
           progressTool = data.tool;
-          progressArgs = data.args;
+          progressArgs = data.args || data.target;
           progressElapsed = data.elapsed_s || 0;
           if (!streamingMessageId) isThinking = true;
           return;
         }
-        if (data.type === 'progress_end') { progressText = ''; return; }
+        if (data.type === 'progress_end') { progressCategory = ''; return; }
 
         if (data.type === 'stream_delta' && data.text) {
           const { isDuplicate, isNewStream } = advanceStreamEvent(data);
           if (isDuplicate) return;
-          if (isThinking) { isThinking = false; progressText = ''; }
+          if (isThinking) { isThinking = false; progressCategory = ''; }
           if (isNewStream && streamingMessageId) {
             messages = messages.map((m) => m.id === streamingMessageId ? { ...m, streaming: false } : m);
           }
@@ -219,19 +218,19 @@ function createAppState() {
         }
 
         if (data.type === 'runner_state' && data.activity?.action === 'speaking' && data.activity?.target) {
-          if (isThinking) { isThinking = false; progressText = ''; }
+          if (isThinking) { isThinking = false; progressCategory = ''; }
           return;
         }
 
         // stream_end: backward compat — just mark streaming as done
         if (data.type === 'stream_end') {
-          if (isThinking) { isThinking = false; progressText = ''; }
+          if (isThinking) { isThinking = false; progressCategory = ''; }
           return;
         }
 
         // message: the authoritative final response
         if (data.type === 'message' && data.text) {
-          if (isThinking) { isThinking = false; progressText = ''; }
+          if (isThinking) { isThinking = false; progressCategory = ''; }
           if (streamingMessageId) {
             // Streaming was active — replace with authoritative text
             messages = messages.map((m) => m.id === streamingMessageId ? { ...m, text: data.text, streaming: false } : m);
@@ -245,14 +244,14 @@ function createAppState() {
       } catch { /* ignore */ }
     };
 
-    eventSource.onerror = () => { sseConnected = false; progressText = ''; addLog('SSE disconnected — retrying…'); };
+    eventSource.onerror = () => { sseConnected = false; progressCategory = ''; addLog('SSE disconnected — retrying…'); };
   }
 
   function disconnectSSE() {
     eventSource?.close();
     eventSource = null;
     sseConnected = false;
-    progressText = '';
+    progressCategory = '';
   }
 
   // --- Data fetching ---
@@ -347,12 +346,12 @@ function createAppState() {
     inputText = '';
     sending = true;
     isThinking = true;
-    progressText = '';
+    progressCategory = '';
 
     try {
       const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content }) });
       if (!res.ok) {
-        isThinking = false; progressText = '';
+        isThinking = false; progressCategory = '';
         if (res.status === 403) {
           try {
             const errData = await res.json();
@@ -367,7 +366,7 @@ function createAppState() {
         }
       }
     } catch (e: any) {
-      isThinking = false; progressText = '';
+      isThinking = false; progressCategory = '';
       messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ ${e.message}`, time: '' }];
     } finally { sending = false; }
   }
@@ -378,14 +377,14 @@ function createAppState() {
     messages = [];
     resetStreamingState();
     isThinking = false;
-    progressText = '';
+    progressCategory = '';
   }
 
   function reconnect() {
     messages = [];
     resetStreamingState();
     isThinking = false;
-    progressText = '';
+    progressCategory = '';
     connectSSE();
   }
 
@@ -422,7 +421,6 @@ function createAppState() {
     get mindFiles() { return mindFiles; },
     get sending() { return sending; },
     get isThinking() { return isThinking; },
-    get progressText() { return progressText; },
     get progressCategory() { return progressCategory; },
     get progressSkill() { return progressSkill; },
     get progressTool() { return progressTool; },

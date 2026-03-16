@@ -123,16 +123,19 @@
                 <span>Using skill <strong>{appState.progressSkill}</strong>{appState.progressArgs ? ` for "${appState.progressArgs}"` : ''}... ({appState.progressElapsed}s)</span>
               {:else if appState.progressCategory === 'tool'}
                 <RefreshCw size={14} class="text-muted-foreground shrink-0 spin" />
-                <span>{appState.progressText}</span>
+                <span>Running {appState.progressTool}{appState.progressArgs ? `: ${appState.progressArgs}` : ''}... ({appState.progressElapsed}s)</span>
               {:else if appState.progressCategory === 'thinking'}
                 <Brain size={14} class="text-primary shrink-0" />
                 <span>Thinking... ({appState.progressElapsed}s)</span>
+              {:else if appState.progressCategory === 'formatting'}
+                <Loader2 size={14} class="text-muted-foreground shrink-0 spin" />
+                <span>Formatting result... ({appState.progressElapsed}s)</span>
               {:else if appState.progressCategory === 'error'}
                 <Loader2 size={14} class="text-destructive shrink-0" />
                 <span>Recovering from error... ({appState.progressElapsed}s)</span>
-              {:else if appState.progressText}
+              {:else if appState.progressCategory === 'processing' || appState.progressCategory}
                 <Loader2 size={14} class="text-muted-foreground shrink-0 spin" />
-                <span>{appState.progressText}</span>
+                <span>Processing... ({appState.progressElapsed}s)</span>
               {:else}
                 <span>Thinking</span>
                 <span class="inline-flex gap-1">{#each [0, 1, 2] as i}<span class="inline-block w-[5px] h-[5px] bg-primary rounded-full" style="animation: dot-bounce 1.2s ease-in-out infinite; animation-delay: {i * 0.2}s"></span>{/each}</span>

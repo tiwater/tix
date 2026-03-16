@@ -262,40 +262,20 @@ async function processMessages(chatJid: string): Promise<boolean> {
       let heartbeatInFlight = false;
       let heartbeatTimer: NodeJS.Timeout | null = null;
 
-      const emitProgress = async (text: string, info?: import('./core/progress.js').ProgressInfo) => {
-        if (!text || !text.trim()) return;
-
+      const emitProgress = async (info: import('./core/progress.js').ProgressInfo) => {
         if (chatJid.startsWith('web:')) {
           broadcastToChat(chatJid, {
             type: 'progress',
-            text,
-            ...(info ? { category: info.category, skill: info.skill, tool: info.tool, args: info.args, elapsed_s: info.elapsed_s } : {}),
+            category: info.category,
+            skill: info.skill,
+            tool: info.tool,
+            args: info.args,
+            target: info.target,
+            elapsed_s: info.elapsed_s,
           });
-          return;
         }
-
-        const channel = channels.find(
-          (c) => c.ownsJid(chatJid) && c.isConnected(),
-        );
-        if (statusMessageId && channel?.editMessage) {
-          try {
-            await routeEditMessage(channels, chatJid, statusMessageId, text);
-            return;
-          } catch (err) {
-            logger.debug(
-              { err, chatJid },
-              'Progress edit failed, fallback to new message',
-            );
-            statusMessageId = null;
-          }
-        }
-
-        if (!statusMessageId) {
-          statusMessageId = await routeSendReturningId(channels, chatJid, text);
-          if (!statusMessageId) {
-            await sendFn(chatJid, text);
-          }
-        }
+        // Non-web channels do not receive progressive UI string updates
+        // The framework strictly transmits structured data.
       };
 
       const emitProgressHeartbeat = async () => {
@@ -322,7 +302,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
             });
           }
           if (!heartbeatInfo) return;
-          await emitProgress(formatProgressText(heartbeatInfo), heartbeatInfo);
+          await emitProgress(heartbeatInfo);
         } catch (err) {
           logger.debug({ err, chatJid }, 'Progress heartbeat failed');
         } finally {
@@ -372,7 +352,6 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
               const progressInfo = parseProgressEvent(eventData);
               if (!progressInfo) return;
-              const progressText = formatProgressText(progressInfo);
 
               const now = Date.now();
               const targetKey =
@@ -393,7 +372,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
               lastProgressSentAt = now;
               lastProgressKey = progressKey;
-              await emitProgress(progressText, progressInfo);
+              await emitProgress(progressInfo);
             },
             onFile: async (filePath, caption) => {
               try {
