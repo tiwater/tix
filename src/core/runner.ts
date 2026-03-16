@@ -107,6 +107,8 @@ interface WarmSession {
   lastUsedAt: number;
   /** Whether the background output loop is still running. */
   alive: boolean;
+  /** Whether the Claude SDK session ID has been captured and saved to disk. */
+  claudeSessionIdSaved: boolean;
 }
 
 /**
@@ -147,6 +149,34 @@ function buildSessionKey(agentId: string, sessionId: string): string {
   return `${agentId}:${sessionId}`;
 }
 
+// ── Per-agent Claude SDK session persistence ──────────────────
+// The Claude Code subprocess has its own session ID (distinct from
+// TiClaw's session ID). We save it after the first run so that cold
+// restarts can `resume` that session and recover full conversation history.
+
+function getClaudeSessionPath(agentId: string): string {
+  const { base } = agentPaths(agentId);
+  return path.join(base, '.claude_session_id');
+}
+
+function loadClaudeSessionId(agentId: string): string | null {
+  try {
+    const p = getClaudeSessionPath(agentId);
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8').trim() || null;
+  } catch {}
+  return null;
+}
+
+function saveClaudeSessionId(agentId: string, claudeSessionId: string): void {
+  try {
+    const p = getClaudeSessionPath(agentId);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, claudeSessionId, 'utf-8');
+  } catch (err: any) {
+    logger.warn({ err: err.message }, 'Failed to save Claude session ID');
+  }
+}
+
 function buildQueryOptions(
   systemPrompt: string,
   workspace: string,
@@ -181,7 +211,7 @@ function buildQueryOptions(
     settingSources: [] as any[],
     includePartialMessages: true,
     pathToClaudeCodeExecutable: cliPath,
-    persistSession: false,
+    persistSession: true,
     env: {
       ...process.env,
       PWD: workspace,
@@ -206,6 +236,18 @@ function startOutputLoop(key: string, warm: WarmSession): void {
         if (!handler) continue; // No active run — skip (shouldn't happen)
 
         const event = msg as any;
+
+        // Capture the Claude SDK's own session_id from the first message and
+        // persist it so that future cold starts can resume this session.
+        if (event.session_id && !warm.claudeSessionIdSaved) {
+          warm.claudeSessionIdSaved = true;
+          saveClaudeSessionId(warm.agentId, event.session_id);
+          logger.debug(
+            { agentId: warm.agentId, claudeSessionId: event.session_id },
+            'Saved Claude session ID',
+          );
+        }
+
         await handler.onEvent(event, Date.now() - handler.startTime);
 
         if (event.type === 'assistant') {
@@ -275,7 +317,10 @@ export class AgentRunner {
    * Primary entry point: Executes a user message through the Agent Loop.
    * First call spawns the subprocess; subsequent calls reuse it via streamInput().
    */
-  async run(message: string, taskId?: string): Promise<void> {
+  async run(
+    messages: Array<{ role: string; content: string }>,
+    taskId?: string,
+  ): Promise<void> {
     if (this.state.status === 'busy') {
       throw new Error(
         `Runner ${this.state.agent_id}:${this.state.session_id} is already busy.`,
@@ -350,20 +395,28 @@ export class AgentRunner {
         logger.info({ key }, 'AgentRunner: Warm path — reusing subprocess');
         warm!.lastUsedAt = Date.now();
 
-        const userMsg: SDKUserMessage = {
-          type: 'user',
-          message: { role: 'user', content: message },
-          parent_tool_use_id: null,
-          session_id: warm!.sessionId,
-          uuid: randomUUID() as UUID,
-        };
-        await warm!.query.streamInput(
-          (async function* () {
-            yield userMsg;
-          })(),
-        );
+        // On warm path, only send the absolutely latest user message to avoid duplication
+        const lastUser = messages.filter(m => m.role === 'user').pop();
+        if (lastUser) {
+          const userMsg: SDKUserMessage = {
+            type: 'user',
+            message: { role: 'user', content: lastUser.content },
+            parent_tool_use_id: null,
+            session_id: warm!.sessionId,
+            uuid: randomUUID() as UUID,
+          };
+          await warm!.query.streamInput(
+            (async function* () {
+              yield userMsg;
+            })(),
+          );
+        } else {
+          logger.warn({ key }, 'Warm path triggered with no user messages');
+          this.state.status = 'idle';
+          return;
+        }
       } else {
-        // ── Cold path: spawn new subprocess with the actual message ──
+        // ── Cold path: spawn new subprocess, resuming server-side session ──
         logger.info({ key }, 'AgentRunner: Cold start — spawning subprocess');
 
         // Clean up stale session if any
@@ -382,9 +435,30 @@ export class AgentRunner {
           this.state.task_id!,
         );
 
+        // Use the latest user message as the prompt.
+        // Pass `resume: session_id` so the SDK reconnects to the server-side
+        // session which already has the full conversation history — no manual
+        // history injection needed.
+        const lastUser = messages.filter((m) => m.role === 'user').pop();
+        const prompt = lastUser?.content ?? '';
+
+        // Attempt to resume the previous Claude-side session (if any).
+        // On the very first cold start this will be null, and the SDK will
+        // create a brand-new session which we then save for future restarts.
+        const savedClaudeSessionId = loadClaudeSessionId(this.state.agent_id);
+        if (savedClaudeSessionId) {
+          logger.info(
+            { agentId: this.state.agent_id, claudeSessionId: savedClaudeSessionId },
+            'AgentRunner: Resuming prior Claude session',
+          );
+        }
+
         const agentQuery = query({
-          prompt: message,
-          options: opts,
+          prompt,
+          options: {
+            ...opts,
+            ...(savedClaudeSessionId ? { resume: savedClaudeSessionId } : {}),
+          },
         });
 
         const newWarm: WarmSession = {
@@ -394,6 +468,7 @@ export class AgentRunner {
           createdAt: Date.now(),
           lastUsedAt: Date.now(),
           alive: true,
+          claudeSessionIdSaved: false,
         };
         warmSessions.set(key, newWarm);
 
