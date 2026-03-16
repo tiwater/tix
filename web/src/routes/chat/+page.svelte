@@ -6,7 +6,9 @@
   import { resolveProtocolUrls } from '$lib/ticlaw-protocol';
 
   function renderMarkdown(text: string): string {
-    const html = DOMPurify.sanitize(marked.parse(text) as string);
+    const html = DOMPurify.sanitize(marked.parse(text) as string, { 
+      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|ticlaw):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i 
+    });
     return resolveProtocolUrls(html);
   }
   import { Send, Loader2, User, Bot, PanelRightOpen, PanelRightClose, FileText, Brain, UserCircle, BookOpen, RefreshCw, ChevronDown, ChevronRight, Puzzle, ToggleLeft, ToggleRight } from 'lucide-svelte';
