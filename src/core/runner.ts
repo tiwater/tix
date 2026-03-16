@@ -98,17 +98,25 @@ function getPromptMtimeKey(baseDir: string): string {
 // ══════════════════════════════════════════════════════════════
 // Warm Session Pool — keeps SDK subprocesses alive between msgs
 // ══════════════════════════════════════════════════════════════
+//
+// Design principles:
+//   • One warm subprocess per AGENT (not per channel session).
+//     Key = agentId only, so CLI / web / Feishu all reuse the same process.
+//   • Handler is registered BEFORE startOutputLoop so no events are dropped.
+//   • streamInput() failure gracefully falls back to a cold resume.
+//   • Claude SDK session ID captured from the earliest possible event (system:init).
+//   • Graceful shutdown: all subprocesses closed on SIGTERM/SIGINT.
+// ══════════════════════════════════════════════════════════════
 
 interface WarmSession {
   query: Query;
   agentId: string;
-  sessionId: string;
   createdAt: number;
   lastUsedAt: number;
+  /** When the most recent SDK event arrived. Used for liveness tracking. */
+  lastEventAt: number;
   /** Whether the background output loop is still running. */
   alive: boolean;
-  /** Whether the Claude SDK session ID has been captured and saved to disk. */
-  claudeSessionIdSaved: boolean;
 }
 
 /**
@@ -124,18 +132,23 @@ interface ActiveHandler {
   reject: (err: Error) => void;
 }
 
+// Key: agentId (one subprocess per agent, shared across all channels)
 const warmSessions = new Map<string, WarmSession>();
 const activeHandlers = new Map<string, ActiveHandler>();
 
 // TTL: close idle sessions after 10 minutes
 const WARM_SESSION_TTL = 10 * 60 * 1000;
 
-// Periodic cleanup of idle sessions
+// Periodic cleanup of idle / dead sessions
 setInterval(() => {
   const now = Date.now();
   for (const [key, session] of warmSessions) {
-    if (now - session.lastUsedAt > WARM_SESSION_TTL) {
-      logger.info({ key }, 'Closing idle warm session');
+    const isTimedOut = now - session.lastUsedAt > WARM_SESSION_TTL;
+    if (isTimedOut || !session.alive) {
+      logger.info(
+        { key, reason: !session.alive ? 'dead' : 'ttl' },
+        'Closing idle warm session',
+      );
       try {
         session.query.close();
       } catch {}
@@ -145,8 +158,24 @@ setInterval(() => {
   }
 }, 60_000);
 
-function buildSessionKey(agentId: string, sessionId: string): string {
-  return `${agentId}:${sessionId}`;
+/** Close all warm sessions — called on process shutdown. */
+function closeAllWarmSessions(): void {
+  for (const [key, session] of warmSessions) {
+    logger.info({ key }, 'Closing warm session on shutdown');
+    try {
+      session.query.close();
+    } catch {}
+  }
+  warmSessions.clear();
+  activeHandlers.clear();
+}
+
+process.on('SIGTERM', closeAllWarmSessions);
+process.on('SIGINT', closeAllWarmSessions);
+
+// Key is agentId only (no TiClaw session suffix)
+function buildSessionKey(agentId: string): string {
+  return agentId;
 }
 
 // ── Per-agent Claude SDK session persistence ──────────────────
@@ -227,25 +256,37 @@ function buildQueryOptions(
 /**
  * Start the background output loop for a warm session.
  * Reads from the query's async iterable and dispatches to the active handler.
+ *
+ * IMPORTANT: The handler must already be registered in `activeHandlers` before
+ * this is called to avoid dropping early events.
  */
 function startOutputLoop(key: string, warm: WarmSession): void {
+  let sessionIdSaved = false;
+
   (async () => {
     try {
       for await (const msg of warm.query) {
-        const handler = activeHandlers.get(key);
-        if (!handler) continue; // No active run — skip (shouldn't happen)
+        warm.lastEventAt = Date.now();
 
         const event = msg as any;
 
-        // Capture the Claude SDK's own session_id from the first message and
-        // persist it so that future cold starts can resume this session.
-        if (event.session_id && !warm.claudeSessionIdSaved) {
-          warm.claudeSessionIdSaved = true;
+        // Capture the Claude SDK's own session_id as early as possible.
+        // The system:init event is the first message and reliably carries it.
+        if (!sessionIdSaved && event.session_id) {
+          sessionIdSaved = true;
           saveClaudeSessionId(warm.agentId, event.session_id);
           logger.debug(
             { agentId: warm.agentId, claudeSessionId: event.session_id },
             'Saved Claude session ID',
           );
+        }
+
+        const handler = activeHandlers.get(key);
+        if (!handler) {
+          // This should not happen (handler is registered before loop starts)
+          // but guard anyway to avoid silent drops.
+          logger.warn({ key, eventType: event.type }, 'No handler for event — dropped');
+          continue;
         }
 
         await handler.onEvent(event, Date.now() - handler.startTime);
@@ -288,10 +329,15 @@ export interface RunnerEvents {
 
 /**
  * AgentRunner: The refined functional "Body" of a TiClaw Agent.
- * Keeps SDK subprocesses alive between messages for faster responses.
  *
- * - First message: spawns subprocess with the real prompt (cold start)
- * - Subsequent messages: reuses the warm subprocess via streamInput()
+ * Warm-session pool behaviour:
+ *   - Key is agentId only → one subprocess per agent, reused across all
+ *     channels (CLI, web, Feishu, etc.)
+ *   - First call: cold start, subprocess spawned with the latest prompt
+ *   - Subsequent calls within the same process: warm path via streamInput()
+ *   - After process restart: cold start with `resume: <savedClaudeSessionId>`
+ *     to restore full conversation context from the server
+ *   - If streamInput() fails: falls back to cold resume automatically
  */
 export class AgentRunner {
   private state: RunnerState;
@@ -347,14 +393,25 @@ export class AgentRunner {
     );
     await this.notifyState();
 
-    const key = buildSessionKey(this.state.agent_id, this.state.session_id);
+    // Key is agentId only — one subprocess shared across all channels
+    const key = buildSessionKey(this.state.agent_id);
+
+    // Latest user message — used for both warm streamInput and cold prompt
+    const lastUser = messages.filter((m) => m.role === 'user').pop();
+    if (!lastUser) {
+      logger.warn({ key }, 'Run called with no user messages — skipping');
+      this.state.status = 'idle';
+      return;
+    }
 
     try {
       const systemPrompt = this.preparePrompt(paths.base, paths.workspace);
       const warm = warmSessions.get(key);
       const isWarm = warm?.alive === true;
 
-      // Set up result handler BEFORE sending message
+      // ── Register result handler BEFORE sending message or starting loop ──
+      // This eliminates the handler gap: no events can arrive before the
+      // handler is registered.
       const resultPromise = new Promise<void>((resolve, reject) => {
         const handler: ActiveHandler = {
           startTime: Date.now(),
@@ -390,19 +447,19 @@ export class AgentRunner {
         once: true,
       });
 
+      let usedWarm = false;
+
       if (isWarm) {
         // ── Warm path: reuse existing subprocess via streamInput() ──
         logger.info({ key }, 'AgentRunner: Warm path — reusing subprocess');
         warm!.lastUsedAt = Date.now();
 
-        // On warm path, only send the absolutely latest user message to avoid duplication
-        const lastUser = messages.filter(m => m.role === 'user').pop();
-        if (lastUser) {
+        try {
           const userMsg: SDKUserMessage = {
             type: 'user',
             message: { role: 'user', content: lastUser.content },
             parent_tool_use_id: null,
-            session_id: warm!.sessionId,
+            session_id: undefined as any,
             uuid: randomUUID() as UUID,
           };
           await warm!.query.streamInput(
@@ -410,19 +467,33 @@ export class AgentRunner {
               yield userMsg;
             })(),
           );
-        } else {
-          logger.warn({ key }, 'Warm path triggered with no user messages');
-          this.state.status = 'idle';
-          return;
+          usedWarm = true;
+        } catch (err: any) {
+          // Warm subprocess died. The handler stays registered — the new
+          // subprocess's output loop will route events to it so resultPromise
+          // still resolves correctly.
+          logger.warn(
+            { key, err: err.message },
+            'AgentRunner: Warm streamInput failed — falling back to cold resume',
+          );
+          warm!.alive = false;
+          warmSessions.delete(key);
+          // DO NOT delete the handler here — keep it for the cold path below
         }
-      } else {
+      }
+
+      if (!usedWarm) {
         // ── Cold path: spawn new subprocess, resuming server-side session ──
+        // Also reached when the warm path failed above (graceful fallback).
+        // The handler from the resultPromise above is still registered — the
+        // new subprocess's output loop will route events to it correctly.
         logger.info({ key }, 'AgentRunner: Cold start — spawning subprocess');
 
-        // Clean up stale session if any
-        if (warm) {
+        // Clean up any stale warm entry (e.g. from the warm failure just above)
+        const stale = warmSessions.get(key);
+        if (stale && stale !== warm) {
           try {
-            warm.query.close();
+            stale.query.close();
           } catch {}
           warmSessions.delete(key);
         }
@@ -435,26 +506,21 @@ export class AgentRunner {
           this.state.task_id!,
         );
 
-        // Use the latest user message as the prompt.
-        // Pass `resume: session_id` so the SDK reconnects to the server-side
-        // session which already has the full conversation history — no manual
-        // history injection needed.
-        const lastUser = messages.filter((m) => m.role === 'user').pop();
-        const prompt = lastUser?.content ?? '';
-
-        // Attempt to resume the previous Claude-side session (if any).
-        // On the very first cold start this will be null, and the SDK will
-        // create a brand-new session which we then save for future restarts.
+        // Resume the previous Claude-side session if one exists.
+        // On the very first cold start, null → fresh session (ID will be saved).
         const savedClaudeSessionId = loadClaudeSessionId(this.state.agent_id);
         if (savedClaudeSessionId) {
           logger.info(
-            { agentId: this.state.agent_id, claudeSessionId: savedClaudeSessionId },
+            {
+              agentId: this.state.agent_id,
+              claudeSessionId: savedClaudeSessionId,
+            },
             'AgentRunner: Resuming prior Claude session',
           );
         }
 
         const agentQuery = query({
-          prompt,
+          prompt: lastUser.content,
           options: {
             ...opts,
             ...(savedClaudeSessionId ? { resume: savedClaudeSessionId } : {}),
@@ -464,15 +530,14 @@ export class AgentRunner {
         const newWarm: WarmSession = {
           query: agentQuery as Query,
           agentId: this.state.agent_id,
-          sessionId: this.state.session_id,
           createdAt: Date.now(),
           lastUsedAt: Date.now(),
+          lastEventAt: Date.now(),
           alive: true,
-          claudeSessionIdSaved: false,
         };
         warmSessions.set(key, newWarm);
 
-        // Start the output loop (runs in background, survives this run() call)
+        // Handler is already registered — start the output loop
         startOutputLoop(key, newWarm);
       }
 
