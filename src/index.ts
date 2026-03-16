@@ -70,9 +70,8 @@ import {
 import {
   appendStreamChunk,
   createStreamState,
-  finishStream,
 } from './core/streaming.js';
-import { parseProgressEvent, formatProgressText, formatProgressFromEvent, progressKeyFromEvent } from './core/progress.js';
+import { parseProgressEvent, formatProgressText, progressKeyFromEvent } from './core/progress.js';
 
 // Define ChannelOpts locally as it was removed from registry.ts
 export interface ChannelOpts {
@@ -255,7 +254,6 @@ async function processMessages(chatJid: string): Promise<boolean> {
         agent_name: group.name,
       });
 
-      let streamedToWeb = false;
       let statusMessageId: string | null = null;
       let lastProgressSentAt = 0;
       let lastProgressKey = '';
@@ -365,7 +363,6 @@ async function processMessages(chatJid: string): Promise<boolean> {
               ) {
                 const frame = appendStreamChunk(streamState, eventData.target);
                 if (frame) {
-                  streamedToWeb = true;
                   broadcastToChat(chatJid, {
                     type: 'stream_delta',
                     ...frame,
@@ -399,48 +396,24 @@ async function processMessages(chatJid: string): Promise<boolean> {
               await emitProgress(progressText, progressInfo);
             },
             onReply: async (text) => {
+              // Clear progress indicators
               if (chatJid.startsWith('web:')) {
-                broadcastToChat(chatJid, {
-                  type: 'progress_end',
-                });
+                broadcastToChat(chatJid, { type: 'progress_end' });
               } else if (statusMessageId) {
                 try {
                   await routeEditMessage(
                     channels,
                     chatJid,
                     statusMessageId,
-                    '✅ 已完成，正在发送最终回复...',
+                    'Done, sending final reply...',
                   );
                 } catch {
-                  // Keep going; final answer will still be delivered.
+                  // Safe to ignore; final answer will still be delivered.
                 }
               }
 
-              if (chatJid.startsWith('web:') && streamedToWeb) {
-                // Web clients already received the response via stream_delta events.
-                // Send stream_end so the client knows streaming is complete,
-                // and store the bot message without re-broadcasting the full text.
-                broadcastToChat(chatJid, {
-                  type: 'stream_end',
-                  ...finishStream(streamState, text),
-                });
-                // Still store the bot message for history
-                const ts = new Date().toISOString();
-                lastAgentTimestamp[chatJid] = ts;
-                setRouterState(chatJid, ts);
-                storeMessage({
-                  id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                  chat_jid: chatJid,
-                  sender: ASSISTANT_NAME,
-                  sender_name: ASSISTANT_NAME,
-                  content: text,
-                  timestamp: ts,
-                  is_from_me: true,
-                });
-              } else {
-                // Non-web channels (Discord, Feishu, etc.) or no streaming happened
-                await sendFn(chatJid, text);
-              }
+              // Deliver the final message through the channel
+              await sendFn(chatJid, text);
             },
           },
         );
