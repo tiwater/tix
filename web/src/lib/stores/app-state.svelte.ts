@@ -98,6 +98,11 @@ function createAppState() {
   let sending = $state(false);
   let isThinking = $state(false);
   let progressText = $state('');
+  let progressCategory = $state<string>('');
+  let progressSkill = $state<string | undefined>(undefined);
+  let progressTool = $state<string | undefined>(undefined);
+  let progressArgs = $state<string | undefined>(undefined);
+  let progressElapsed = $state(0);
   let streamingMessageId: string | null = $state(null);
   let activeStreamId = $state<string | null>(null);
   let lastStreamSeq = $state(0);
@@ -180,7 +185,16 @@ function createAppState() {
       try {
         const data = JSON.parse(ev.data);
         if (data.type === 'connected') { addLog(`Stream ready: ${data.chat_jid}`); return; }
-        if (data.type === 'progress' && data.text) { progressText = data.text; if (!streamingMessageId) isThinking = true; return; }
+        if (data.type === 'progress' && data.text) {
+          progressText = data.text;
+          progressCategory = data.category || '';
+          progressSkill = data.skill;
+          progressTool = data.tool;
+          progressArgs = data.args;
+          progressElapsed = data.elapsed_s || 0;
+          if (!streamingMessageId) isThinking = true;
+          return;
+        }
         if (data.type === 'progress_end') { progressText = ''; return; }
 
         if (data.type === 'stream_delta' && data.text) {
@@ -412,6 +426,11 @@ function createAppState() {
     get sending() { return sending; },
     get isThinking() { return isThinking; },
     get progressText() { return progressText; },
+    get progressCategory() { return progressCategory; },
+    get progressSkill() { return progressSkill; },
+    get progressTool() { return progressTool; },
+    get progressArgs() { return progressArgs; },
+    get progressElapsed() { return progressElapsed; },
     get skills() { return skills; },
     get agents() { return agents; },
     get sessions() { return sessions; },

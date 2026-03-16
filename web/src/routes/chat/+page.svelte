@@ -111,9 +111,24 @@
         <div class="flex gap-2.5">
           <div class="w-[30px] h-[30px] rounded-lg flex items-center justify-center shrink-0 text-white bg-gradient-to-br from-green-500 to-cyan-400"><Bot size={15} /></div>
           <div>
-            <div class="bg-muted text-muted-foreground px-3.5 py-2 rounded-xl italic text-[13px]">
-              {appState.progressText || 'Thinking'}
-              {#if !appState.progressText}
+            <div class="bg-muted text-muted-foreground px-3.5 py-2 rounded-xl text-[13px] flex items-center gap-2">
+              {#if appState.progressCategory === 'skill'}
+                <Puzzle size={14} class="text-primary shrink-0" />
+                <span>Using skill <strong>{appState.progressSkill}</strong>{appState.progressArgs ? ` for "${appState.progressArgs}"` : ''}... ({appState.progressElapsed}s)</span>
+              {:else if appState.progressCategory === 'tool'}
+                <RefreshCw size={14} class="text-muted-foreground shrink-0 spin" />
+                <span>{appState.progressText}</span>
+              {:else if appState.progressCategory === 'thinking'}
+                <Brain size={14} class="text-primary shrink-0" />
+                <span>Thinking... ({appState.progressElapsed}s)</span>
+              {:else if appState.progressCategory === 'error'}
+                <Loader2 size={14} class="text-destructive shrink-0" />
+                <span>Recovering from error... ({appState.progressElapsed}s)</span>
+              {:else if appState.progressText}
+                <Loader2 size={14} class="text-muted-foreground shrink-0 spin" />
+                <span>{appState.progressText}</span>
+              {:else}
+                <span>Thinking</span>
                 <span class="inline-flex gap-1">{#each [0, 1, 2] as i}<span class="inline-block w-[5px] h-[5px] bg-primary rounded-full" style="animation: dot-bounce 1.2s ease-in-out infinite; animation-delay: {i * 0.2}s"></span>{/each}</span>
               {/if}
             </div>

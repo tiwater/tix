@@ -72,7 +72,7 @@ import {
   createStreamState,
   finishStream,
 } from './core/streaming.js';
-import { formatProgressText, progressKeyFromEvent } from './core/progress.js';
+import { parseProgressEvent, formatProgressText, formatProgressFromEvent, progressKeyFromEvent } from './core/progress.js';
 
 // Define ChannelOpts locally as it was removed from registry.ts
 export interface ChannelOpts {
@@ -264,13 +264,14 @@ async function processMessages(chatJid: string): Promise<boolean> {
       let heartbeatInFlight = false;
       let heartbeatTimer: NodeJS.Timeout | null = null;
 
-      const emitProgress = async (text: string) => {
+      const emitProgress = async (text: string, info?: import('./core/progress.js').ProgressInfo) => {
         if (!text || !text.trim()) return;
 
         if (chatJid.startsWith('web:')) {
           broadcastToChat(chatJid, {
             type: 'progress',
             text,
+            ...(info ? { category: info.category, skill: info.skill, tool: info.tool, args: info.args, elapsed_s: info.elapsed_s } : {}),
           });
           return;
         }
@@ -314,16 +315,16 @@ async function processMessages(chatJid: string): Promise<boolean> {
                 action: 'thinking',
                 elapsed_ms: elapsed,
               };
-          let heartbeatText = formatProgressText(heartbeatBase);
-          if (!heartbeatText) {
-            heartbeatText = formatProgressText({
+          let heartbeatInfo = parseProgressEvent(heartbeatBase);
+          if (!heartbeatInfo) {
+            heartbeatInfo = parseProgressEvent({
               phase: 'assistant',
               action: 'thinking',
               elapsed_ms: elapsed,
             });
           }
-          if (!heartbeatText) return;
-          await emitProgress(heartbeatText);
+          if (!heartbeatInfo) return;
+          await emitProgress(formatProgressText(heartbeatInfo), heartbeatInfo);
         } catch (err) {
           logger.debug({ err, chatJid }, 'Progress heartbeat failed');
         } finally {
@@ -372,8 +373,9 @@ async function processMessages(chatJid: string): Promise<boolean> {
                 }
               }
 
-              const progressText = formatProgressText(eventData);
-              if (!progressText) return;
+              const progressInfo = parseProgressEvent(eventData);
+              if (!progressInfo) return;
+              const progressText = formatProgressText(progressInfo);
 
               const now = Date.now();
               const targetKey =
@@ -394,7 +396,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
               lastProgressSentAt = now;
               lastProgressKey = progressKey;
-              await emitProgress(progressText);
+              await emitProgress(progressText, progressInfo);
             },
             onReply: async (text) => {
               if (chatJid.startsWith('web:')) {

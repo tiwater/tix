@@ -20,6 +20,10 @@ function extractScalar(
   return null;
 }
 
+/**
+ * Extract a short summary of the tool target for display.
+ * E.g. for Bash calls, pulls out the `command` field from JSON.
+ */
 function summarizeToolTarget(tool: string, target: string): string | null {
   const cleaned = toSingleLine(target);
   if (!cleaned) return null;
@@ -54,15 +58,48 @@ function summarizeToolTarget(tool: string, target: string): string | null {
   }
 }
 
+// ── Structured progress types ──────────────────────────
+
+/**
+ * Categories of progress updates.
+ * Each channel (web, CLI, Feishu, etc.) decides how to render these.
+ */
+export type ProgressCategory =
+  | 'skill'     // Using a registered skill (web-search, office, etc.)
+  | 'tool'      // Running a generic tool (Bash, Read, Write, etc.)
+  | 'thinking'  // LLM is reasoning / planning
+  | 'formatting'// Building the final response
+  | 'error'     // Recovering from an error
+  | 'processing'; // Catch-all for unknown phases
+
+export interface ProgressInfo {
+  /** What kind of work is happening */
+  category: ProgressCategory;
+  /** How long this step has been running */
+  elapsed_s: number;
+  /** For 'skill': the skill name (e.g. "web-search") */
+  skill?: string;
+  /** For 'skill': the query/arguments passed to the skill */
+  args?: string;
+  /** For 'tool': the tool name (e.g. "Bash", "Read") */
+  tool?: string;
+  /** For 'tool': short summary of what it's operating on */
+  target?: string;
+}
+
 export function progressKeyFromEvent(event: Record<string, unknown>): string {
   const phase = typeof event.phase === 'string' ? event.phase : '';
   const action = typeof event.action === 'string' ? event.action : '';
   return `${phase}|${action}`;
 }
 
-export function formatProgressText(
+/**
+ * Parse a raw progress event into a structured ProgressInfo.
+ * Returns null for events that should be suppressed (e.g. streaming text).
+ */
+export function parseProgressEvent(
   event: Record<string, unknown>,
-): string | null {
+): ProgressInfo | null {
   const phase = typeof event.phase === 'string' ? event.phase : '';
   const action = typeof event.action === 'string' ? event.action : '';
   const target = typeof event.target === 'string' ? event.target : '';
@@ -70,11 +107,13 @@ export function formatProgressText(
     typeof event.elapsed_ms === 'number' && Number.isFinite(event.elapsed_ms)
       ? event.elapsed_ms
       : 0;
-  const secs = Math.max(1, Math.round(elapsed / 1000));
+  const elapsed_s = Math.max(1, Math.round(elapsed / 1000));
 
+  // Suppress streaming text and done events
   if (phase === 'stream_event' && action === 'speaking') return null;
   if (phase === 'done') return null;
 
+  // Tool execution
   if (action.startsWith('executing_')) {
     const tool = action.replace(/^executing_/, '') || 'tool';
     const targetSummary = summarizeToolTarget(tool, target);
@@ -87,26 +126,71 @@ export function formatProgressText(
       if (skillMatch) {
         const skillName = skillMatch[1];
         const args = skillMatch[2]?.replace(/['"]/g, '').trim();
-        const argsSuffix = args ? ` for "${truncate(args, 60)}"` : '';
-        return `Using skill "${skillName}"${argsSuffix}... (${secs}s)`;
+        return {
+          category: 'skill',
+          elapsed_s,
+          skill: skillName,
+          args: args || undefined,
+        };
       }
     }
 
-    const suffix = targetSummary ? `: ${targetSummary}` : '';
-    return `Running ${tool}${suffix}... (${secs}s)`;
+    return {
+      category: 'tool',
+      elapsed_s,
+      tool,
+      target: targetSummary || undefined,
+    };
   }
 
   if (phase === 'assistant' || action === 'thinking') {
-    return `Thinking and planning next steps... (${secs}s)`;
+    return { category: 'thinking', elapsed_s };
   }
 
   if (phase === 'result') {
-    return `Formatting final result... (${secs}s)`;
+    return { category: 'formatting', elapsed_s };
   }
 
   if (phase === 'error') {
-    return `Encountered an error, recovering... (${secs}s)`;
+    return { category: 'error', elapsed_s };
   }
 
-  return `Processing... (${secs}s)`;
+  return { category: 'processing', elapsed_s };
+}
+
+/**
+ * Format a ProgressInfo as a plain-text string.
+ * Used by channels that need a single text message (Feishu, WhatsApp, CLI).
+ */
+export function formatProgressText(info: ProgressInfo): string {
+  switch (info.category) {
+    case 'skill': {
+      const argsSuffix = info.args ? ` for "${truncate(info.args, 60)}"` : '';
+      return `Using skill "${info.skill}"${argsSuffix}... (${info.elapsed_s}s)`;
+    }
+    case 'tool': {
+      const suffix = info.target ? `: ${info.target}` : '';
+      return `Running ${info.tool}${suffix}... (${info.elapsed_s}s)`;
+    }
+    case 'thinking':
+      return `Thinking... (${info.elapsed_s}s)`;
+    case 'formatting':
+      return `Formatting result... (${info.elapsed_s}s)`;
+    case 'error':
+      return `Recovering from error... (${info.elapsed_s}s)`;
+    default:
+      return `Processing... (${info.elapsed_s}s)`;
+  }
+}
+
+/**
+ * Legacy helper: parse event and format as text in one step.
+ * Kept for backward compatibility with non-web channels.
+ */
+export function formatProgressFromEvent(
+  event: Record<string, unknown>,
+): string | null {
+  const info = parseProgressEvent(event);
+  if (!info) return null;
+  return formatProgressText(info);
 }
