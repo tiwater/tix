@@ -25,6 +25,7 @@
 
 import fs from 'fs';
 import http from 'http';
+import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { URL } from 'url';
@@ -159,7 +160,12 @@ function writeJson(
   statusCode: number,
   payload: unknown,
 ): void {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  });
   res.end(JSON.stringify(payload));
 }
 
@@ -921,6 +927,24 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      const sessionDeleteMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
+      if (sessionDeleteMatch && req.method === 'DELETE') {
+        const id = decodeURIComponent(sessionDeleteMatch[1]);
+        const dbPath = path.join(AGENTS_DIR, '.sessions', `${id}.json`);
+        
+        try {
+          if (fs.existsSync(dbPath)) {
+            fs.unlinkSync(dbPath);
+          }
+          // Also try removing the messages file just in case it's stored similarly, but we only have a clean mapping for sessions right now
+        } catch (e) {
+          logger.warn({ id, error: e }, 'Failed to delete session file');
+        }
+
+        writeJson(res, 200, { ok: true });
+        return;
+      }
+
       // ── Web UI API: Schedules ──
 
       if (pathname === '/api/schedules' && req.method === 'GET') {
@@ -1008,6 +1032,14 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/node' && req.method === 'GET') {
         const enrollment = readEnrollmentState(NODE_HOSTNAME || undefined);
         const stats = getExecutorStats();
+        
+        // System Telemetry
+        const cpus = os.cpus();
+        const memTotal = os.totalmem();
+        const memFree = os.freemem();
+        const loadAvg = os.loadavg();
+        const uptime = os.uptime();
+
         writeJson(res, 200, {
           hostname: NODE_HOSTNAME,
           enrollment: {
@@ -1017,6 +1049,17 @@ export class HttpChannel implements Channel {
             failed_attempts: enrollment.failed_attempts,
           },
           executor: stats,
+          os: {
+            platform: os.platform(),
+            arch: os.arch(),
+            cpus: cpus.length,
+            cpu_model: cpus[0]?.model || 'Unknown',
+            load_avg: loadAvg,
+            mem_total: memTotal,
+            mem_free: memFree,
+            mem_used: memTotal - memFree,
+            uptime: uptime,
+          }
         });
         return;
       }

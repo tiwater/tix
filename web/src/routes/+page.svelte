@@ -1,3 +1,4 @@
+<script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
   import { marked } from 'marked';
   import DOMPurify from 'isomorphic-dompurify';
@@ -775,3 +776,4 @@
   onDestroy(() => {
     disconnectSSE();
   });
+</script>

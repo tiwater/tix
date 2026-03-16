@@ -79,6 +79,17 @@ export interface NodeInfo {
     queued_tasks?: number;
     total_slots?: number;
   };
+  os?: {
+    platform: string;
+    arch: string;
+    cpus: number;
+    cpu_model: string;
+    load_avg: number[];
+    mem_total: number;
+    mem_free: number;
+    mem_used: number;
+    uptime: number;
+  };
 }
 
 // --- Shared app state (Svelte 5 runes) ---
@@ -357,6 +368,13 @@ function createAppState() {
     try { await fetch(`/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }); await fetchSchedules(); } catch { /* */ }
   }
 
+  async function deleteSession(id: string) {
+    try { 
+      await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); 
+      if (selectedAgentId) await fetchSessionsForAgent(selectedAgentId); 
+    } catch { /* */ }
+  }
+
   async function send() {
     const content = inputText.trim();
     if (!content || sending) return;
@@ -465,7 +483,7 @@ function createAppState() {
     connectSSE, disconnectSSE, addLog,
     fetchMind, fetchMindFiles, fetchSkills, fetchAgents, fetchSessionsForAgent,
     fetchSchedules, fetchNode, trustNode, toggleSkill,
-    createAgent, createSession, toggleSchedule, removeSchedule,
+    createAgent, createSession, toggleSchedule, removeSchedule, deleteSession,
     send, selectSession, reconnect,
     formatDate, formatShortDate,
   };

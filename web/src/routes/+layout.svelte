@@ -6,21 +6,16 @@
   import '../app.css';
   import {
     Bot, MessageSquare, Clock, Puzzle, Server, Wifi, WifiOff, Unlock,
+    ChevronsUpDown, Plus, Trash2
   } from 'lucide-svelte';
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import * as Sidebar from "$lib/components/ui/sidebar";
 
   let { children } = $props();
 
-  const navItems = [
-    { href: '/nodes', icon: 'node', label: 'Nodes' },
-    { href: '/sessions', icon: 'sessions', label: 'Agents' },
-    { href: '/chat', icon: 'chat', label: 'Chat' },
-    { href: '/schedules', icon: 'schedules', label: 'Schedules' },
-    { href: '/skills', icon: 'skills', label: 'Skills' },
-  ];
-
-  function isActive(href: string): boolean {
+  function isActive(href: string) {
     const path = $page.url.pathname;
-    if (href === '/sessions') return path === '/' || path === '/sessions';
+    if (href === '/agents') return path === '/' || path === '/agents';
     return path === href;
   }
 
@@ -28,6 +23,10 @@
     await appState.fetchNode();
     appState.fetchMind();
     appState.fetchMindFiles();
+    await appState.fetchAgents();
+    if (appState.agents.length > 0 && !appState.selectedAgentId) {
+        appState.fetchSessionsForAgent(appState.agents[0].agent_id);
+    }
   });
 
   onDestroy(() => {
@@ -41,38 +40,200 @@
   <meta name="description" content="TiClaw HTTP SSE chat interface for development and testing" />
 </svelte:head>
 
-<div class="grid h-screen font-sans" style:grid-template-columns="180px 1fr">
-  <!-- Left Nav -->
-  <nav class="bg-sidebar border-r border-sidebar-border flex flex-col overflow-y-auto">
-    <a href="/sessions" class="flex items-center gap-2.5 px-4 pt-4 pb-5 font-bold text-[15px] text-primary tracking-tight no-underline">TiClaw DevUI</a>
-    {#each navItems as item}
-      <a
-        href={item.href}
-        class="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-muted-foreground transition-all relative no-underline hover:bg-accent hover:text-foreground {isActive(item.href) ? 'bg-primary/10 text-primary' : ''}"
+<Sidebar.Provider>
+  <Sidebar.Root>
+    <Sidebar.Header class="px-4 pt-4">
+      <a href="/sessions" class="flex items-center gap-2.5 font-bold text-[15px] text-primary tracking-tight no-underline mb-2">TiClaw DevUI</a>
+    </Sidebar.Header>
+    
+    <Sidebar.Content>
+      <Sidebar.Group class="py-0">
+        <Sidebar.GroupContent class="flex flex-col gap-1">
+          <Sidebar.Menu>
+            <!-- Node Switcher -->
+            <Sidebar.MenuItem>
+              <DropdownMenu.Root>
+                <div class="flex items-center w-full">
+                  <Sidebar.MenuButton>
+                    {#snippet child({ props }: { props: Record<string, unknown> })}
+                      <a href="/nodes" {...props} class="{props.class} flex-1 justify-start">
+                        <Server size={15} />
+                        <span class="truncate">{appState.nodeInfo?.hostname || 'Manage Nodes'}</span>
+                      </a>
+                    {/snippet}
+                  </Sidebar.MenuButton>
+                  
+                  <DropdownMenu.Trigger>
+                    {#snippet child({ props }: { props: Record<string, unknown> })}
+                      <Sidebar.MenuAction {...props} showOnHover={false}>
+                        <ChevronsUpDown size={14} class="opacity-50" />
+                        <span class="sr-only">Toggle Node Menu</span>
+                      </Sidebar.MenuAction>
+                    {/snippet}
+                  </DropdownMenu.Trigger>
+                </div>
+                <DropdownMenu.Content class="w-[200px]" align="start">
+                  <DropdownMenu.Label>Nodes</DropdownMenu.Label>
+                  {#if appState.nodeInfo}
+                    <DropdownMenu.Item class="flex flex-col items-start gap-1 cursor-default opacity-100 hover:bg-transparent focus:bg-transparent">
+                      <div class="font-medium flex items-center gap-1.5"><Server size={13} /> {appState.nodeInfo.hostname}</div>
+                      <div class="text-[10px] opacity-70">Trust: {appState.nodeInfo.enrollment.trust_state}</div>
+                    </DropdownMenu.Item>
+                  {/if}
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item class="cursor-pointer text-muted-foreground" onclick={() => window.location.href = '/nodes'}>
+                    <Server size={14} class="mr-2" /> Manage Nodes...
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </Sidebar.MenuItem>
+
+            <!-- Agent Switcher -->
+            <Sidebar.MenuItem>
+              <DropdownMenu.Root>
+                <div class="flex items-center w-full">
+                  <Sidebar.MenuButton isActive={isActive('/agents')}>
+                    {#snippet child({ props }: { props: Record<string, unknown> })}
+                      <a href="/agents" {...props} class="{props.class} flex-1 justify-start">
+                        <Bot size={15} />
+                        <span class="truncate">{appState.selectedAgentId || 'Select Agent'}</span>
+                      </a>
+                    {/snippet}
+                  </Sidebar.MenuButton>
+                  
+                  <DropdownMenu.Trigger>
+                    {#snippet child({ props }: { props: Record<string, unknown> })}
+                      <Sidebar.MenuAction {...props} showOnHover={false}>
+                        <ChevronsUpDown size={14} class="opacity-50" />
+                        <span class="sr-only">Toggle Agent Menu</span>
+                      </Sidebar.MenuAction>
+                    {/snippet}
+                  </DropdownMenu.Trigger>
+                </div>
+                <DropdownMenu.Content class="w-[200px]" align="start">
+                  <DropdownMenu.Label>Agents</DropdownMenu.Label>
+                  <DropdownMenu.Separator />
+                  {#each appState.agents as agent}
+                    <DropdownMenu.Item class="cursor-pointer" onclick={() => appState.fetchSessionsForAgent(agent.agent_id)}>
+                      <div class="flex flex-col">
+                        <span class="font-medium">{agent.agent_id}</span>
+                        <span class="text-[10px] opacity-70">{agent.session_count} sessions</span>
+                      </div>
+                    </DropdownMenu.Item>
+                  {/each}
+                  {#if appState.agents.length === 0}
+                    <div class="px-2 py-1 text-xs text-muted-foreground">No agents found</div>
+                  {/if}
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item class="cursor-pointer" onclick={() => { appState.showNewAgent = true; }}>
+                    <Plus size={14} class="mr-2" /> New Agent...
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item class="cursor-pointer" onclick={() => window.location.href = '/agents'}>
+                    Manage Agents...
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </Sidebar.MenuItem>
+
+            <Sidebar.MenuItem>
+              <Sidebar.MenuButton isActive={isActive('/schedules')}>
+                {#snippet child({ props }: { props: Record<string, unknown> })}
+                  <a href="/schedules" {...props}>
+                    <Clock size={15} />
+                    <span>Automations</span>
+                  </a>
+                {/snippet}
+              </Sidebar.MenuButton>
+            </Sidebar.MenuItem>
+            
+            <Sidebar.MenuItem>
+              <Sidebar.MenuButton isActive={isActive('/skills')}>
+                {#snippet child({ props }: { props: Record<string, unknown> })}
+                  <a href="/skills" {...props}>
+                    <Puzzle size={15} />
+                    <span>Skills</span>
+                  </a>
+                {/snippet}
+              </Sidebar.MenuButton>
+            </Sidebar.MenuItem>
+          </Sidebar.Menu>
+        </Sidebar.GroupContent>
+      </Sidebar.Group>
+    <!-- Sessions Group -->
+    <Sidebar.Group class="mt-4 flex flex-col gap-1 flex-1 min-h-0 overflow-hidden px-2 py-0">
+      <Sidebar.GroupLabel class="flex items-center gap-1.5 px-1.5">
+        <MessageSquare size={12} />
+        <span>Sessions</span>
+      </Sidebar.GroupLabel>
+      <Sidebar.GroupAction 
+        onclick={() => { 
+          if(appState.selectedAgentId) { appState.newSessionAgentId = appState.selectedAgentId; appState.showNewSession = true; }
+          else { appState.showNewAgent = true; } 
+        }}
+        title="New Session"
+        class="top-1"
       >
-        {#if isActive(item.href)}<span class="absolute left-0 top-0 w-[3px] h-full bg-primary rounded-r"></span>{/if}
-        {#if item.icon === 'chat'}<MessageSquare size={15} />
-        {:else if item.icon === 'schedules'}<Clock size={15} />
-        {:else if item.icon === 'skills'}<Puzzle size={15} />
-        {:else if item.icon === 'node'}<Server size={15} />
-        {:else}<Bot size={15} />
-        {/if}
-        <span class="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{item.label}</span>
-      </a>
-    {/each}
-    <div class="mt-auto flex items-center gap-2 px-4 py-3">
+        <Plus size={14} />
+      </Sidebar.GroupAction>
+
+      <Sidebar.GroupContent class="flex flex-col gap-0.5 overflow-y-auto flex-1 pb-4 px-1">
+        <Sidebar.Menu>
+          {#if !appState.selectedAgentId}
+            <div class="px-2.5 py-2 text-xs text-muted-foreground">Select an agent first</div>
+          {:else if appState.sessions.length === 0}
+            <div class="px-2.5 py-2 text-xs text-muted-foreground">No sessions</div>
+          {:else}
+            {#each appState.sessions as sess}
+              <Sidebar.MenuItem>
+                <Sidebar.MenuButton isActive={appState.sessionId === sess.session_id && isActive('/chat')}>
+                  {#snippet child({ props }: { props: Record<string, unknown> })}
+                    <a 
+                      href="/chat"
+                      {...props}
+                      class="{[props.class, 'flex-1', 'justify-start', 'group/session-link'].join(' ')}"
+                      onclick={() => appState.selectSession(sess)}
+                    >
+                      <div class="flex flex-col overflow-hidden leading-tight group-hover/session-link:pr-6 transition-all">
+                        <span class="font-medium whitespace-nowrap overflow-hidden text-ellipsis font-mono">{sess.session_id}</span>
+                        {#if sess.channel !== 'web' && sess.channel !== 'http'}
+                          <span class="text-[10px] font-mono opacity-70 mt-0.5">{sess.channel}</span>
+                        {/if}
+                      </div>
+                    </a>
+                  {/snippet}
+                </Sidebar.MenuButton>
+                <Sidebar.MenuAction 
+                  showOnHover={true}
+                  onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); appState.deleteSession(sess.session_id); }}
+                  title="Delete session"
+                >
+                  <Trash2 size={13} />
+                  <span class="sr-only">Delete session</span>
+                </Sidebar.MenuAction>
+              </Sidebar.MenuItem>
+            {/each}
+          {/if}
+        </Sidebar.Menu>
+      </Sidebar.GroupContent>
+    </Sidebar.Group>
+  </Sidebar.Content>
+
+  <Sidebar.Footer>
+    <!-- Status indicator -->
+    <div class="flex items-center gap-2 px-2 py-1">
       {#if appState.sseConnected}
         <Wifi size={12} class="text-green-500" />
-        <span class="text-[11px] text-green-500">Connected</span>
+        <span class="text-[11px] text-green-500 font-medium">Connected</span>
       {:else}
         <WifiOff size={12} class="text-muted-foreground" />
-        <span class="text-[11px] text-muted-foreground">Offline</span>
+        <span class="text-[11px] text-muted-foreground font-medium">Offline</span>
       {/if}
     </div>
-  </nav>
+  </Sidebar.Footer>
+</Sidebar.Root>
 
   <!-- Main Content + optional sidebar -->
-  <div class="flex flex-col overflow-hidden bg-background">
+  <main class="w-full flex-1 flex flex-col overflow-hidden bg-background">
     {#if appState.nodeInfo && appState.nodeInfo.enrollment.trust_state !== 'trusted'}
       <div class="flex items-center justify-between gap-3 px-5 py-2.5 bg-destructive/10 border-b border-destructive/20 text-sm">
         <span>🔒 This node is not trusted ({appState.nodeInfo.enrollment.trust_state}). Messaging is disabled.</span>
@@ -82,5 +243,5 @@
       </div>
     {/if}
     {@render children()}
-  </div>
-</div>
+  </main>
+</Sidebar.Provider>
