@@ -15,9 +15,9 @@
     "auth": "tsx src/whatsapp-auth.ts",
     "build": "tsc",
     "chat": "node cli/dist/index.js chat",
-    "dev": "tsx watch src/index.ts",
+    "dev": "pnpm --filter @ticlaw/hub run build && concurrently \"pnpm --filter web run dev\" \"sleep 2 && pnpm run dev:hub\"",
+    "dev:hub": "tsx watch src/index.ts",
     "dev:web": "pnpm --filter web run dev",
-    "dev:all": "pnpm --filter @ticlaw/hub run build && concurrently \"pnpm --filter web run dev\" \"sleep 2 && pnpm run dev\"",
     "start": "node dist/index.js",
     "test": "vitest run"
   },
