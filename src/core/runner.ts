@@ -260,8 +260,8 @@ function buildQueryOptions(
       TICLAW_AGENT_ID: agentId,
       TICLAW_SESSION_ID: sessionId,
       TICLAW_TASK_ID: taskId,
-      PATH: `${path.join(TICLAW_HOME, 'bin')}:${process.env.PATH}`,
     } as Record<string, string>,
+    plugins: [] as any[],
   };
 }
 
@@ -563,6 +563,62 @@ export class AgentRunner {
           this.state.task_id!,
         );
 
+        // Dynamically compile the agent's plugin containing all enabled skills
+        const pluginPath = path.join(paths.base, 'sdk_plugin');
+        const pluginSkillsPath = path.join(pluginPath, 'skills');
+        fs.mkdirSync(pluginSkillsPath, { recursive: true });
+
+        // Write a minimal plugin.json to satisfy the SDK
+        fs.writeFileSync(path.join(pluginPath, 'plugin.json'), JSON.stringify({
+          name: 'ticlaw-skills',
+          version: '1.0.0',
+          description: 'TiClaw dynamically compiled skills bundle for native SDK discovery.'
+        }, null, 2));
+
+        try {
+          // Read skills from the global registry
+          const registry = new SkillsRegistry(SKILLS_CONFIG);
+          const available = registry.listAvailable();
+          let enabled = available;
+          
+          const agentSkillsPath = path.join(paths.base, 'skills.json');
+          if (fs.existsSync(agentSkillsPath)) {
+            try {
+              const allowedNames: string[] = JSON.parse(fs.readFileSync(agentSkillsPath, 'utf8'));
+              enabled = available.filter(a => allowedNames.includes(a.skill.name));
+            } catch (e: any) {
+              logger.warn({ err: e.message, agentId: this.state.agent_id }, 'Failed to parse agent skills.json, falling back to global');
+              enabled = available.filter((a) => a.installed?.enabled);
+            }
+          } else {
+            enabled = available.filter((a) => a.installed?.enabled);
+          }
+
+          // Delete existing old symlinks to avoid stale skills
+          for (const f of fs.readdirSync(pluginSkillsPath)) {
+            fs.rmSync(path.join(pluginSkillsPath, f), { recursive: true, force: true });
+          }
+
+          // Symlink each enabled skill
+          for (const { skill, installed } of enabled) {
+            if (installed?.directory) {
+              const linkPath = path.join(pluginSkillsPath, skill.name);
+              try {
+                if (fs.existsSync(linkPath)) fs.unlinkSync(linkPath);
+                fs.symlinkSync(installed.directory, linkPath);
+              } catch (e: any) {
+                logger.error({ err: e.message, skill: skill.name }, 'Failed to symlink skill to SDK plugin directory');
+              }
+            }
+          }
+          
+          opts.plugins = [
+            { type: 'local', path: pluginPath }
+          ];
+        } catch (err: any) {
+          logger.error({ err: err.message }, 'Failed to compile skills plugin for agent');
+        }
+
         // Resume the previous Claude-side session if one exists.
         // On the very first cold start, null → fresh session (ID will be saved).
         const savedClaudeSessionId = loadClaudeSessionId(this.state.agent_id);
@@ -710,29 +766,7 @@ export class AgentRunner {
       }
     }
 
-    try {
-      const registry = new SkillsRegistry(SKILLS_CONFIG);
-      const available = registry.listAvailable();
-      const enabled = available.filter((a) => a.installed?.enabled);
 
-      if (enabled.length > 0) {
-        let skillsInfo =
-          '## Installed Skills\n\nYou have the following skills enabled and available to use via your Bash tool:\n\n';
-        for (const { skill, installed } of enabled) {
-          skillsInfo += `### ${skill.name} (v${skill.version})\n`;
-          skillsInfo += `${skill.description}\n\n`;
-          if (installed?.entrypoint) {
-            skillsInfo += `**Entrypoint:** \`${installed.entrypoint}\`\n\n`;
-          }
-        }
-        parts.push(skillsInfo.trim());
-      }
-    } catch (err: any) {
-      logger.error(
-        { err: err.message },
-        'Failed to load skills for system prompt',
-      );
-    }
 
     const prompt = parts.join('\n\n---\n\n');
     

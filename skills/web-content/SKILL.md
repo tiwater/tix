@@ -19,8 +19,8 @@ Extract clean, readable Markdown from URLs.
 
 ### Fetch PDF or HTML
 ```bash
-./scripts/web-fetch.sh "https://example.com"
+${CLAUDE_SKILL_DIR}/scripts/web-fetch.sh "https://example.com"
 ```
 ```bash
-./scripts/web-fetch.sh --url "https://news.ycombinator.com" --extract-mode text
+${CLAUDE_SKILL_DIR}/scripts/web-fetch.sh --url "https://news.ycombinator.com" --extract-mode text
 ```

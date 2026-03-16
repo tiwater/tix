@@ -19,10 +19,10 @@ Search the web for real-time information. Supports Perplexity (Sonar) and Brave 
 
 ### Simple Query
 ```bash
-./scripts/web-search.sh "current stock price of TSLA"
+${CLAUDE_SKILL_DIR}/scripts/web-search.sh "current stock price of TSLA"
 ```
 
 ### Advanced Options
 ```bash
-./scripts/web-search.sh --query "Apple news" --count 5 --freshness day
+${CLAUDE_SKILL_DIR}/scripts/web-search.sh --query "Apple news" --count 5 --freshness day
 ```

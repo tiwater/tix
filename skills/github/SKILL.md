@@ -19,10 +19,10 @@ Run GitHub workflows with `gh`, with auth guardrails built in.
 
 ### Common commands
 ```bash
-./scripts/github.sh repo view owner/repo
-./scripts/github.sh pr list --repo owner/repo --limit 20
-./scripts/github.sh issue list --repo owner/repo --limit 20
-./scripts/github.sh api repos/owner/repo/pulls
+${CLAUDE_SKILL_DIR}/scripts/github.sh repo view owner/repo
+${CLAUDE_SKILL_DIR}/scripts/github.sh pr list --repo owner/repo --limit 20
+${CLAUDE_SKILL_DIR}/scripts/github.sh issue list --repo owner/repo --limit 20
+${CLAUDE_SKILL_DIR}/scripts/github.sh api repos/owner/repo/pulls
 ```
 
 ## Authentication

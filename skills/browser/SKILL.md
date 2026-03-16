@@ -20,15 +20,15 @@ Control a real web browser to interact with complex websites.
 
 ### Simple Fetch (Markdown)
 ```bash
-./scripts/browser.mjs --action snapshot --url "https://example.com"
+${CLAUDE_SKILL_DIR}/scripts/browser.mjs --action snapshot --url "https://example.com"
 ```
 
 ### Screenshot
 ```bash
-./scripts/browser.mjs --action screenshot --url "https://news.ycombinator.com" --path "hn.png"
+${CLAUDE_SKILL_DIR}/scripts/browser.mjs --action screenshot --url "https://news.ycombinator.com" --path "hn.png"
 ```
 
 ### Click & Interaction
 ```bash
-./scripts/browser.mjs --action click --selector "button#submit" --url "..."
+${CLAUDE_SKILL_DIR}/scripts/browser.mjs --action click --selector "button#submit" --url "..."
 ```
