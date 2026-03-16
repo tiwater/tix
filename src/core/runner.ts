@@ -336,6 +336,7 @@ function startOutputLoop(key: string, warm: WarmSession): void {
 export interface RunnerEvents {
   onStateChange?: (state: RunnerState) => void | Promise<void>;
   onReply?: (text: string) => void | Promise<void>;
+  onFile?: (filePath: string, caption?: string) => void | Promise<void>;
 }
 
 /**
@@ -437,6 +438,25 @@ export class AgentRunner {
               event.result?.trim() ||
               handler.textParts.join('\n').trim() ||
               '(done)';
+
+            // Detect image file paths in the conversation text and deliver them
+            if (this.events.onFile) {
+              const allText = handler.textParts.join('\n');
+              const imgExts = /\.(png|jpg|jpeg|gif|webp|svg)$/i;
+              // Match file paths like /path/to/image.png or relative paths
+              const pathMatches = allText.match(/(?:[\/\w.-]+\/)?[\w.-]+\.(png|jpg|jpeg|gif|webp|svg)\b/gi) || [];
+              const seen = new Set<string>();
+              for (const rawPath of pathMatches) {
+                const absPath = path.isAbsolute(rawPath)
+                  ? rawPath
+                  : path.join(agentPaths(this.state.agent_id).workspace, rawPath);
+                if (!seen.has(absPath) && imgExts.test(absPath) && fs.existsSync(absPath)) {
+                  seen.add(absPath);
+                  this.events.onFile(absPath, path.basename(absPath));
+                }
+              }
+            }
+
             this.events.onReply?.(finalText);
             this.consolidateMemory(paths.base, finalText);
             activeHandlers.delete(key);

@@ -395,6 +395,13 @@ async function processMessages(chatJid: string): Promise<boolean> {
               lastProgressKey = progressKey;
               await emitProgress(progressText, progressInfo);
             },
+            onFile: async (filePath, caption) => {
+              try {
+                await routeOutboundFile(channels, chatJid, filePath, caption);
+              } catch (err) {
+                logger.warn({ err, chatJid, filePath }, 'Failed to send file');
+              }
+            },
             onReply: async (text) => {
               // Clear progress indicators
               if (chatJid.startsWith('web:')) {
