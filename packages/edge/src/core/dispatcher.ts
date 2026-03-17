@@ -65,6 +65,13 @@ export class Dispatcher {
           // Reply Routing: Send response back to the correct chat JID
           await this.deps.sendMessage(chatJid, text);
         },
+        onFile: this.deps.sendMessage
+          ? async (filePath: string, caption?: string) => {
+              // Forward file path as a ticlaw:// URL message to the originating channel
+              const fileRef = caption ? `${caption}: ${filePath}` : filePath;
+              await this.deps.sendMessage(chatJid, fileRef);
+            }
+          : undefined,
       });
       this.runners.set(runnerKey, runner);
     }
