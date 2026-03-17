@@ -850,8 +850,13 @@ export class AgentRunner {
    * Builds the system prompt with caching (invalidated by mtime).
    */
   private preparePrompt(baseDir: string, workspaceDir: string): string {
+    // Prompt is agent-scoped (same SOUL, MEMORY, skills for all sessions of this agent).
+    // Cache key combines agent identity with all relevant mtime signals so we
+    // correctly invalidate when: mind files change, a journal is appended (issue #43),
+    // or skills state changes.
     const mtimeKey = getPromptMtimeKey(baseDir);
-    const cached = _promptCache.get(this.state.agent_id);
+    const cacheKey = this.state.agent_id;
+    const cached = _promptCache.get(cacheKey);
     if (cached && cached.mtimeKey === mtimeKey) {
       logger.debug(
         { agent_id: this.state.agent_id },
@@ -919,7 +924,7 @@ When asked to list your capabilities, skills, or tools:
 ---
 `;
     const finalPrompt = prompt + multimediaPrompt;
-    _promptCache.set(this.state.agent_id, { prompt: finalPrompt, mtimeKey });
+    _promptCache.set(cacheKey, { prompt: finalPrompt, mtimeKey });
     return finalPrompt;
   }
 
