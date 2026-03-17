@@ -62,5 +62,5 @@ ENV HTTP_PORT=10000
 
 EXPOSE 10000
 
-# Start TiClaw with the compiled distribution
-CMD ["node", "dist/index.js"]
+# Start TiClaw Edge with the compiled distribution
+CMD ["node", "packages/edge/dist/index.js"]

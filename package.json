@@ -1,53 +1,19 @@
 {
-  "name": "ticlaw",
+  "name": "ticlaw-workspace",
+  "private": true,
   "version": "1.3.0",
-  "description": "Mind builder. Multi-channel, personality & memory evolution, lightweight, secure.",
+  "description": "TiClaw monorepo — Mind builder platform",
   "type": "module",
-  "main": "dist/index.js",
-  "files": [
-    "dist",
-    "skills",
-    "docs",
-    "LICENSE",
-    "README.md"
-  ],
   "scripts": {
-    "auth": "tsx src/whatsapp-auth.ts",
-    "build": "tsc",
-    "chat": "node cli/dist/index.js chat",
-    "dev": "pnpm --filter @ticlaw/hub run build && concurrently \"pnpm --filter web run dev\" \"sleep 2 && pnpm run dev:hub\"",
-    "dev:hub": "tsx watch src/index.ts",
-    "dev:web": "pnpm --filter web run dev",
-    "start": "node dist/index.js",
-    "test": "vitest run",
+    "build":    "pnpm -r --filter './packages/*' run build",
+    "dev":      "pnpm --filter @ticlaw/gateway run build && concurrently \"pnpm --filter web run dev\" \"sleep 2 && pnpm --filter @ticlaw/edge run dev\"",
+    "dev:web":  "pnpm --filter web run dev",
+    "dev:edge": "pnpm --filter @ticlaw/edge run dev",
+    "chat":     "node cli/dist/index.js chat",
+    "test":     "pnpm --filter @ticlaw/edge run test",
     "test:e2e": "bash tests/run-e2e.sh"
   },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.71",
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@larksuiteoapi/node-sdk": "^1.59.0",
-    "@modelcontextprotocol/sdk": "^1.27.1",
-    "@supabase/supabase-js": "^2.47.0",
-    "axios": "^1.6.0",
-    "cron-parser": "^5.5.0",
-    "dingtalk-stream": "^2.1.0",
-    "discord.js": "^14.25.1",
-    "https-proxy-agent": "^7.0.6",
-    "js-yaml": "^4.1.1",
-    "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0",
-    "playwright": "^1.58.2",
-    "undici": "^7.24.2",
-    "ws": "^8.19.0",
-    "yaml": "^2.8.2",
-    "zod": "^4.3.6"
-  },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^20.0.0",
-    "concurrently": "^9.2.1",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vitest": "^4.0.18"
+    "concurrently": "^9.2.1"
   }
 }

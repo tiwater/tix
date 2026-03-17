@@ -1,7 +1,7 @@
 /**
  * TiClaw Web — Reference implementation of a TiClaw controller.
  *
- * Demonstrates how to use @ticlaw/hub to build a controller that:
+ * Demonstrates how to use @ticlaw/gateway to build a controller that:
  * - Accepts inbound WebSocket connections from nodes
  * - Provides a web UI for interacting with connected nodes
  * - Relays API requests from the UI to nodes
@@ -16,7 +16,7 @@
  */
 
 import http from 'node:http';
-import { attachHub, handleHubRequest } from '@ticlaw/hub';
+import { attachHub, handleHubRequest } from '@ticlaw/gateway';
 
 const PORT = parseInt(process.env.PORT || '2756', 10);
 const HOST = process.env.HOST || '0.0.0.0';

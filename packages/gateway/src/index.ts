@@ -1,8 +1,8 @@
 /**
- * TiClaw Hub — WebSocket server that accepts inbound node connections.
+ * TiClaw Gateway — WebSocket relay that accepts inbound edge node connections.
  *
  * Standalone package — no ticlaw core dependencies.
- * Ticos/Supen can `import { attachHub } from '@ticlaw/hub'` to embed.
+ * Ticos/Supen can `import { attachHub } from '@ticlaw/gateway'` to embed.
  */
 
 import http from 'node:http';
@@ -102,7 +102,7 @@ export function relayToNode(
       return;
     }
 
-    const reqId = `hub-req-${++requestIdCounter}`;
+    const reqId = `gateway-req-${++requestIdCounter}`;
     const timer = setTimeout(() => {
       pendingRequests.delete(reqId);
       resolve({
@@ -132,7 +132,7 @@ function handleNodeMessage(
       const node_fingerprint = msg.node_fingerprint as string;
       if (!isNodeAllowed(node_id, node_fingerprint)) {
         log?.warn?.(
-          `[hub] Rejected node enrollment for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
+          `[gateway] Rejected node enrollment for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
         );
         ws.send(
           JSON.stringify({
@@ -145,7 +145,7 @@ function handleNodeMessage(
         break;
       }
       nodes.set(ws, { node_id, node_fingerprint, trusted: true });
-      log?.info?.(`[hub] Node enrolled: ${node_id}`);
+      log?.info?.(`[gateway] Node enrolled: ${node_id}`);
       ws.send(
         JSON.stringify({
           type: 'enrollment_result',
@@ -162,7 +162,7 @@ function handleNodeMessage(
       const node_fingerprint = msg.node_fingerprint as string;
       if (!isNodeAllowed(node_id, node_fingerprint)) {
         log?.warn?.(
-          `[hub] Rejected node auth for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
+          `[gateway] Rejected node auth for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
         );
         ws.send(
           JSON.stringify({
@@ -175,7 +175,7 @@ function handleNodeMessage(
         break;
       }
       nodes.set(ws, { node_id, node_fingerprint, trusted: true });
-      log?.info?.(`[hub] Node authenticated: ${node_id}`);
+      log?.info?.(`[gateway] Node authenticated: ${node_id}`);
       ws.send(JSON.stringify({ type: 'auth_result', ok: true }));
       break;
     }
@@ -183,7 +183,7 @@ function handleNodeMessage(
     case 'report': {
       const info = nodes.get(ws);
       if (info) {
-        log?.debug?.(`[hub] Report from ${info.node_id}: ${msg.status}`);
+        log?.debug?.(`[gateway] Report from ${info.node_id}: ${msg.status}`);
       }
       break;
     }
@@ -217,7 +217,7 @@ function handleNodeMessage(
     }
 
     default:
-      log?.debug?.(`[hub] Unknown message type: ${msg.type}`);
+      log?.debug?.(`[gateway] Unknown message type: ${msg.type}`);
   }
 }
 
@@ -247,7 +247,7 @@ function handleSSERelay(
   if (!sseClients.has(streamKey)) sseClients.set(streamKey, new Set());
   sseClients.get(streamKey)!.add(res);
 
-  const reqId = `hub-sse-${++requestIdCounter}`;
+  const reqId = `gateway-sse-${++requestIdCounter}`;
   node.send(
     JSON.stringify({ type: 'sse_subscribe', request_id: reqId, path: streamKey }),
   );
@@ -286,29 +286,29 @@ export function attachHub(
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     const ipText = Array.isArray(ip) ? ip[0] : String(ip || '');
     connectionIps.set(ws, ipText);
-    log.info?.(`[hub] New node connection from ${ip}`);
+    log.info?.(`[gateway] New node connection from ${ip}`);
 
     ws.on('message', (data) => {
       try {
         handleNodeMessage(ws, JSON.parse(data.toString()), log);
       } catch (err) {
-        log.error?.('[hub] Parse error:', err);
+        log.error?.('[gateway] Parse error:', err);
       }
     });
 
     ws.on('close', () => {
       const info = nodes.get(ws);
-      if (info) log.info?.(`[hub] Node disconnected: ${info.node_id}`);
+      if (info) log.info?.(`[gateway] Node disconnected: ${info.node_id}`);
       nodes.delete(ws);
       connectionIps.delete(ws);
     });
 
     ws.on('error', (err) => {
-      log.error?.('[hub] WebSocket error:', err);
+      log.error?.('[gateway] WebSocket error:', err);
     });
   });
 
-  log.info?.('[hub] WebSocket hub attached');
+  log.info?.('[gateway] WebSocket gateway attached');
   return wss;
 }
 
@@ -324,8 +324,8 @@ export function handleHubRequest(
 ): boolean {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-  // Hub-native: list nodes
-  if (url.pathname === '/api/hub/nodes' && req.method === 'GET') {
+  // Gateway-native: list nodes
+  if (url.pathname === '/api/gateway/nodes' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
@@ -438,7 +438,7 @@ export function startHub(opts: StartHubOptions = {}): Promise<http.Server> {
 
   return new Promise((resolve) => {
     httpServer.listen(port, host, () => {
-      log.info?.(`[hub] TiClaw Hub listening on http://${host}:${port}`);
+      log.info?.(`[gateway] TiClaw Gateway listening on http://${host}:${port}`);
       resolve(httpServer);
     });
   });
