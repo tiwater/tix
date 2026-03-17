@@ -27,3 +27,6 @@ coverage/
 agents-sdk-docs
 
 .claude
+
+# SvelteKit
+.svelte-kit/
