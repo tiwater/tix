@@ -7,7 +7,7 @@ echo -e "\n${BOLD}${CYAN}=== Testing Schedules ===${NC}"
 
 # Start server in background
 TEST_PORT=2759
-HTTP_PORT=$TEST_PORT npx tsx src/index.ts > /tmp/ticlaw-schedules.log 2>&1 &
+HTTP_PORT=$TEST_PORT npx tsx packages/edge/src/index.ts > /tmp/ticlaw-schedules.log 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
@@ -22,7 +22,7 @@ AGENT_ID="sched-agent-$(date +%s)"
 
 # Create a schedule
 echo -e "\n${YELLOW}▶ Creating a schedule for $AGENT_ID...${NC}"
-CREATE_RES=$(curl -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
+CREATE_RES=$(curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
   -H "Content-Type: application/json" \
   -d "{\"agent_id\":\"$AGENT_ID\",\"prompt\":\"Reply with exactly: 'SCHEDULE_TICK'\",\"cron\":\"* * * * *\"}")
 
@@ -36,26 +36,26 @@ echo -e "${GREEN}Created schedule ID: $SCHED_ID${NC}"
 
 # Force scheduler tick
 echo -e "\n${YELLOW}▶ Forcing scheduler tick...${NC}"
-curl -sX POST "http://localhost:${TEST_PORT}/api/schedules/refresh"
+curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules/refresh"
 
 echo -e "\n${YELLOW}▶ Waiting 8s for agent to run schedule...${NC}"
 sleep 8
 
 # Check messages
 echo -e "\n${YELLOW}▶ Fetching messages for $AGENT_ID...${NC}"
-MSGS_RES=$(curl -sX GET "http://localhost:${TEST_PORT}/api/messages?agent_id=$AGENT_ID&session_id=web:$AGENT_ID:sched-$SCHED_ID")
+MSGS_RES=$(curl --max-time 8 -sX GET "http://localhost:${TEST_PORT}/api/messages?agent_id=$AGENT_ID&session_id=web:$AGENT_ID:sched-$SCHED_ID")
 
 LAST_MSG=$(echo "$MSGS_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('messages',[])[-1].get('text','') if isinstance(d.get('messages'), list) and len(d.get('messages')) > 0 else '')")
 
 assert_contains "Schedule run result" "$LAST_MSG" "SCHEDULE_TICK"
 
 echo -e "\n${YELLOW}▶ Creating a Cross-Channel schedule (Feishu)...${NC}"
-CREATE_FEISHU=$(curl -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
+CREATE_FEISHU=$(curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
   -H "Content-Type: application/json" \
   -d "{\"agent_id\":\"$AGENT_ID\",\"prompt\":\"Reply with exactly: 'FEISHU_TICK'\",\"cron\":\"* * * * *\",\"target_jid\":\"feishu:testgrp\"}")
 
 echo -e "\n${YELLOW}▶ Forcing scheduler tick...${NC}"
-curl -sX POST "http://localhost:${TEST_PORT}/api/schedules/refresh"
+curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules/refresh"
 
 echo -e "\n${YELLOW}▶ Waiting 8s for Feishu agent tick...${NC}"
 sleep 8
@@ -65,19 +65,19 @@ echo -e "\n${YELLOW}▶ Fetching messages for Feishu group...${NC}"
 # However, the `/api/messages` reads everything for the agent in some frontends. Let's just check the agent's recent messages on that JID.
 # Actually, the base JID is `feishu:testgrp` and isolated creates `feishu:testgrp:sched-XYZ`. But `storeMessage` routes it. Let's just fetch recent from `feishu:testgrp:sched-XYZ` or `feishu:testgrp`. The Dispatcher uses the session id `feishu:testgrp:sched-XYZ`.
 SCHED2_ID=$(echo "$CREATE_FEISHU" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('schedule',{}).get('id',''))")
-FEISHU_MSGS=$(curl -sX GET "http://localhost:${TEST_PORT}/api/messages?agent_id=$AGENT_ID&session_id=feishu:testgrp:sched-$SCHED2_ID")
+FEISHU_MSGS=$(curl --max-time 8 -sX GET "http://localhost:${TEST_PORT}/api/messages?agent_id=$AGENT_ID&session_id=feishu:testgrp:sched-$SCHED2_ID")
 LAST_FEISHU=$(echo "$FEISHU_MSGS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('messages',[])[-1].get('text','') if isinstance(d.get('messages'), list) and len(d.get('messages')) > 0 else '')")
 
 assert_contains "Feishu schedule result" "$LAST_FEISHU" "FEISHU_TICK"
 
 echo -e "\n${YELLOW}▶ Creating an INTERRUPTING schedule for $AGENT_ID...${NC}"
 # This tests dispatcher preempting functionality
-curl -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
+curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
   -H "Content-Type: application/json" \
   -d "{\"agent_id\":\"$AGENT_ID\",\"prompt\":\"STOP everything right now.\",\"cron\":\"* * * * *\"}" > /dev/null
 
 echo -e "\n${YELLOW}▶ Forcing scheduler tick...${NC}"
-curl -sX POST "http://localhost:${TEST_PORT}/api/schedules/refresh"
+curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules/refresh"
 
 echo -e "\n${YELLOW}▶ Waiting 5s...${NC}"
 sleep 5

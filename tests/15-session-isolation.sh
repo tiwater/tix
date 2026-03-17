@@ -86,7 +86,7 @@ assert_not_contains "Session B warm follow-up does NOT contain A code" "$respons
 echo -e "  Testing skills.json disabled-skill bypass prevention..."
 # Ensure a skill is globally disabled by inspecting the API
 DISABLED_SKILL="web-search"
-disable_result=$(curl -sf -X POST "${BASE}/api/skills/${DISABLED_SKILL}/disable" \
+disable_result=$(curl --max-time 8 -sf -X POST "${BASE}/api/skills/${DISABLED_SKILL}/disable" \
   -H "Content-Type: application/json" 2>/dev/null) || disable_result=""
 
 # Create an agent that allowlists the now-disabled skill
