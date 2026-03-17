@@ -20,7 +20,7 @@ GATEWAY_PORT="${GATEWAY_PORT:-}"
 # ── Test 16.1: Gateway nodes endpoint responds (edge node exposes relay) ──
 echo -e "  Testing /api/gateway/nodes relay..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-nodes_resp=$(curl -sf "${BASE}/api/gateway/nodes" 2>/dev/null) || nodes_resp=""
+nodes_resp=$(tc_curl -sf "${BASE}/api/gateway/nodes" 2>/dev/null) || nodes_resp=""
 if [ -n "$nodes_resp" ] && echo "$nodes_resp" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)

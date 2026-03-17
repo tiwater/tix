@@ -10,7 +10,7 @@ BASE="http://localhost:${TC_PORT}"
 # ── Test 7.1: List skills via API ──
 echo -e "  GET /api/skills"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-skills=$(curl -sf "${BASE}/api/skills" 2>/dev/null) || skills=""
+skills=$(curl --max-time 8 -sf "${BASE}/api/skills" 2>/dev/null) || skills=""
 if [ -n "$skills" ] && echo "$skills" | python3 -c "import sys,json; d=json.load(sys.stdin); assert isinstance(d, (list, dict))" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Skills API returns data"
   TESTS_PASSED=$((TESTS_PASSED + 1))

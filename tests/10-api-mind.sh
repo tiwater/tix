@@ -19,7 +19,7 @@ echo "JOURNAL:${AGENT_ID}" > "$AGENT_DIR/memory/2026-03-17.md"
 # ── Test 10.1: Get mind state ──
 echo -e "  GET /api/mind?agent_id=${AGENT_ID}"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-mind=$(curl -sf "${BASE}/api/mind?agent_id=${AGENT_ID}" 2>/dev/null) || mind=""
+mind=$(curl --max-time 8 -sf "${BASE}/api/mind?agent_id=${AGENT_ID}" 2>/dev/null) || mind=""
 if [ -n "$mind" ] && echo "$mind" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'SOUL:${AGENT_ID}' in d.get('soul',''); assert 'MEMORY:${AGENT_ID}' in d.get('memory','')" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Mind API returns expected long-term files"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -33,7 +33,7 @@ fi
 echo ""
 echo -e "  GET /api/mind/files?agent_id=${AGENT_ID}"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-files=$(curl -sf "${BASE}/api/mind/files?agent_id=${AGENT_ID}" 2>/dev/null) || files=""
+files=$(curl --max-time 8 -sf "${BASE}/api/mind/files?agent_id=${AGENT_ID}" 2>/dev/null) || files=""
 if [ -n "$files" ] && echo "$files" | python3 -c "import sys,json; d=json.load(sys.stdin); f=d.get('files',{}); assert 'SOUL.md' in f and 'MEMORY.md' in f and 'IDENTITY.md' in f and 'USER.md' in f; assert '2026-03-17.md' not in f" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Mind files API returns root mind files only"
   TESTS_PASSED=$((TESTS_PASSED + 1))

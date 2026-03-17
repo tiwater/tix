@@ -10,7 +10,7 @@ BASE="http://localhost:${TC_PORT}"
 
 # ── Test 5.1: Create a schedule ──
 echo -e "  Creating a test schedule..."
-create_result=$(curl -sf -X POST "${BASE}/api/schedules" \
+create_result=$(curl --max-time 8 -sf -X POST "${BASE}/api/schedules" \
   -H "Content-Type: application/json" \
   -d '{"agent_id":"default","prompt":"E2E test schedule","cron":"0 0 1 1 *","enabled":false}' 2>/dev/null) || create_result=""
 
@@ -28,7 +28,7 @@ fi
 # ── Test 5.2: List schedules ──
 echo ""
 echo -e "  Listing schedules..."
-list_result=$(curl -sf "${BASE}/api/schedules" 2>/dev/null) || list_result=""
+list_result=$(curl --max-time 8 -sf "${BASE}/api/schedules" 2>/dev/null) || list_result=""
 
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 if echo "$list_result" | grep -q "E2E test schedule"; then
@@ -44,7 +44,7 @@ fi
 if [ -n "$SCHEDULE_ID" ]; then
   echo ""
   echo -e "  Deleting schedule ${SCHEDULE_ID}..."
-  delete_result=$(curl -sf -X DELETE "${BASE}/api/schedules/${SCHEDULE_ID}" 2>/dev/null) || delete_result=""
+  delete_result=$(curl --max-time 8 -sf -X DELETE "${BASE}/api/schedules/${SCHEDULE_ID}" 2>/dev/null) || delete_result=""
 
   TESTS_TOTAL=$((TESTS_TOTAL + 1))
   if [ -n "$delete_result" ]; then
@@ -58,7 +58,7 @@ if [ -n "$SCHEDULE_ID" ]; then
   # ── Test 5.4: Verify deletion ──
   echo ""
   echo -e "  Verifying schedule is gone..."
-  list_after=$(curl -sf "${BASE}/api/schedules" 2>/dev/null) || list_after=""
+  list_after=$(curl --max-time 8 -sf "${BASE}/api/schedules" 2>/dev/null) || list_after=""
 
   TESTS_TOTAL=$((TESTS_TOTAL + 1))
   if echo "$list_after" | grep -q "E2E test schedule"; then

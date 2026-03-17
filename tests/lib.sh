@@ -9,10 +9,14 @@ set -euo pipefail
 # ────────────────────────────────────────────────────
 TC_PORT="${TC_PORT:-2755}"
 TC_TIMEOUT="${TC_TIMEOUT:-120}"
+TC_CURL_TIMEOUT="${TC_CURL_TIMEOUT:-8}"   # seconds before curl gives up
 TC_CLI="node $(dirname "$0")/../cli/dist/index.js"
 TESTS_PASSED=0
 TESTS_FAILED=0
 TESTS_TOTAL=0
+
+# Convenience wrapper: curl with a short timeout so tests never hang
+tc_curl() { curl --max-time "$TC_CURL_TIMEOUT" "$@"; }
 
 # Colors
 RED='\033[0;31m'
@@ -31,7 +35,7 @@ wait_for_server() {
   local elapsed=0
   echo -e "${CYAN}Waiting for server on port ${port}...${NC}"
   while [ $elapsed -lt $timeout ]; do
-    if curl -sf "http://localhost:${port}/health" > /dev/null 2>&1; then
+    if curl --max-time 8 -sf "http://localhost:${port}/health" > /dev/null 2>&1; then
       echo -e "${GREEN}Server is ready${NC}"
       return 0
     fi

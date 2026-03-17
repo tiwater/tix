@@ -10,7 +10,7 @@ BASE="http://localhost:${TC_PORT}"
 # ── Test 8.1: List sessions ──
 echo -e "  GET /api/sessions"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-sessions=$(curl -sf "${BASE}/api/sessions" 2>/dev/null) || sessions=""
+sessions=$(curl --max-time 8 -sf "${BASE}/api/sessions" 2>/dev/null) || sessions=""
 if [ -n "$sessions" ] && echo "$sessions" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Sessions API returns valid JSON"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -24,7 +24,7 @@ fi
 echo ""
 echo -e "  POST /api/sessions"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-create_session=$(curl -sf -X POST "${BASE}/api/sessions" \
+create_session=$(curl --max-time 8 -sf -X POST "${BASE}/api/sessions" \
   -H "Content-Type: application/json" \
   -d '{"agent_id":"default","session_id":"e2e-test-session","channel":"http"}' 2>/dev/null) || create_session=""
 if [ -n "$create_session" ]; then
@@ -39,7 +39,7 @@ fi
 echo ""
 echo -e "  GET /api/agents"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-agents=$(curl -sf "${BASE}/api/agents" 2>/dev/null) || agents=""
+agents=$(curl --max-time 8 -sf "${BASE}/api/agents" 2>/dev/null) || agents=""
 if [ -n "$agents" ] && echo "$agents" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Agents API returns valid JSON"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -53,7 +53,7 @@ fi
 echo ""
 echo -e "  GET /api/tasks"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-tasks=$(curl -sf "${BASE}/api/tasks" 2>/dev/null) || tasks=""
+tasks=$(curl --max-time 8 -sf "${BASE}/api/tasks" 2>/dev/null) || tasks=""
 if [ -n "$tasks" ] && echo "$tasks" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Tasks API returns valid JSON"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -67,7 +67,7 @@ fi
 echo ""
 echo -e "  GET /api/messages"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-messages=$(curl -sf "${BASE}/api/messages?agent_id=default&session_id=e2e-test-session" 2>/dev/null) || messages=""
+messages=$(curl --max-time 8 -sf "${BASE}/api/messages?agent_id=default&session_id=e2e-test-session" 2>/dev/null) || messages=""
 if [ -n "$messages" ] && echo "$messages" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Messages API returns valid JSON"
   TESTS_PASSED=$((TESTS_PASSED + 1))

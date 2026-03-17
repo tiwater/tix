@@ -16,7 +16,7 @@ BASE="http://localhost:${TC_PORT:-2755}"
 # ── Test 18.1: /api/tasks alive ──
 echo -e "  Testing /api/tasks endpoint..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-tasks=$(curl -sf "${BASE}/api/tasks" 2>/dev/null) || tasks=""
+tasks=$(tc_curl -sf "${BASE}/api/tasks" 2>/dev/null) || tasks=""
 if [ -n "$tasks" ] && echo "$tasks" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} /api/tasks returns valid JSON"
   TESTS_PASSED=$((TESTS_PASSED + 1))

@@ -55,7 +55,7 @@ if [ "$NO_SERVER" = false ]; then
   # Wait for health
   elapsed=0
   while [ $elapsed -lt 30 ]; do
-    if curl -sf "http://localhost:${TC_PORT}/health" > /dev/null 2>&1; then
+    if curl --max-time 8 -sf "http://localhost:${TC_PORT}/health" > /dev/null 2>&1; then
       echo -e "${GREEN}Server is ready${NC}"
       break
     fi
@@ -71,14 +71,14 @@ if [ "$NO_SERVER" = false ]; then
 
   # ── Auto-enroll: ensure node is trusted ──
   echo -e "${BOLD}Enrolling node...${NC}"
-  ENROLL_STATUS=$(curl -sf "http://localhost:${TC_PORT}/api/enroll/status")
+  ENROLL_STATUS=$(curl --max-time 8 -sf "http://localhost:${TC_PORT}/api/enroll/status")
   TRUST=$(echo "$ENROLL_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['trust_state'])" 2>/dev/null || echo "unknown")
 
   if [ "$TRUST" != "trusted" ]; then
     FP=$(echo "$ENROLL_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['fingerprint'])" 2>/dev/null)
-    TOKEN_RESULT=$(curl -sf -X POST "http://localhost:${TC_PORT}/api/enroll/token" -H "Content-Type: application/json" -d '{"ttl_minutes":60}')
+    TOKEN_RESULT=$(curl --max-time 8 -sf -X POST "http://localhost:${TC_PORT}/api/enroll/token" -H "Content-Type: application/json" -d '{"ttl_minutes":60}')
     TOKEN=$(echo "$TOKEN_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null)
-    VERIFY=$(curl -sf -X POST "http://localhost:${TC_PORT}/api/enroll/verify" -H "Content-Type: application/json" -d "{\"token\":\"$TOKEN\",\"node_fingerprint\":\"$FP\"}")
+    VERIFY=$(curl --max-time 8 -sf -X POST "http://localhost:${TC_PORT}/api/enroll/verify" -H "Content-Type: application/json" -d "{\"token\":\"$TOKEN\",\"node_fingerprint\":\"$FP\"}")
     TRUST_AFTER=$(echo "$VERIFY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('trust_state',''))" 2>/dev/null || echo "failed")
     if [ "$TRUST_AFTER" = "trusted" ]; then
       echo -e "${GREEN}Node enrolled and trusted${NC}"
@@ -91,7 +91,7 @@ if [ "$NO_SERVER" = false ]; then
   fi
 else
   echo -e "${CYAN}Using existing server on port ${TC_PORT}${NC}"
-  if ! curl -sf "http://localhost:${TC_PORT}/health" > /dev/null 2>&1; then
+  if ! curl --max-time 8 -sf "http://localhost:${TC_PORT}/health" > /dev/null 2>&1; then
     echo -e "${RED}No server running on port ${TC_PORT}${NC}"
     exit 1
   fi

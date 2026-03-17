@@ -10,7 +10,7 @@ BASE="http://localhost:${TC_PORT}"
 # ── Test 9.1: Get enrollment status ──
 echo -e "  GET /api/enroll/status"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-status=$(curl -sf "${BASE}/api/enroll/status" 2>/dev/null) || status=""
+status=$(curl --max-time 8 -sf "${BASE}/api/enroll/status" 2>/dev/null) || status=""
 TRUST=$(echo "$status" | python3 -c "import sys,json; print(json.load(sys.stdin)['trust_state'])" 2>/dev/null || echo "unknown")
 FP=$(echo "$status" | python3 -c "import sys,json; print(json.load(sys.stdin)['fingerprint'])" 2>/dev/null || echo "")
 
@@ -26,7 +26,7 @@ fi
 echo ""
 echo -e "  POST /api/enroll/token"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-token_result=$(curl -sf -X POST "${BASE}/api/enroll/token" \
+token_result=$(curl --max-time 8 -sf -X POST "${BASE}/api/enroll/token" \
   -H "Content-Type: application/json" \
   -d '{"ttl_minutes":5}' 2>/dev/null) || token_result=""
 TOKEN=$(echo "$token_result" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null || echo "")
@@ -61,7 +61,7 @@ echo ""
 echo -e "  POST /api/enroll/verify (correct)"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 if [ -n "$TOKEN" ] && [ -n "$FP" ]; then
-  verify_result=$(curl -sf -X POST "${BASE}/api/enroll/verify" \
+  verify_result=$(curl --max-time 8 -sf -X POST "${BASE}/api/enroll/verify" \
     -H "Content-Type: application/json" \
     -d "{\"token\":\"$TOKEN\",\"node_fingerprint\":\"$FP\"}" 2>/dev/null) || verify_result=""
   VERIFY_OK=$(echo "$verify_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('ok', False))" 2>/dev/null || echo "False")

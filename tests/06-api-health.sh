@@ -10,7 +10,7 @@ BASE="http://localhost:${TC_PORT}"
 # ── Test 6.1: Health endpoint ──
 echo -e "  GET /health"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-health=$(curl -sf "${BASE}/health" 2>/dev/null) || health=""
+health=$(curl --max-time 8 -sf "${BASE}/health" 2>/dev/null) || health=""
 if echo "$health" | grep -q '"status":"ok"'; then
   echo -e "  ${GREEN}✓${NC} Health endpoint returns ok"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -24,7 +24,7 @@ fi
 echo ""
 echo -e "  GET /api/node"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-node_info=$(curl -sf "${BASE}/api/node" 2>/dev/null) || node_info=""
+node_info=$(curl --max-time 8 -sf "${BASE}/api/node" 2>/dev/null) || node_info=""
 if echo "$node_info" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('enrollment',{}).get('trust_state')" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Node info returns enrollment data"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -38,7 +38,7 @@ fi
 echo ""
 echo -e "  GET /api/enroll/status"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-enroll=$(curl -sf "${BASE}/api/enroll/status" 2>/dev/null) || enroll=""
+enroll=$(curl --max-time 8 -sf "${BASE}/api/enroll/status" 2>/dev/null) || enroll=""
 if echo "$enroll" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('trust_state')" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Enrollment status returns trust_state"
   TESTS_PASSED=$((TESTS_PASSED + 1))
@@ -52,7 +52,7 @@ fi
 echo ""
 echo -e "  GET /agents"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-agents=$(curl -sf "${BASE}/agents" 2>/dev/null) || agents=""
+agents=$(curl --max-time 8 -sf "${BASE}/agents" 2>/dev/null) || agents=""
 if echo "$agents" | grep -q "TiClaw"; then
   echo -e "  ${GREEN}✓${NC} App info returns TiClaw metadata"
   TESTS_PASSED=$((TESTS_PASSED + 1))
