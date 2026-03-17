@@ -1,108 +1,102 @@
 # Production Readiness Review (OpenClaw-Alternative Focus)
 
-Date: 2026-03-15
+Date: 2026-03-17
 
 ## Verdict
 
-**Not yet production-level** for a broad, multi-tenant OpenClaw-alternative deployment.
+**Not yet production-level** for broad multi-tenant deployment.
 
-The codebase has strong foundations (multi-channel architecture, warm-session runner, skill governance model, and a usable web UI), but there are still reliability and scale blockers that should be resolved before claiming production-grade quality.
+Architecture and UX foundations are solid, but there are still correctness and hardening gaps that should be addressed before labeling as production-grade.
+
+## Current State (As Implemented)
 
 ## What is strong already
 
-1. **Streaming architecture exists end-to-end**
-   - Token streaming is emitted from the agent loop (`stream_delta`) and finalized with `stream_end`.
-   - The web UI merges streaming chunks and replaces them with final authoritative text.
+1. **End-to-end streaming pipeline exists**
+   - Runner emits progressive events and streaming deltas.
+   - Web client merges incremental output and reconciles with final authoritative message.
 
-2. **Skill governance is above average**
-   - The registry supports trust gates, hash pinning, level-based permissions, managed installs/upgrades, and audit logs.
-   - It has clear administrative controls for high-privilege skills.
+2. **Skill governance model is mature for a self-hosted runtime**
+   - Permission levels, install/enable controls, compatibility checks, and audit signals are present.
 
-3. **Memory persistence is simple and inspectable**
-   - Session and message history are persisted as JSON/JSONL.
-   - The runner appends per-task journal entries, and recent journals are injected into the prompt.
+3. **Filesystem persistence is simple and inspectable**
+   - Sessions/messages/events/schedules are all human-readable on disk.
 
-4. **Developer ergonomics are decent**
-   - Architecture docs and component boundaries are clear.
-   - Test coverage exists for key routing and skill surfaces.
+4. **Multi-channel and hub/node topology are already usable**
+   - Discord/Feishu/HTTP/ACP + hub relay are integrated in one runtime model.
 
 ## Production blockers
 
-1. **Red test in default suite**
-   - `pnpm test` currently fails due to Feishu integration test assumptions (`dispatcher.do is not a function`).
-   - A production baseline should not ship with failing core CI tests.
+1. **CI baseline is not production-ready**
+   - `pnpm test` currently exits with "No test files found" (`vitest` include is `src/**/*.test.ts`).
+   - A production pipeline should have stable, non-empty default test coverage.
 
-2. **Memory/store scalability concerns**
-   - `getSession(sessionId)` performs full directory scans across agents/sessions.
-   - Message tail reads load full files into memory before slicing.
-   - This is acceptable for small deployments but can degrade quickly at larger scale.
+2. **Hub-side authentication is weak**
+   - Hub currently accepts `enroll` / `auth` and marks connections trusted without strong verification.
+   - This must be hardened before zero-trust/public edge deployment.
 
-3. **Runtime memory is mostly journaling, not structured retrieval**
-   - The runner currently loads only the most recent 3 markdown journals.
-   - There is no retrieval ranking, summarization lifecycle, or conflict-resolution strategy for long-lived agents.
+3. **Store access patterns can degrade at scale**
+   - `getSession(sessionId)` scans agent/session directories.
+   - JSONL tail helper reads full file into memory before slicing.
 
-4. **Concurrency and lifecycle hardening gaps**
-   - Warm sessions are managed with in-process maps and TTL cleanup.
-   - There is no explicit backpressure strategy, process health circuit breaker, or durable run queue for high-load incidents.
+4. **Executor/task telemetry path is incomplete**
+   - `/api/tasks` and executor stats surfaces are currently stub-like in many flows.
 
-5. **UX has useful streaming but limited resiliency affordances**
-   - UI handles stream chunks and errors reasonably, but lacks stronger user-facing delivery guarantees (explicit retry affordance, reconnect state restoration semantics, and richer run state diagnostics).
+5. **Concurrency/backpressure controls are limited**
+   - Per-chat mutex exists, but global durable queue/circuit breaker policy is not yet implemented.
 
 ## Area-by-area assessment
 
-### Streaming: **Good, but needs reliability hardening**
+### Streaming: **Good baseline, needs replay-grade robustness**
 
 - Positive:
-  - Streaming text and completion events are clearly separated and consumed in the web client.
-  - Duplicate-text prevention is explicitly handled in UI logic.
+  - Stream sequence metadata (`stream_id`, `seq`) exists.
+  - Client dedup logic is implemented.
 - Gaps:
-  - Behavior is heavily in-memory and process-local.
-  - No explicit idempotency tokening for stream chunk replays, and SSE recovery flow is basic.
+  - No server-side replay endpoint for reconnect-from-sequence semantics.
 
-### Skills: **Strong for governance**
+### Skills: **Strong governance, enterprise runtime hardening pending**
 
 - Positive:
-  - Install/upgrade/enable checks include compatibility and privilege guards.
-  - Managed installs have staging/rollback mechanics and source trust controls.
+  - Capability checks and privilege gates are practical and explicit.
 - Gaps:
-  - Operational policy controls are strong, but runtime sandboxing and audit export/alerting workflows would need to mature for strict enterprise environments.
+  - Additional sandboxing/audit export controls are needed for strict enterprise controls.
 
-### Memory: **Functional, not yet production-intelligent**
+### Memory/Store: **Functional, scan-heavy**
 
 - Positive:
-  - Durable chat logs and journal writes are present and transparent.
+  - Transparent persistence model.
 - Gaps:
-  - Retrieval is simplistic (recent tail / recent journals only).
-  - Store access patterns are scan-heavy and will need indexing or a dedicated data backend at scale.
+  - Need indexes / seek-based reads for large agent/session counts.
 
-### UX/message handling: **Promising baseline**
+### Security: **Node trust exists; hub trust requires hardening**
 
 - Positive:
-  - Chat UX supports streaming, history loading, trust-state messaging, skills/session controls.
+  - Node enrollment token model has TTL/hash/freeze controls.
 - Gaps:
-  - More robust degraded-mode UX and explicit reconnect/replay handling are needed for production confidence.
+  - Hub handshake should enforce cryptographic verification and explicit trust policy.
+
+## Planned Remediation
 
 ## Priority remediation plan
 
-1. **Fix CI baseline immediately**
-   - Resolve failing Feishu test or align test harness with current SDK/event dispatcher API.
+1. **Fix test baseline immediately**
+   - Restore runnable default test suite and enforce pass/fail gate in CI.
 
-2. **Upgrade data access patterns**
-   - Add session index mapping (`session_id -> agent_id`) to avoid global scans.
-   - Implement true tail-reading for large JSONL logs (stream/seek-based).
+2. **Harden hub authentication**
+   - Verify token/fingerprint at hub side.
+   - Add rotation and revocation strategy.
 
-3. **Harden streaming/session reliability**
-   - Add stream sequence IDs + idempotent client merge.
-   - Add reconnect replay endpoint keyed by last seen sequence.
+3. **Improve data access performance**
+   - Add session index (`session_id -> agent_id`).
+   - Implement true tail-read/seek for JSONL.
 
-4. **Evolve memory subsystem**
-   - Add summarization checkpoints and retrieval scoring (recency + relevance).
-   - Split short-term conversational memory from long-term knowledge memory.
+4. **Complete task/executor observability**
+   - Make `/api/tasks` and executor stats non-stub, with real queue/run metrics.
 
-5. **Operational readiness**
-   - Define SLOs (latency, error rate, stream completion rate).
-   - Add health metrics around warm session churn, queue depth, and failure classes.
+5. **Add robust delivery/replay semantics**
+   - Add stream replay by `(stream_id, seq)` and reconnect recovery endpoints.
 
 ## Final assessment
 
-TiClaw is **close to a serious pre-production platform** and already more structured than many hobby-grade OpenClaw alternatives, especially around skills governance and multi-channel design. But with a failing default test, scan-heavy store operations, and lightweight memory/reliability controls, it should be treated as **beta / staging-ready**, not fully production-ready yet.
+TiClaw is suitable for advanced staging/self-hosted use today, but should still be labeled **beta / pre-production** for broader production claims until hub auth, CI baseline, and scale/observability gaps are addressed.

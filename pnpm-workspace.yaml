@@ -1,8 +1,7 @@
 packages:
-  - '.'
+  - 'packages/*'
+  - 'apps/*'
   - 'cli'
-  - 'hub'
-  - 'web'
 allowBuilds:
   esbuild: true
   protobufjs: true

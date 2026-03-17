@@ -2,120 +2,123 @@
 
 ## Core Principle
 
-**There is one unified scheduler.** All periodic or delayed actions ("check every 30 minutes", "remind me in 30 minutes", "wake me up at 8am") are handled by a single deterministic Cron-based system.
+TiClaw uses one scheduler loop for all periodic work. The loop runs every 60 seconds and evaluates schedule records under each agent.
 
-There is no separate "Heartbeat" concept or `HEARTBEAT.md` file. Agents are entirely driven by their explicit schedules.
+Current runtime behavior is **cron-first**:
+- due detection is based on `next_run <= now`
+- `next_run` is computed from `cron` using `cron-parser`
+- a forced refresh (`POST /api/schedules/refresh`) can run all active schedules immediately
 
 ## Schedule Record
 
-Every schedule is a single YAML file stored at:
+Each schedule is a YAML file:
 
 ```
 ~/.ticlaw/agents/{agent_id}/schedules/{schedule_id}.yaml
 ```
 
-### Schema
+### Schema (Current Implementation)
 
 ```yaml
-# Required
-id: morning-briefing              # Human-readable identifier (slug)
-cron: "0 9 * * *"                 # Standard 5-field/6-field cron expression or ISO date
-prompt: |
-  Generate today's briefing:
-  weather, calendar, top emails.
+id: "6b4f3e9a-..."                # UUID when created via API/tool
+agent_id: "web-agent"
+cron: "0 9 * * *"                 # cron-parser-compatible expression
+prompt: "Generate daily briefing"
 
 # Optional (defaults shown)
-type: cron                        # "cron" | "one-shot"
-session: isolated                 # "main" | "isolated"
-status: active                    # "active" | "paused"
-delete_after_run: false           # true for one-shot reminders
-created_at: 2026-03-15T10:00:00Z
-next_run: 2026-03-16T09:00:00Z    # Computed by the scheduler
+type: "cron"                       # "cron" | "one-shot" (metadata)
+session: "isolated"                # "main" | "isolated"
+status: "active"                   # "active" | "paused"
+target_jid: "feishu:app:chat"      # optional target routing
+delete_after_run: false
+next_run: "2026-03-18T01:00:00Z"
 last_run: null
+created_at: "2026-03-17T12:00:00Z"
 ```
 
-### Field Reference
+### Field Notes
 
-| Field | Description |
-|---|---|
-| `id` | Human-readable slug. Must be unique per agent. |
-| `cron` | Standard cron expression (`*/30 * * * *` = every 30 min) OR exact ISO date for one-shot. |
-| `prompt` | The message sent to the agent when the schedule fires. |
-| `type` | `cron` (recurring) or `one-shot` (runs once). |
-| `session` | `main` = agent's primary conversational context (remembers recent chats). `isolated` = fresh context, no history pollution. |
-| `status` | `active` or `paused`. Paused schedules are skipped. |
-| `delete_after_run` | If true, the schedule file is deleted after execution. |
+- `id`: API/tool creation uses UUID. Manual files can use custom IDs.
+- `cron`: currently expected to be a cron expression. ISO one-shot timestamps are not parsed by the scheduler.
+- `type`: retained as metadata; execution still uses cron + `next_run`.
+- `delete_after_run`: if `true`, the file is deleted after execution.
+- invalid `cron`: scheduler logs error and pauses the schedule (`status: paused`).
 
-## How Users Manage Schedules
+## Schedule Management Paths
 
-Schedules are **plain YAML files on disk**. Users can manage them in three ways:
-
-### 1. Edit Files Directly
+### 1. Direct File Editing
 
 ```bash
-# Create a new schedule
-vim ~/.ticlaw/agents/my-agent/schedules/daily-report.yaml
+# create
+vim ~/.ticlaw/agents/my-agent/schedules/my-task.yaml
 
-# Delete a schedule
-rm ~/.ticlaw/agents/my-agent/schedules/daily-report.yaml
+# delete
+rm ~/.ticlaw/agents/my-agent/schedules/my-task.yaml
 ```
 
-The scheduler picks up changes on the next poll cycle.
+### 2. HTTP API (Current)
 
-### 2. Via the Web UI
+- `GET /api/schedules?agent_id=<id>`
+- `POST /api/schedules`
+- `POST /api/schedules/:id/toggle` (body: `{ "status": "active" | "paused" }`)
+- `DELETE /api/schedules/:id`
+- `POST /api/schedules/refresh`
 
-API endpoints:
-- `GET /api/agents/:id/schedules` — list
-- `POST /api/agents/:id/schedules` — create
-- `PUT /api/agents/:id/schedules/:sid` — update
-- `DELETE /api/agents/:id/schedules/:sid` — delete
-- `POST /api/schedules/refresh` — force the scheduler to immediately check and execute due schedules
+`POST /api/schedules` body:
 
-### 3. Via Agent Conversation (The "Schedule Skill")
-
-The primary way users will interact with schedules is by conversing with the agent. 
-
-When a user says *"remind me to set out after 30 minutes"*, the agent uses its **Schedule Skill** to parse the intent, generate the correct cron expression/timestamp, and write a `standup-reminder.yaml` file into its own `schedules/` directory.
-
-## Scheduler Loop
-
-```
-┌─────────────────────────────────────────────┐
-│               Scheduler Loop                │
-│           (polls every 60 seconds)          │
-├─────────────────────────────────────────────┤
-│                                             │
-│  1. Scan all agents/{id}/schedules/*.yaml   │
-│  2. Filter: status === 'active'             │
-│     AND next_run <= now                     │
-│  3. For each due schedule:                  │
-│     ├── Determine session mode              │
-│     │   ├── main → use agent's latest       │
-│     │   └── isolated → use cron:{id}        │
-│     ├── Submit prompt to AgentRunner        │
-│     ├── On completion:                      │
-│     │   └── Emit result to chat             │
-│     ├── Compute next_run from cron          │
-│     └── If delete_after_run → remove file   │
-│                                             │
-└─────────────────────────────────────────────┘
+```json
+{
+  "agent_id": "web-agent",
+  "prompt": "Send daily report",
+  "cron": "0 9 * * *",
+  "target_jid": "web:web-agent:web-session"
+}
 ```
 
-## Session Modes
+### 3. Built-in / MCP Tools
 
-### Main Session (`session: main`)
-- Runs within the agent's primary conversational context.
-- The agent remembers recent user conversations.
-- Best for: reminders, contextual check-ins, continuous monitoring tasks ("check my email every 30 mins").
+- `create_schedule`
+- `list_my_schedules`
+- `delete_schedule`
 
-### Isolated Session (`session: isolated`)
-- Runs in a fresh context (`cron:{schedule_id}`).
-- No history pollution — the main chat stays clean.
-- Best for: heavy analysis, daily reports, autonomous background jobs.
+These map to the same store and scheduler loop.
 
-## Environment Variables
+## Scheduler Loop (Current)
 
-| Variable | Default | Description |
-|---|---|---|
-| `SCHEDULER_POLL_INTERVAL` | `60000` (1m) | How often the scheduler checks for due schedules. |
-| `TIMEZONE` | `Asia/Shanghai` | Timezone for cron evaluation. |
+1. Load due schedules (`status=active` and `next_run<=now`, or all active when forced refresh).
+2. Build route target:
+   - `baseJid = target_jid || web:{agent_id}`
+   - isolated: `chat_jid = {baseJid}:sched-{schedule_id}`
+   - main: `chat_jid = {baseJid}`
+3. Ensure session exists.
+4. Enqueue prompt as a normal inbound message.
+5. After enqueue:
+   - if `delete_after_run=true`, delete file
+   - else recompute `next_run` from `cron`; pause if invalid
+
+## Session Modes (Current Behavior)
+
+### `session: main`
+
+- Reuses `baseJid`.
+- Session ID is derived as:
+  - from `target_jid` suffix when provided
+  - otherwise defaults to `agent_id`
+
+### `session: isolated`
+
+- Uses `sched-{schedule_id}` session ID.
+- Chat JID is namespaced (`...:sched-{schedule_id}`), preventing pollution of main chat history.
+
+## Time Configuration
+
+| Item | Current Behavior |
+|---|---|
+| Scheduler poll interval | Fixed at 60s (`SCHEDULER_POLL_INTERVAL = 60000` in code) |
+| Cron timezone | `TIMEZONE` from `process.env.TZ` or system timezone |
+
+## Planned Enhancements
+
+1. Native one-shot timestamp support (non-cron schedule input).
+2. API-level update endpoint (`PUT /api/schedules/:id`) for full record edits.
+3. Optional user-provided stable IDs in API creation flow.

@@ -9,7 +9,7 @@ services:
     name: ticlaw-node
     runtime: docker
     plan: starter # Chrome requires ~2GB RAM (Starter) for stability
-    dockerfilePath: ./Dockerfile.ticlaw
+    dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
       - key: TICLAW_HOME
@@ -35,14 +35,14 @@ services:
       mountPath: /root/.ticlaw
       sizeGB: 1
 
-  # 2. Web + Hub (public-facing) — reference TiClaw controller
-  # Imports @ticlaw/hub, accepts node connections, serves web UI
+  # 2. Web + Gateway (public-facing) — reference TiClaw controller
+  # Imports @ticlaw/gateway, accepts edge node connections, serves web UI
   - type: web
     name: ticlaw
     runtime: node
     plan: starter
-    rootDir: web
-    buildCommand: "cd .. && pnpm install && pnpm --filter @ticlaw/hub run build && cd web && pnpm run build"
+    rootDir: apps/web
+    buildCommand: "cd .. && pnpm install && pnpm --filter @ticlaw/gateway run build && cd apps/web && pnpm run build"
     startCommand: "node --import tsx server.ts"
     envVars:
       - key: NODE_VERSION
