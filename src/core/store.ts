@@ -29,6 +29,7 @@ import type {
   SessionRecord,
 } from './types.js';
 import { isValidGroupFolder } from './utils.js';
+import { assertSafePathSegment, resolveWithin } from './security.js';
 
 // ═══════════════════════════════════════════════════════════════
 // Helpers
@@ -67,12 +68,49 @@ function readJsonl<T>(filePath: string): T[] {
 /** Read last N lines from a JSONL file (efficient tail). */
 function readJsonlTail<T>(filePath: string, limit: number): T[] {
   try {
+    if (limit <= 0) return [];
     if (!fs.existsSync(filePath)) return [];
-    const content = fs.readFileSync(filePath, 'utf-8').trim();
-    if (!content) return [];
-    const lines = content.split('\n');
-    const tail = lines.slice(-limit);
-    return tail.map((line) => JSON.parse(line)) as T[];
+
+    const stat = fs.statSync(filePath);
+    if (stat.size <= 0) return [];
+
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const chunkSize = 64 * 1024;
+      let pos = stat.size;
+      let newlineCount = 0;
+      const chunks: Buffer[] = [];
+
+      while (pos > 0 && newlineCount <= limit) {
+        const bytesToRead = Math.min(chunkSize, pos);
+        pos -= bytesToRead;
+        const chunk = Buffer.allocUnsafe(bytesToRead);
+        const bytesRead = fs.readSync(fd, chunk, 0, bytesToRead, pos);
+        if (bytesRead <= 0) break;
+        const view = bytesRead === chunk.length ? chunk : chunk.subarray(0, bytesRead);
+        for (let i = 0; i < view.length; i += 1) {
+          if (view[i] === 0x0a) newlineCount += 1;
+        }
+        chunks.unshift(view);
+      }
+
+      if (chunks.length === 0) return [];
+      const content = Buffer.concat(chunks).toString('utf-8').trim();
+      if (!content) return [];
+      const tail = content.split('\n').slice(-limit);
+      const out: T[] = [];
+      for (const line of tail) {
+        if (!line.trim()) continue;
+        try {
+          out.push(JSON.parse(line) as T);
+        } catch {
+          // Skip malformed lines to preserve best-effort retrieval.
+        }
+      }
+      return out;
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
     return [];
   }
@@ -128,7 +166,8 @@ function writeYaml<T>(filePath: string, data: T): void {
 // ═══════════════════════════════════════════════════════════════
 
 function agentDir(agentId: string): string {
-  return path.join(AGENTS_DIR, agentId);
+  const safeAgentId = assertSafePathSegment(agentId, 'agent_id');
+  return resolveWithin(AGENTS_DIR, safeAgentId);
 }
 
 function agentJsonPath(agentId: string): string {
@@ -136,7 +175,8 @@ function agentJsonPath(agentId: string): string {
 }
 
 function sessionDir(agentId: string, sessionId: string): string {
-  return path.join(agentDir(agentId), 'sessions', sessionId);
+  const safeSessionId = assertSafePathSegment(sessionId, 'session_id');
+  return resolveWithin(agentDir(agentId), 'sessions', safeSessionId);
 }
 
 function sessionJsonPath(agentId: string, sessionId: string): string {
@@ -152,7 +192,8 @@ function schedulesDir(agentId: string): string {
 }
 
 function scheduleYamlPath(agentId: string, scheduleId: string): string {
-  return path.join(schedulesDir(agentId), `${scheduleId}.yaml`);
+  const safeScheduleId = assertSafePathSegment(scheduleId, 'schedule_id');
+  return resolveWithin(schedulesDir(agentId), `${safeScheduleId}.yaml`);
 }
 
 const routerStatePath = path.join(TICLAW_HOME, 'router-state.json');
@@ -268,6 +309,13 @@ export function getSession(sessionId: string): SessionRecord | undefined {
   return undefined;
 }
 
+export function getSessionForAgent(
+  agentId: string,
+  sessionId: string,
+): SessionRecord | undefined {
+  return readJson<SessionRecord>(sessionJsonPath(agentId, sessionId));
+}
+
 export function getSessionsForAgent(agentId: string): SessionRecord[] {
   const sessionsBase = path.join(agentDir(agentId), 'sessions');
   const sessions: SessionRecord[] = [];
@@ -305,6 +353,30 @@ export function updateSessionStatus(
       return;
     }
   }
+}
+
+export function deleteSession(sessionId: string): void {
+  for (const agentId of listDirs(AGENTS_DIR)) {
+    const dir = sessionDir(agentId, sessionId);
+    if (fs.existsSync(dir)) {
+      const archiveDir = path.join(agentDir(agentId), 'archived', 'sessions');
+      fs.mkdirSync(archiveDir, { recursive: true });
+      fs.renameSync(dir, path.join(archiveDir, sessionId));
+      return;
+    }
+  }
+}
+
+export function deleteSessionForAgent(
+  agentId: string,
+  sessionId: string,
+): boolean {
+  const dir = sessionDir(agentId, sessionId);
+  if (!fs.existsSync(dir)) return false;
+  const archiveDir = path.join(agentDir(agentId), 'archived', 'sessions');
+  fs.mkdirSync(archiveDir, { recursive: true });
+  fs.renameSync(dir, path.join(archiveDir, sessionId));
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -829,6 +901,11 @@ export function getRecentInteractionEvents(
   );
   return readJsonlTail<InteractionEvent>(eventsPath, limit);
 }
+
+// Test-only exports for deterministic helper validation.
+export const __testOnly = {
+  readJsonlTail,
+};
 
 // ═══════════════════════════════════════════════════════════════
 // Mind state — REMOVED

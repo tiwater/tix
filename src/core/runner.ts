@@ -12,15 +12,17 @@ import {
   ASSISTANT_NAME,
   DEFAULT_LLM_MODEL,
   ANTHROPIC_API_KEY,
+  CHILD_ENV_ALLOWLIST,
   LLM_API_KEY,
   LLM_BASE_URL,
   SKILLS_CONFIG,
   agentPaths,
   TICLAW_HOME,
 } from './config.js';
-import { getSession } from './store.js';
+import { getSessionForAgent } from './store.js';
 import { createRequire } from 'module';
 import { SkillsRegistry } from '../skills/registry.js';
+import { isPathWithin } from './security.js';
 import type {
   SessionContext,
   RunnerState,
@@ -65,6 +67,68 @@ function getClaudeCliPath(): string {
   return '';
 }
 
+const BASE_CHILD_ENV_KEYS = new Set([
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TERM',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TZ',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'NODE_ENV',
+  'NODE_OPTIONS',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'no_proxy',
+]);
+
+const SKILL_SECRET_ENV_PATTERNS = [
+  /^TC_(PERPLEXITY|SERPER|BRAVE|JINA)_API_KEY$/i,
+  /^(GITHUB_TOKEN|GH_TOKEN)$/i,
+];
+
+function buildChildProcessEnv(input: {
+  workspace: string;
+  effectiveApiKey: string;
+  effectiveBaseUrl: string;
+  agentId: string;
+  sessionId: string;
+  taskId: string;
+}): Record<string, string> {
+  const env: Record<string, string> = {};
+  const allowlist = new Set(CHILD_ENV_ALLOWLIST.map((item) => item.trim()));
+
+  for (const [rawKey, rawValue] of Object.entries(process.env)) {
+    if (typeof rawValue !== 'string') continue;
+    const key = rawKey.trim();
+    if (!key) continue;
+    const allowedByDefault =
+      BASE_CHILD_ENV_KEYS.has(key) ||
+      SKILL_SECRET_ENV_PATTERNS.some((pattern) => pattern.test(key));
+    if (!allowedByDefault && !allowlist.has(key)) continue;
+    env[key] = rawValue;
+  }
+
+  env.PWD = input.workspace;
+  env.ANTHROPIC_API_KEY = input.effectiveApiKey;
+  if (input.effectiveBaseUrl) {
+    env.ANTHROPIC_BASE_URL = input.effectiveBaseUrl;
+  }
+  env.TICLAW_AGENT_ID = input.agentId;
+  env.TICLAW_SESSION_ID = input.sessionId;
+  env.TICLAW_TASK_ID = input.taskId;
+  return env;
+}
+
 // ── Cached system prompts (per agent, invalidated by mtime) ──
 const _promptCache = new Map<string, { prompt: string; mtimeKey: string }>();
 
@@ -81,8 +145,23 @@ function getPromptMtimeKey(baseDir: string): string {
   }
   const memoryDir = path.join(baseDir, 'memory');
   try {
-    const stat = fs.statSync(memoryDir);
-    key += `memory:${stat.mtimeMs};`;
+    const journals = fs
+      .readdirSync(memoryDir)
+      .filter((f) => f.endsWith('.md'))
+      .sort();
+    if (journals.length === 0) {
+      key += 'memory:0;';
+    } else {
+      for (const filename of journals) {
+        const p = path.join(memoryDir, filename);
+        try {
+          const stat = fs.statSync(p);
+          key += `memory/${filename}:${stat.mtimeMs};`;
+        } catch {
+          key += `memory/${filename}:0;`;
+        }
+      }
+    }
   } catch {
     key += 'memory:0;';
   }
@@ -95,13 +174,19 @@ function getPromptMtimeKey(baseDir: string): string {
   return key;
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (maxChars <= 0) return '';
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars).trimEnd()}\n...[truncated]`;
+}
+
 // ══════════════════════════════════════════════════════════════
 // Warm Session Pool — keeps SDK subprocesses alive between msgs
 // ══════════════════════════════════════════════════════════════
 //
 // Design principles:
-//   • One warm subprocess per AGENT (not per channel session).
-//     Key = agentId only, so CLI / web / Feishu all reuse the same process.
+//   • One warm subprocess per AGENT + SESSION.
+//     Key = `${agentId}:${sessionId}` to preserve session isolation.
 //   • Handler is registered BEFORE startOutputLoop so no events are dropped.
 //   • streamInput() failure gracefully falls back to a cold resume.
 //   • Claude SDK session ID captured from the earliest possible event (system:init).
@@ -111,6 +196,7 @@ function getPromptMtimeKey(baseDir: string): string {
 interface WarmSession {
   query: Query;
   agentId: string;
+  sessionId: string;
   createdAt: number;
   lastUsedAt: number;
   /** When the most recent SDK event arrived. Used for liveness tracking. */
@@ -133,12 +219,17 @@ interface ActiveHandler {
   reject: (err: Error) => void;
 }
 
-// Key: agentId (one subprocess per agent, shared across all channels)
+// Key: `${agentId}:${sessionId}`
 const warmSessions = new Map<string, WarmSession>();
 const activeHandlers = new Map<string, ActiveHandler>();
 
 // TTL: close idle sessions after 10 minutes
 const WARM_SESSION_TTL = 10 * 60 * 1000;
+
+// Prompt memory budget guards to avoid unbounded short-term context growth.
+const RECENT_JOURNAL_COUNT = 3;
+const RECENT_JOURNAL_MAX_CHARS = 2_000;
+const RECENT_JOURNAL_TOTAL_MAX_CHARS = 6_000;
 
 // Periodic cleanup of idle / dead sessions
 setInterval(() => {
@@ -174,9 +265,13 @@ function closeAllWarmSessions(): void {
 process.on('SIGTERM', closeAllWarmSessions);
 process.on('SIGINT', closeAllWarmSessions);
 
-// Key is agentId only (no TiClaw session suffix)
-function buildSessionKey(agentId: string): string {
-  return agentId;
+function buildSessionKey(agentId: string, sessionId: string): string {
+  return `${agentId}:${sessionId}`;
+}
+
+function allowedSkillRoots(registry: SkillsRegistry): string[] {
+  const managedRoot = path.join(path.dirname(registry.getConfig().statePath), 'packages');
+  return [...registry.getConfig().directories, managedRoot];
 }
 
 // ── Per-agent Claude SDK session persistence ──────────────────
@@ -184,22 +279,27 @@ function buildSessionKey(agentId: string): string {
 // TiClaw's session ID). We save it after the first run so that cold
 // restarts can `resume` that session and recover full conversation history.
 
-function getClaudeSessionPath(agentId: string): string {
+function getClaudeSessionPath(agentId: string, sessionId: string): string {
   const { base } = agentPaths(agentId);
-  return path.join(base, '.claude_session_id');
+  const sessionKey = encodeURIComponent(sessionId);
+  return path.join(base, '.claude_sessions', `${sessionKey}.id`);
 }
 
-function loadClaudeSessionId(agentId: string): string | null {
+function loadClaudeSessionId(agentId: string, sessionId: string): string | null {
   try {
-    const p = getClaudeSessionPath(agentId);
+    const p = getClaudeSessionPath(agentId, sessionId);
     if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8').trim() || null;
   } catch {}
   return null;
 }
 
-function saveClaudeSessionId(agentId: string, claudeSessionId: string): void {
+function saveClaudeSessionId(
+  agentId: string,
+  sessionId: string,
+  claudeSessionId: string,
+): void {
   try {
-    const p = getClaudeSessionPath(agentId);
+    const p = getClaudeSessionPath(agentId, sessionId);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, claudeSessionId, 'utf-8');
   } catch (err: any) {
@@ -223,13 +323,7 @@ function buildQueryOptions(
   if (!effectiveApiKey) {
     logger.warn('No API key configured (ANTHROPIC_API_KEY or LLM_API_KEY)');
   } else {
-    logger.debug(
-      {
-        keyPrefix: effectiveApiKey.slice(0, 8) + '…',
-        hasBaseUrl: !!effectiveBaseUrl,
-      },
-      'Agent subprocess API key configured',
-    );
+    logger.debug({ hasBaseUrl: !!effectiveBaseUrl }, 'Agent subprocess API key configured');
   }
 
   return {
@@ -252,15 +346,14 @@ function buildQueryOptions(
     includePartialMessages: true,
     pathToClaudeCodeExecutable: cliPath,
     persistSession: true,
-    env: {
-      ...process.env,
-      PWD: workspace,
-      ANTHROPIC_API_KEY: effectiveApiKey,
-      ...(effectiveBaseUrl ? { ANTHROPIC_BASE_URL: effectiveBaseUrl } : {}),
-      TICLAW_AGENT_ID: agentId,
-      TICLAW_SESSION_ID: sessionId,
-      TICLAW_TASK_ID: taskId,
-    } as Record<string, string>,
+    env: buildChildProcessEnv({
+      workspace,
+      effectiveApiKey,
+      effectiveBaseUrl,
+      agentId,
+      sessionId,
+      taskId,
+    }),
     plugins: [] as any[],
   };
 }
@@ -286,9 +379,13 @@ function startOutputLoop(key: string, warm: WarmSession): void {
         // The system:init event is the first message and reliably carries it.
         if (!sessionIdSaved && event.session_id) {
           sessionIdSaved = true;
-          saveClaudeSessionId(warm.agentId, event.session_id);
+          saveClaudeSessionId(warm.agentId, warm.sessionId, event.session_id);
           logger.debug(
-            { agentId: warm.agentId, claudeSessionId: event.session_id },
+            {
+              agentId: warm.agentId,
+              sessionId: warm.sessionId,
+              claudeSessionId: event.session_id,
+            },
             'Saved Claude session ID',
           );
         }
@@ -344,6 +441,13 @@ function startOutputLoop(key: string, warm: WarmSession): void {
   })();
 }
 
+// Test-only access to deterministic helper behavior.
+export const __testOnly = {
+  buildSessionKey,
+  getPromptMtimeKey,
+  getClaudeSessionPath,
+};
+
 // ══════════════════════════════════════════════════════════════
 // AgentRunner — Public API (unchanged interface)
 // ══════════════════════════════════════════════════════════════
@@ -358,8 +462,7 @@ export interface RunnerEvents {
  * AgentRunner: The refined functional "Body" of a TiClaw Agent.
  *
  * Warm-session pool behaviour:
- *   - Key is agentId only → one subprocess per agent, reused across all
- *     channels (CLI, web, Feishu, etc.)
+ *   - Key is `${agentId}:${sessionId}` → one subprocess per session
  *   - First call: cold start, subprocess spawned with the latest prompt
  *   - Subsequent calls within the same process: warm path via streamInput()
  *   - After process restart: cold start with `resume: <savedClaudeSessionId>`
@@ -405,7 +508,10 @@ export class AgentRunner {
     this.state.recent_logs = [];
     this.controller = new AbortController();
 
-    const session = getSession(this.state.session_id) as SessionContext;
+    const session = getSessionForAgent(
+      this.state.agent_id,
+      this.state.session_id,
+    ) as SessionContext;
     if (!session) {
       this.state.status = 'error';
       throw new Error(`Session ${this.state.session_id} not found.`);
@@ -420,8 +526,8 @@ export class AgentRunner {
     );
     await this.notifyState();
 
-    // Key is agentId only — one subprocess shared across all channels
-    const key = buildSessionKey(this.state.agent_id);
+    // Key is agentId + sessionId to preserve cross-session isolation
+    const key = buildSessionKey(this.state.agent_id, this.state.session_id);
 
     // Latest user message — used for both warm streamInput and cold prompt
     const lastUser = messages.filter((m) => m.role === 'user').pop();
@@ -579,19 +685,22 @@ export class AgentRunner {
           // Read skills from the global registry
           const registry = new SkillsRegistry(SKILLS_CONFIG);
           const available = registry.listAvailable();
-          let enabled = available;
+          const roots = allowedSkillRoots(registry);
+          let enabled = available.filter((entry) => entry.installed?.enabled);
           
           const agentSkillsPath = path.join(paths.base, 'skills.json');
           if (fs.existsSync(agentSkillsPath)) {
             try {
               const allowedNames: string[] = JSON.parse(fs.readFileSync(agentSkillsPath, 'utf8'));
-              enabled = available.filter(a => allowedNames.includes(a.skill.name));
+              enabled = available.filter(
+                (entry) =>
+                  entry.installed?.enabled &&
+                  allowedNames.includes(entry.skill.name),
+              );
             } catch (e: any) {
               logger.warn({ err: e.message, agentId: this.state.agent_id }, 'Failed to parse agent skills.json, falling back to global');
-              enabled = available.filter((a) => a.installed?.enabled);
+              enabled = available.filter((entry) => entry.installed?.enabled);
             }
-          } else {
-            enabled = available.filter((a) => a.installed?.enabled);
           }
 
           // Delete existing old symlinks to avoid stale skills
@@ -602,6 +711,20 @@ export class AgentRunner {
           // Symlink each enabled skill
           for (const { skill, installed } of enabled) {
             if (installed?.directory) {
+              const inAllowedRoot = roots.some((root) =>
+                isPathWithin(root, installed.directory),
+              );
+              if (!inAllowedRoot) {
+                logger.warn(
+                  {
+                    agentId: this.state.agent_id,
+                    skill: skill.name,
+                    directory: installed.directory,
+                  },
+                  'Skipping skill outside configured skills scope',
+                );
+                continue;
+              }
               const linkPath = path.join(pluginSkillsPath, skill.name);
               try {
                 if (fs.existsSync(linkPath)) fs.unlinkSync(linkPath);
@@ -621,11 +744,15 @@ export class AgentRunner {
 
         // Resume the previous Claude-side session if one exists.
         // On the very first cold start, null → fresh session (ID will be saved).
-        const savedClaudeSessionId = loadClaudeSessionId(this.state.agent_id);
+        const savedClaudeSessionId = loadClaudeSessionId(
+          this.state.agent_id,
+          this.state.session_id,
+        );
         if (savedClaudeSessionId) {
           logger.info(
             {
               agentId: this.state.agent_id,
+              sessionId: this.state.session_id,
               claudeSessionId: savedClaudeSessionId,
             },
             'AgentRunner: Resuming prior Claude session',
@@ -643,6 +770,7 @@ export class AgentRunner {
         const newWarm: WarmSession = {
           query: agentQuery as Query,
           agentId: this.state.agent_id,
+          sessionId: this.state.session_id,
           createdAt: Date.now(),
           lastUsedAt: Date.now(),
           lastEventAt: Date.now(),
@@ -752,16 +880,20 @@ export class AgentRunner {
         .readdirSync(memoryDir)
         .filter((f) => f.endsWith('.md'))
         .sort()
-        .reverse()
-        .slice(0, 3);
+        .slice(-RECENT_JOURNAL_COUNT);
 
       if (journals.length > 0) {
         parts.push('## Recent Journal (Chronological Memory)');
+        let remainingJournalChars = RECENT_JOURNAL_TOTAL_MAX_CHARS;
         for (const j of journals) {
-          const content = fs
-            .readFileSync(path.join(memoryDir, j), 'utf-8')
-            .trim();
-          parts.push(`### Date: ${j.replace('.md', '')}\n${content}`);
+          if (remainingJournalChars <= 0) break;
+          const raw = fs.readFileSync(path.join(memoryDir, j), 'utf-8').trim();
+          if (!raw) continue;
+          const perJournal = truncateText(raw, RECENT_JOURNAL_MAX_CHARS);
+          const clipped = truncateText(perJournal, remainingJournalChars);
+          if (!clipped) continue;
+          parts.push(`### Date: ${j.replace('.md', '')}\n${clipped}`);
+          remainingJournalChars -= clipped.length;
         }
       }
     }
@@ -825,16 +957,30 @@ When asked to list your capabilities, skills, or tools:
   }
 
   /**
-   * Automatically consolidates task results into an asynchronous journal.
+   * Consolidates task results into a per-day short-term memory journal.
    */
-  private async consolidateMemory(
-    baseDir: string,
-    result: string,
-  ): Promise<void> {
-    const today = new Date().toISOString().split('T')[0];
-    const journalPath = path.join(baseDir, 'memory', `${today}.md`);
-    const entry = `\n- [${new Date().toLocaleTimeString()}] Task: ${this.state.task_id}\n  Result: ${result.slice(0, 200)}...\n`;
-    fs.appendFileSync(journalPath, entry, 'utf-8');
+  private consolidateMemory(baseDir: string, result: string): void {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const journalPath = path.join(baseDir, 'memory', `${today}.md`);
+      const compactResult = result.replace(/\s+/g, ' ').trim();
+      const preview = compactResult
+        ? truncateText(compactResult, 240)
+        : '(empty result)';
+      const entry = `\n- [${now.toISOString()}] Task: ${this.state.task_id}\n  Result: ${preview}\n`;
+      fs.appendFileSync(journalPath, entry, 'utf-8');
+    } catch (err: any) {
+      logger.warn(
+        {
+          agentId: this.state.agent_id,
+          sessionId: this.state.session_id,
+          taskId: this.state.task_id,
+          err: err.message,
+        },
+        'Failed to consolidate short-term memory journal',
+      );
+    }
   }
 
   private async notifyState(): Promise<void> {

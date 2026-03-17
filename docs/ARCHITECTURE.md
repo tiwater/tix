@@ -2,145 +2,121 @@
 
 ## Overview
 
-TiClaw is a multi-channel AI agent runtime built on Node.js. It receives messages from external platforms (Discord, Feishu, DingTalk, web UI), dispatches them to an LLM agent powered by the Claude Agent SDK, and relays responses back through the originating channel.
+TiClaw is a multi-channel AI agent runtime on Node.js. Messages flow in from channel adapters, are persisted to filesystem storage, executed by `AgentRunner` (Claude Agent SDK), and responses are routed back through the source channel.
 
-The system follows a **hub/node** topology for cloud deployment: a public-facing **Hub** accepts WebSocket connections from one or more **Nodes** (TiClaw instances), while also serving the web UI. Nodes can also run standalone with direct channel connections.
+The deployment model supports both:
+- standalone node
+- hub/node topology (`@ticlaw/hub` + one or more TiClaw nodes)
 
 ---
 
 ## System Diagram
 
-```
-                         ┌──────────────────────────────────┐
-                         │           Hub  (@ticlaw/hub)      │
-                         │   WebSocket server + web UI proxy │
-                         │   ┌────────────────────────────┐  │
-                         │   │  /api/hub/nodes (REST)     │  │
-                         │   │  /runs (relay to node)     │  │
-                         │   │  /runs/:id/stream (SSE)    │  │
-                         │   └────────────────────────────┘  │
-                         └──────┬──────────────┬─────────────┘
-                                │ WebSocket    │ WebSocket
-                    ┌───────────┘              └───────────┐
-                    ▼                                      ▼
-          ┌──────────────────┐                  ┌──────────────────┐
-          │  Node (TiClaw)   │                  │  Node (TiClaw)   │
-          │  ┌────────────┐  │                  │  ┌────────────┐  │
-          │  │ Channels   │  │                  │  │ Channels   │  │
-          │  │ Discord    │  │                  │  │ HTTP/SSE   │  │
-          │  │ Feishu     │  │                  │  │ DingTalk   │  │
-          │  │ HTTP/SSE   │  │                  │  │ ACP        │  │
-          │  │ Hub Client │  │                  │  │ Hub Client │  │
-          │  └─────┬──────┘  │                  │  └────────────┘  │
-          │        │         │                  │                  │
-          │  ┌─────▼──────┐  │                  └──────────────────┘
-          │  │ Message    │  │
-          │  │ Loop       │  │
-          │  │ (poll 2s)  │  │
-          │  └─────┬──────┘  │
-          │        │         │
-          │  ┌─────▼──────┐  │
-          │  │ AgentRunner │  │
-          │  │ Claude SDK  │  │
-          │  │ (query())   │  │
-          │  └─────┬──────┘  │
-          │        │         │
-          │  ┌─────▼──────┐  │
-          │  │ Filesystem  │  │
-          │  │ Store       │  │
-          │  │ (~/.ticlaw/)│  │
-          │  └────────────┘  │
-          └──────────────────┘
+```text
+                   ┌────────────────────────────────────┐
+                   │ Hub (@ticlaw/hub)                 │
+                   │ - WebSocket node connections       │
+                   │ - HTTP relay (/api/*, /runs*, etc) │
+                   │ - SSE bridge                        │
+                   └───────────────┬─────────────────────┘
+                                   │ ws
+                      ┌────────────▼────────────┐
+                      │ Node (TiClaw runtime)   │
+                      │ - Channels              │
+                      │ - Message loop          │
+                      │ - AgentRunner           │
+                      │ - Filesystem store      │
+                      └─────────────────────────┘
 ```
 
 ---
+
+## Current Architecture (Implemented)
 
 ## Core Components
 
 ### 1. Channel Registry (`src/channels/registry.ts`)
 
-Channels self-register via `registerChannel(name, factory)` at module import time. The barrel file `src/channels/index.ts` imports all active channels. At startup, the main process iterates registered channels, instantiates each via its factory, and calls `connect()`.
+Channels self-register with `registerChannel(name, factory)`.
 
-**Active channels:**
-- **Discord** (`discord.ts`) — `dc:` JID prefix
-- **HTTP/SSE** (`http.ts`) — `web:` JID prefix, serves REST API + SSE streaming
-- **Hub Client** (`hub-client.ts`) — `hub:` JID prefix, connects node to hub
-- **ACP** (`acp.ts`) — Agent Communication Protocol bridge
-- **DingTalk** (`dingtalk/`) — DingTalk bot stream
-- **Feishu** (`feishu/`) — Lark/Feishu long connection (currently removed from barrel)
+Currently loaded by barrel (`src/channels/index.ts`):
+- Discord (`dc:`)
+- Feishu (`feishu:`)
+- ACP (`acp:`)
+- HTTP/SSE (`web:`)
+- Hub Client (`hub:`)
 
-### 2. Message Loop (`src/index.ts`)
+Implemented but **not imported by default** in barrel:
+- DingTalk (`dingtalk:`)
 
-A polling loop runs every 2 seconds, scanning all registered projects for new messages. When a trigger match is found (e.g., `@Shaw`), the message is dispatched to `processMessages()`. Web channel messages are dispatched immediately (event-driven) without waiting for the poll cycle.
+### 2. Message Processing (`src/index.ts`)
 
-A per-channel mutex (`activeAgentLocks`) prevents overlapping agent runs for the same chat.
+Two paths coexist:
+- Event-driven: inbound channel `onMessage` triggers immediate processing
+- Polling loop: every 2s scan/recovery path
+
+Concurrency guard:
+- `activeAgentLocks` ensures one active run per `chat_jid`
 
 ### 3. Agent Runner (`src/core/runner.ts`)
 
-Wraps the `@anthropic-ai/claude-agent-sdk` `query()` generator. Each invocation:
-1. Loads mind files (SOUL.md, IDENTITY.md, USER.md, MEMORY.md) as system prompt
-2. Loads active skills as additional context
-3. Streams LLM tokens back via callbacks
-4. Executes in the agent's workspace directory
+`AgentRunner` wraps `@anthropic-ai/claude-agent-sdk` query flow:
+1. Builds system prompt from `SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`
+2. Injects recent short-term journals from `memory/*.md` (latest 3 files)
+3. Compiles enabled skills into SDK plugin directory
+4. Streams events (`stream_delta`, progress) to channel/UI
+5. Executes in resolved workspace (`~/workspace-{agent}` by default)
 
-The runner resolves the Claude CLI path from the SDK package and spawns it with configurable LLM provider (Anthropic, BigModel/MiniMax via `LLM_BASE_URL`).
+Warm-session pooling:
+- One warm subprocess per `agent_id + session_id`
+- Cold resume using per-session Claude-side session IDs under `.claude_sessions/`
+- Detailed memory spec: `docs/MEMORY.md`
 
 ### 4. Filesystem Store (`src/core/store.ts`)
 
-All persistent data lives under `~/.ticlaw/` as plain files:
+Persistent data under `~/.ticlaw/`:
 
 | Data | Format | Path |
-|------|--------|------|
+|---|---|---|
 | Agents | JSON | `agents/{id}/agent.json` |
 | Sessions | JSON | `agents/{id}/sessions/{sid}/session.json` |
-| Messages | JSONL (append-only) | `agents/{id}/sessions/{sid}/messages.jsonl` |
-| Schedules | JSON | `agents/{id}/schedules/{id}.json` |
+| Messages | JSONL | `agents/{id}/sessions/{sid}/messages.jsonl` |
+| Events | JSONL | `agents/{id}/sessions/{sid}/events.jsonl` |
+| Schedules | YAML | `agents/{id}/schedules/{id}.yaml` |
 | Router state | JSON | `router-state.json` |
-| Registered groups | JSON | `registered-groups.json` |
+| Registered routes | JSON | `registered-groups.json` |
 | Enrollment | JSON | `security/enrollment-state.json` |
-
-No SQLite. The filesystem IS the database.
 
 ### 5. Hub (`hub/src/index.ts`)
 
-Standalone `@ticlaw/hub` package with zero core dependencies. Accepts WebSocket connections from nodes, tracks connected nodes, and relays HTTP requests to the active node. The hub can be embedded into any Node.js server via `attachHub()`.
+`@ticlaw/hub` provides:
+- node connection tracking
+- REST relay to active node
+- SSE relay for `/runs/.../stream`
 
-Key flows:
-- **Enroll/Auth**: Node sends `{type: 'enroll', node_id, node_fingerprint}` on connect
-- **Relay**: Hub forwards incoming HTTP requests to the active node via WebSocket and returns the response
-- **SSE Bridge**: Hub proxies SSE streams from nodes to web clients
+Important current behavior:
+- Node `enroll` / `auth` messages are accepted and marked `trusted` in hub memory.
+- Hub-side token/fingerprint verification is not yet enforced.
 
 ### 6. Task Scheduler (`src/task-scheduler.ts`)
 
-Runs a polling loop (60s interval) checking for due scheduled tasks. Supports cron expressions, intervals, and one-time tasks. Tasks execute through the same `runAgent()` path as regular messages.
+- Poll interval: 60s
+- Source: schedule YAML files
+- Due rule: `status=active && next_run<=now`
+- Execution: enqueue as normal inbound message
+- Next run: recompute from `cron`; invalid cron pauses schedule
 
 ---
 
 ## Data Flow
 
-```
-1. Channel receives message
-   ├── Discord: gateway event → onMessage callback
-   ├── HTTP/SSE: POST /runs → direct dispatch
-   └── Hub: WebSocket relay → local HTTP handler
-
-2. Message stored to JSONL file
-
-3. Message loop (2s poll) or event-driven dispatch
-   └── Trigger pattern check (@AssistantName)
-
-4. processMessages()
-   ├── /enroll commands → enrollment control plane
-   ├── /skills commands → skills registry
-   └── Regular messages → runAgent()
-
-5. AgentRunner (Claude Agent SDK)
-   ├── Loads mind files + skills context
-   ├── Streams tokens via onEvent callback
-   └── Final response via onReply callback
-
-6. Response relayed back through originating channel
-   └── Stored as bot message in JSONL
+```text
+1) Channel receives message
+2) Store message to session JSONL
+3) Dispatch path (event-driven or polling recovery)
+4) processMessages() handles control commands (/enroll, /skills) or normal run
+5) AgentRunner streams progress/delta + emits final reply
+6) Reply routed back via originating channel and persisted as bot message
 ```
 
 ---
@@ -148,15 +124,24 @@ Runs a polling loop (60s interval) checking for due scheduled tasks. Supports cr
 ## Deployment Topology
 
 ### Standalone (Development)
-Node runs directly with all channels connected. `pnpm dev` or `pnpm start`.
+
+Single TiClaw process with direct channel adapters.
 
 ### Hub + Node (Production)
-Defined in `render.yaml`:
-- **Hub** (`web` service): Public-facing, serves web UI + hub WebSocket
-- **Node** (`pserv` service): Private, connects to hub via WebSocket
 
-The node does not need a public IP — it connects outbound to the hub's WebSocket endpoint.
+- Hub: public relay/API edge
+- Node: private executor, outbound WebSocket to hub
+
+Node does not require public inbound port exposure.
 
 ---
 
-*Last Updated: March 2026*
+## Planned Architecture
+
+1. Hub-side strong node authentication and trust policy.
+2. Unified route binding migration from `registered-groups.json` to `agent.json.sources` (if adopted).
+3. Global queue/backpressure model beyond per-chat mutex.
+
+---
+
+*Last Updated: March 17, 2026*

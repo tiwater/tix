@@ -19,6 +19,7 @@ const envConfig = readEnvFile([
   'MIND_LOCK_MODE',
   'HTTP_PORT',
   'HTTP_ENABLED',
+  'HTTP_API_KEY',
   'ANTHROPIC_API_KEY',
   'LLM_API_KEY',
   'LLM_MODEL',
@@ -29,6 +30,10 @@ const envConfig = readEnvFile([
   'CONTROL_PLANE_ENROLLMENT_MODE',
   'ACP_ENABLED',
   'ACP_HUB_URL',
+  'SECURITY_TRUSTED_REMOTE_HOSTS',
+  'SECURITY_ALLOW_INSECURE_REMOTE_ENDPOINTS',
+  'WORKSPACE_ALLOWED_ROOTS',
+  'CHILD_ENV_ALLOWLIST',
   'CONCURRENCY_LIMIT',
   'AGENT_CONCURRENCY_LIMIT',
   'SESSION_CONCURRENCY_LIMIT',
@@ -102,6 +107,16 @@ function parsePathList(
   return Array.from(new Set(rawItems.map((item) => expandHomePath(item))));
 }
 
+function parseStringList(value: string | undefined, fallback: string[]): string[] {
+  const rawItems = value
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : fallback;
+  return Array.from(new Set(rawItems));
+}
+
 export const MOUNT_ALLOWLIST_PATH = path.join(
   TICLAW_HOME,
   'mount-allowlist.json',
@@ -117,6 +132,28 @@ export const DATA_DIR = path.join(TICLAW_HOME, 'data');
 export const SKILLS_HOME = path.join(TICLAW_HOME, 'skills');
 export const SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
 export const SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
+
+export const SECURITY_TRUSTED_REMOTE_HOSTS = parseStringList(
+  process.env.SECURITY_TRUSTED_REMOTE_HOSTS ||
+    envConfig.SECURITY_TRUSTED_REMOTE_HOSTS,
+  [],
+);
+
+export const SECURITY_ALLOW_INSECURE_REMOTE_ENDPOINTS = parseBoolean(
+  process.env.SECURITY_ALLOW_INSECURE_REMOTE_ENDPOINTS ||
+    envConfig.SECURITY_ALLOW_INSECURE_REMOTE_ENDPOINTS,
+  false,
+);
+
+export const WORKSPACE_ALLOWED_ROOTS = parsePathList(
+  process.env.WORKSPACE_ALLOWED_ROOTS || envConfig.WORKSPACE_ALLOWED_ROOTS,
+  [HOME_DIR],
+);
+
+export const CHILD_ENV_ALLOWLIST = parseStringList(
+  process.env.CHILD_ENV_ALLOWLIST || envConfig.CHILD_ENV_ALLOWLIST,
+  [],
+);
 
 /** OpenClaw-compatible mind files (boot-md order). Evolved through conversation. */
 export const AGENT_MIND_FILES = [
@@ -211,6 +248,8 @@ export const HTTP_PORT = parseInt(
 );
 export const HTTP_ENABLED =
   (process.env.HTTP_ENABLED ?? envConfig.HTTP_ENABLED ?? 'true') !== 'false';
+export const HTTP_API_KEY =
+  process.env.HTTP_API_KEY || envConfig.HTTP_API_KEY || '';
 
 // LLM API keys — prefer MiniMax if configured, fall back to Anthropic
 export const ANTHROPIC_API_KEY =
@@ -300,15 +339,45 @@ export const TASK_DEFAULT_RETRY_BACKOFF_MS = parseInt(
 
 // --- Convention-based agent paths ---
 export function agentPaths(agentId: string) {
-  const base = path.join(AGENTS_DIR, agentId);
+  const normalizedAgentId = (agentId || '').trim();
+  if (
+    !normalizedAgentId ||
+    normalizedAgentId === '.' ||
+    normalizedAgentId === '..' ||
+    normalizedAgentId.includes('/') ||
+    normalizedAgentId.includes('\\') ||
+    normalizedAgentId.includes('\0')
+  ) {
+    throw new Error(`Invalid agent_id: ${JSON.stringify(agentId)}`);
+  }
+
+  const base = path.resolve(AGENTS_DIR, normalizedAgentId);
+  if (base !== AGENTS_DIR && !base.startsWith(`${AGENTS_DIR}${path.sep}`)) {
+    throw new Error(`Invalid agent_id path escape attempt: ${normalizedAgentId}`);
+  }
   const configPath = path.join(base, 'agent-config.json');
 
-  let workspace = path.join(HOME_DIR, `workspace-${agentId}`);
+  let workspace = path.join(HOME_DIR, `workspace-${normalizedAgentId}`);
   if (fs.existsSync(configPath)) {
     try {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       if (config.workspace) {
-        workspace = expandHomePath(config.workspace);
+        const requested = expandHomePath(config.workspace);
+        const inAllowedRoot = WORKSPACE_ALLOWED_ROOTS.some((root) => {
+          const resolvedRoot = path.resolve(root);
+          const resolvedPath = path.resolve(requested);
+          return (
+            resolvedPath === resolvedRoot ||
+            resolvedPath.startsWith(`${resolvedRoot}${path.sep}`)
+          );
+        });
+        if (inAllowedRoot) {
+          workspace = requested;
+        } else {
+          console.warn(
+            `[security] Workspace "${requested}" is outside WORKSPACE_ALLOWED_ROOTS; falling back to default for agent "${normalizedAgentId}".`,
+          );
+        }
       }
     } catch {
       /* ignore */

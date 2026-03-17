@@ -29,6 +29,7 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   TC_FEISHU_APP_ID: ['channels', 'feishu', 'app_id'],
   TC_FEISHU_APP_SECRET: ['channels', 'feishu', 'app_secret'],
   TC_FEISHU_ENABLED: ['channels', 'feishu', 'enabled'],
+  HTTP_API_KEY: ['security', 'http_api_key'],
   GEMINI_API_KEY: ['api_keys', 'gemini'],
   ANTHROPIC_API_KEY: ['api_keys', 'anthropic'],
   CLAUDE_CODE_OAUTH_TOKEN: ['api_keys', 'claude_oauth'],
@@ -49,6 +50,13 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   SKILLS_ALLOW_LEVEL3: ['skills', 'allow_level3'],
   SKILLS_AUTO_ENABLE: ['skills', 'auto_enable'],
   SKILLS_DEFAULT_ENABLED: ['skills', 'default_enabled'],
+  SECURITY_TRUSTED_REMOTE_HOSTS: ['security', 'trusted_remote_hosts'],
+  SECURITY_ALLOW_INSECURE_REMOTE_ENDPOINTS: [
+    'security',
+    'allow_insecure_remote_endpoints',
+  ],
+  WORKSPACE_ALLOWED_ROOTS: ['security', 'workspace_allowed_roots'],
+  CHILD_ENV_ALLOWLIST: ['security', 'child_env_allowlist'],
 };
 
 /**

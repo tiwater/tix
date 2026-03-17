@@ -36,9 +36,38 @@ export interface HubOptions {
 // ── State ──
 
 const nodes = new Map<WebSocket, NodeInfo>();
+const connectionIps = new Map<WebSocket, string>();
 const pendingRequests = new Map<string, PendingRequest>();
 const sseClients = new Map<string, Set<http.ServerResponse>>();
 let requestIdCounter = 0;
+
+function parseCsvSet(value?: string): Set<string> {
+  if (!value) return new Set();
+  return new Set(
+    value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+}
+
+const ALLOWED_NODE_IDS = parseCsvSet(process.env.HUB_ALLOWED_NODE_IDS);
+const ALLOWED_NODE_FINGERPRINTS = parseCsvSet(
+  process.env.HUB_ALLOWED_NODE_FINGERPRINTS,
+);
+
+function isNodeAllowed(nodeId: string, nodeFingerprint: string): boolean {
+  if (ALLOWED_NODE_IDS.size > 0 && !ALLOWED_NODE_IDS.has(nodeId)) {
+    return false;
+  }
+  if (
+    ALLOWED_NODE_FINGERPRINTS.size > 0 &&
+    !ALLOWED_NODE_FINGERPRINTS.has(nodeFingerprint)
+  ) {
+    return false;
+  }
+  return true;
+}
 
 // ── Public API ──
 
@@ -101,6 +130,20 @@ function handleNodeMessage(
     case 'enroll': {
       const node_id = msg.node_id as string;
       const node_fingerprint = msg.node_fingerprint as string;
+      if (!isNodeAllowed(node_id, node_fingerprint)) {
+        log?.warn?.(
+          `[hub] Rejected node enrollment for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
+        );
+        ws.send(
+          JSON.stringify({
+            type: 'enrollment_result',
+            ok: false,
+            code: 'node_not_allowed',
+          }),
+        );
+        ws.close();
+        break;
+      }
       nodes.set(ws, { node_id, node_fingerprint, trusted: true });
       log?.info?.(`[hub] Node enrolled: ${node_id}`);
       ws.send(
@@ -117,6 +160,20 @@ function handleNodeMessage(
     case 'auth': {
       const node_id = msg.node_id as string;
       const node_fingerprint = msg.node_fingerprint as string;
+      if (!isNodeAllowed(node_id, node_fingerprint)) {
+        log?.warn?.(
+          `[hub] Rejected node auth for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
+        );
+        ws.send(
+          JSON.stringify({
+            type: 'auth_result',
+            ok: false,
+            code: 'node_not_allowed',
+          }),
+        );
+        ws.close();
+        break;
+      }
       nodes.set(ws, { node_id, node_fingerprint, trusted: true });
       log?.info?.(`[hub] Node authenticated: ${node_id}`);
       ws.send(JSON.stringify({ type: 'auth_result', ok: true }));
@@ -227,6 +284,8 @@ export function attachHub(
 
   wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const ipText = Array.isArray(ip) ? ip[0] : String(ip || '');
+    connectionIps.set(ws, ipText);
     log.info?.(`[hub] New node connection from ${ip}`);
 
     ws.on('message', (data) => {
@@ -241,6 +300,7 @@ export function attachHub(
       const info = nodes.get(ws);
       if (info) log.info?.(`[hub] Node disconnected: ${info.node_id}`);
       nodes.delete(ws);
+      connectionIps.delete(ws);
     });
 
     ws.on('error', (err) => {

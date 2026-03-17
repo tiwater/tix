@@ -264,13 +264,6 @@ async function processMessages(chatJid: string): Promise<boolean> {
       'processMessages: workspace check',
     );
 
-    const aiMessages = recentMessages.map((m) => ({
-      role: (m.sender_name === ASSISTANT_NAME ? 'assistant' : 'user') as
-        | 'assistant'
-        | 'user',
-      content: m.content,
-    }));
-
     try {
       let statusMessageId: string | null = null;
       let lastProgressSentAt = 0;
@@ -421,8 +414,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
           },
         );
 
-        const userMessages = aiMessages.filter((m) => m.role === 'user');
-        await runner.run(userMessages, taskId);
+        await runner.run([{ role: 'user', content: contextText }], taskId);
       } finally {
         if (heartbeatTimer) {
           clearInterval(heartbeatTimer);

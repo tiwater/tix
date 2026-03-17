@@ -2,6 +2,28 @@ import pino from 'pino';
 
 export const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
+  redact: {
+    paths: [
+      '*.apiKey',
+      '*.api_key',
+      '*.token',
+      '*.secret',
+      '*.password',
+      '*.authorization',
+      'headers.authorization',
+      'req.headers.authorization',
+      'env.ANTHROPIC_API_KEY',
+      'env.LLM_API_KEY',
+      'env.MINIMAX_API_KEY',
+      'env.TC_PERPLEXITY_API_KEY',
+      'env.TC_SERPER_API_KEY',
+      'env.TC_BRAVE_API_KEY',
+      'env.TC_JINA_API_KEY',
+      'env.GITHUB_TOKEN',
+      'env.GH_TOKEN',
+    ],
+    censor: '[REDACTED]',
+  },
   transport: { target: 'pino-pretty', options: { colorize: true } },
 });
 

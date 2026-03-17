@@ -1,5 +1,33 @@
 import { tick } from 'svelte';
 
+const isBrowser = typeof window !== 'undefined';
+const API_KEY_STORAGE_KEY = 'ticlaw_http_api_key';
+
+function getStoredApiKey(): string {
+  if (!isBrowser) return '';
+  try {
+    return (localStorage.getItem(API_KEY_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function withApiKeyQuery(rawUrl: string): string {
+  const apiKey = getStoredApiKey();
+  if (!apiKey) return rawUrl;
+  const separator = rawUrl.includes('?') ? '&' : '?';
+  return `${rawUrl}${separator}api_key=${encodeURIComponent(apiKey)}`;
+}
+
+function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers || {});
+  const apiKey = getStoredApiKey();
+  if (apiKey && !headers.has('X-API-Key')) {
+    headers.set('X-API-Key', apiKey);
+  }
+  return fetch(input, { ...init, headers });
+}
+
 // --- Types ---
 export type Tab = 'chat' | 'sessions' | 'schedules' | 'skills' | 'node';
 
@@ -103,8 +131,8 @@ function createAppState() {
   let nodeLoading = $state(false);
 
   // Chat state
-  let agentId = $state('web-agent');
-  let sessionId = $state('web-session');
+  let agentId = $state(isBrowser ? (localStorage.getItem('agentId') || 'web-agent') : 'web-agent');
+  let sessionId = $state(isBrowser ? (localStorage.getItem('sessionId') || 'web-session') : 'web-session');
   let inputText = $state('');
   let messages = $state<Message[]>([]);
   let mindState = $state<MindState | null>(null);
@@ -126,7 +154,7 @@ function createAppState() {
   let agents = $state<AgentInfo[]>([]);
   let sessions = $state<SessionInfo[]>([]);
   let schedules = $state<ScheduleInfo[]>([]);
-  let selectedAgentId = $state<string | null>(null);
+  let selectedAgentId = $state<string | null>(isBrowser ? (localStorage.getItem('selectedAgentId') || null) : null);
   let skillsLoading = $state(false);
   let agentsLoading = $state(false);
   let schedulesLoading = $state(false);
@@ -288,12 +316,19 @@ function createAppState() {
 
   // --- Data fetching ---
   async function fetchMind() {
-    try { const res = await fetch('/api/mind'); mindState = await res.json(); } catch { /* */ }
+    try {
+      const res = await fetch(`/api/mind?agent_id=${encodeURIComponent(agentId)}`);
+      mindState = await res.json();
+    } catch {
+      /* */
+    }
   }
 
   async function fetchMindFiles() {
     try {
-      const res = await fetch('/api/mind/files');
+      const res = await fetch(
+        `/api/mind/files?agent_id=${encodeURIComponent(agentId)}`,
+      );
       if (!res.ok) return;
       const data = await res.json();
       if (data.files) {
@@ -323,6 +358,7 @@ function createAppState() {
 
   async function fetchSessionsForAgent(agId: string) {
     selectedAgentId = agId;
+    if (isBrowser) localStorage.setItem('selectedAgentId', agId);
     try { const res = await fetch(`/api/sessions?agent_id=${encodeURIComponent(agId)}`); if (res.ok) { const data = await res.json(); sessions = data.sessions || []; } } catch { /* */ }
   }
 
@@ -375,6 +411,18 @@ function createAppState() {
     try { 
       await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); 
       if (selectedAgentId) await fetchSessionsForAgent(selectedAgentId); 
+      if (sessionId === id) {
+        sessionId = '';
+        if (isBrowser) localStorage.removeItem('sessionId');
+        messages = [];
+        resetStreamingState();
+        isThinking = false;
+        progressCategory = '';
+        disconnectSSE();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+        }
+      }
     } catch { /* */ }
   }
 
@@ -412,7 +460,9 @@ function createAppState() {
 
   function selectSession(sess: SessionInfo) {
     agentId = sess.agent_id;
+    if (isBrowser) localStorage.setItem('agentId', agentId);
     sessionId = sess.session_id;
+    if (isBrowser) localStorage.setItem('sessionId', sessionId);
     messages = [];
     resetStreamingState();
     isThinking = false;
@@ -450,9 +500,15 @@ function createAppState() {
     get nodeInfo() { return nodeInfo; },
     get nodeLoading() { return nodeLoading; },
     get agentId() { return agentId; },
-    set agentId(v: string) { agentId = v; },
+    set agentId(v: string) { 
+      agentId = v; 
+      if (isBrowser) localStorage.setItem('agentId', v); 
+    },
     get sessionId() { return sessionId; },
-    set sessionId(v: string) { sessionId = v; },
+    set sessionId(v: string) { 
+      sessionId = v; 
+      if (isBrowser) localStorage.setItem('sessionId', v); 
+    },
     get inputText() { return inputText; },
     set inputText(v: string) { inputText = v; },
     get messages() { return messages; },

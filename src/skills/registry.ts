@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { SKILLS_CONFIG } from '../core/config.js';
 import { logger } from '../core/logger.js';
+import { isPathWithin } from '../core/security.js';
 import { adaptOpenClawSkill } from './adapter.js';
 import {
   hashSkillDirectory,
@@ -153,6 +154,14 @@ export class SkillsRegistry {
     context: RegistryActionContext,
   ): InstalledSkillRecord {
     const skill = this.requireSkill(name);
+    if (
+      skill.sourceRef.managed &&
+      skill.diagnostics.some((item) => item.code === 'content_hash_drift')
+    ) {
+      registryError(
+        `Managed skill "${name}" integrity drift detected. Reinstall or upgrade before enabling.`,
+      );
+    }
     this.assertCompatible(skill);
     this.assertExecutableActionAllowed(skill, context, 'enable');
 
@@ -205,6 +214,12 @@ export class SkillsRegistry {
 
     const skill = this.getSkill(name) || this.restoreInstalledSkill(installed);
     if (installed.sourceRef.managed) {
+      const managedRoot = this.managedSkillsRoot();
+      if (!isPathWithin(managedRoot, installed.directory)) {
+        registryError(
+          `Refusing to remove managed skill "${name}" from path outside managed root: ${installed.directory}`,
+        );
+      }
       fs.rmSync(installed.directory, { recursive: true, force: true });
     }
 

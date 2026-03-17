@@ -2,6 +2,7 @@ import WebSocket from 'ws';
 import http from 'http';
 import { logger } from '../core/logger.js';
 import { readHubConfig, HubConfig } from '../core/hub-config.js';
+import { validateOutboundEndpoint } from '../core/security.js';
 import {
   readEnrollmentState,
   verifyEnrollmentToken,
@@ -39,7 +40,22 @@ export class HubClientChannel implements Channel {
   private async initiateConnection(): Promise<void> {
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
 
-    const url = this.config.hub_url!;
+    const rawUrl = this.config.hub_url!;
+    let url: string;
+    try {
+      url = validateOutboundEndpoint(rawUrl, {
+        allowedProtocols: ['ws:', 'wss:'],
+        label: 'hub_url',
+      }).toString();
+    } catch (err: any) {
+      logger.error(
+        { err: err.message, hub_url: rawUrl },
+        'Refusing to connect hub-client to untrusted endpoint',
+      );
+      this._connected = false;
+      return;
+    }
+
     logger.info({ url }, 'Connecting to hub...');
 
     this.ws = new WebSocket(url);
@@ -382,6 +398,18 @@ export class HubClientChannel implements Channel {
 function createHubClientChannel(opts: ChannelOpts): HubClientChannel | null {
   const config = readHubConfig();
   if (!config.hub_url) return null;
+  try {
+    validateOutboundEndpoint(config.hub_url, {
+      allowedProtocols: ['ws:', 'wss:'],
+      label: 'hub_url',
+    });
+  } catch (err: any) {
+    logger.error(
+      { err: err.message, hub_url: config.hub_url },
+      'Hub client channel disabled due to endpoint security policy',
+    );
+    return null;
+  }
   return new HubClientChannel(opts);
 }
 

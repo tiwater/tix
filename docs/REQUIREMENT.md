@@ -2,95 +2,143 @@
 
 ## Mission
 
-TiClaw is an AI agent runtime — a lightweight, self-hosted platform that connects LLM agents to messaging channels with persistent memory, filesystem-first data management, and a hub/node deployment model.
+TiClaw is a self-hosted AI agent runtime that connects LLM agents to multi-channel messaging with filesystem-first persistence, durable session continuity, and optional hub/node deployment.
 
 ---
 
-## Design Principles
+## Requirement Status Model
 
-### 1. Filesystem-First
-The filesystem IS the database. No SQLite, no external databases required. JSON for metadata, JSONL for append-only logs, Markdown for agent identity. Everything is human-readable via `cat`, `grep`, and `tail -f`.
-
-### 2. Channel-Agnostic
-The engine is decoupled from any specific messaging platform. Channels (Discord, Feishu, DingTalk, HTTP) are pluggable adapters that self-register at startup. Adding a new channel requires implementing the `Channel` interface and calling `registerChannel()`.
-
-### 3. Hub/Node Topology
-Nodes (TiClaw instances) connect outbound to a Hub via WebSocket. The Hub serves the web UI and relays requests to connected nodes. Nodes don't need a public IP. Multiple nodes can connect to a single hub.
-
-### 4. Agent-Centric Model
-Each agent has its own identity (SOUL.md, IDENTITY.md, USER.md, MEMORY.md) and can serve multiple sessions across channels. Agents are stored as filesystem directories under `~/.ticlaw/agents/`.
-
-### 5. Config-Driven
-Channels, LLM providers, hub connections, and features are configured via environment variables or `~/.ticlaw/config.yaml`. No code changes needed to enable/disable functionality.
-
-### 6. Local-First with Optional Cloud Sync
-All data lives locally under `~/.ticlaw/`. Supabase sync is opt-in for cloud backup and multi-device access.
+This document uses explicit status labels:
+- **Current**: behavior implemented in the codebase now.
+- **Planned**: target capability not yet fully implemented or not default.
 
 ---
 
-## Functional Requirements
+## Current Requirements (Implemented)
 
-### A. Multi-Channel Message Routing
-- Receive messages from Discord, Feishu, DingTalk, web UI, and ACP
-- Route inbound messages to the correct agent based on registered projects
-- Support trigger patterns (e.g., `@Shaw`) for channel activation
-- Relay agent responses back through the originating channel
-- Support typing indicators and message editing where platform supports it
+### 1. Filesystem-First Persistence
 
-### B. Agent Execution
-- Run LLM agents via the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`)
-- Support configurable LLM providers (Anthropic, BigModel, MiniMax) via base URL override
-- Stream response tokens in real-time via SSE to web clients
-- Load agent context from mind files (SOUL.md, IDENTITY.md, USER.md, MEMORY.md)
-- Per-channel concurrency control to prevent overlapping agent runs
+- Filesystem is the primary data store under `~/.ticlaw/`.
+- Session and message history are persisted as JSON/JSONL.
+- Schedules are persisted as YAML.
+- No SQLite dependency in current runtime path.
 
-### C. Session Management
-- Maintain conversation continuity across messages
-- Store full message history as append-only JSONL
-- Support multiple concurrent sessions per agent
-- Automatic session creation on first message
+### 2. Multi-Channel Runtime (Current Wiring)
 
-### D. Scheduled Tasks
-- Cron-based, interval-based, and one-time scheduled tasks
-- Tasks execute through the same agent pipeline as interactive messages
-- CRUD operations via REST API and in-channel commands
+- Channel adapters self-register via channel registry.
+- Default barrel wiring includes: Discord, Feishu, ACP, HTTP/SSE, Hub Client.
+- DingTalk implementation exists but is not loaded by default barrel import.
 
-### E. Enrollment & Trust
-- Node identity via hardware fingerprint (hostname + platform + arch)
-- Token-based enrollment flow with expiry and rate limiting
-- Trust states: `discovered_untrusted` → `pending_verification` → `trusted`
-- Freeze mechanism after failed verification attempts
+### 3. Agent Execution
 
-### F. Skills System
-- Discoverable, toggleable skill packages
-- Admin-only installation controls
-- Audit logging for skill operations
+- Execution uses `@anthropic-ai/claude-agent-sdk` via `AgentRunner`.
+- Prompt context includes mind files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`).
+- Recent short-term journals (`memory/*.md`, latest 3) are injected into prompt.
+- Streaming is emitted to web clients (`stream_delta`, `message`, progress events).
 
-### G. Web UI
-- Chat interface via HTTP SSE streaming
-- Agent and session management
-- Node status and enrollment controls
-- Real-time message streaming
+### 4. Session Continuity
+
+- Multiple sessions per agent are supported.
+- Session records are stored per-agent under `sessions/{session_id}`.
+- Claude-side session continuation IDs are persisted per TiClaw session.
+
+### 5. Scheduling (Current)
+
+- One scheduler loop checks due schedules every 60 seconds.
+- Schedule files are stored at `agents/{agent_id}/schedules/{schedule_id}.yaml`.
+- Due criteria are based on `status=active` and `next_run<=now`.
+- API supports list/create/toggle/delete/refresh schedule flows.
+
+### 6. Enrollment & Trust (Node-Side)
+
+- Node trust states: `discovered_untrusted`, `pending_verification`, `trusted`, `suspended`, `revoked`.
+- Enrollment token model includes TTL, hash+salt persistence, failed-attempt freeze.
+- `/runs` gate depends on node trust state (`trusted` required).
+
+### 7. Skills System (Governed Runtime)
+
+- Skills are discoverable and toggleable.
+- Runtime includes admin/permission policy model and audit log paths.
+- Skills can be enabled/disabled via API.
+
+### 8. Web UI & HTTP API
+
+- Web UI provides chat, sessions, schedules, skills, and node panels.
+- Node API exposes `/runs`, `/api/*`, enrollment, and mind endpoints.
+- SSE stream endpoint is available at `/runs/:id/stream`.
+
+### 9. Deployment Topology
+
+- Standalone node deployment is supported.
+- Hub + Node topology is supported via outbound WebSocket from node to hub.
 
 ---
 
-## Technology Stack
+## Planned Requirements (Target State)
+
+### A. Hub-Side Strong Authentication
+
+- Enforce server-side verification for hub `enroll` / `auth` handshakes.
+- Add explicit trust policy and credential rotation model.
+
+### B. Route-Binding Unification
+
+- Decide and converge on one canonical routing source:
+  - keep `registered-groups.json` as long-term source, or
+  - migrate to `agent.json.sources` with compatibility layer.
+
+### C. Scheduling Enhancements
+
+- Native one-shot timestamp scheduling (non-cron input).
+- Full update API (`PUT /api/schedules/:id`) for schedule edits.
+- Optional stable user-defined schedule IDs in API path.
+
+### D. Runtime Queue/Concurrency Governance
+
+- Move from per-chat mutex only to explicit global queue/backpressure model.
+- Enforce and expose global/agent/session concurrency limits as operational controls.
+
+### E. Task/Executor Observability
+
+- Replace stub-like task/executor surfaces with real queue/run metrics.
+- Add richer task lifecycle visibility and operational diagnostics.
+
+### F. Memory Retrieval Evolution
+
+- Introduce semantic retrieval provider (see `docs/MEMORY.md` planned sections).
+- Add indexing/retrieval APIs and recall quality safeguards.
+
+### G. Stream Reliability
+
+- Add replay/recovery endpoint keyed by stream sequence.
+- Improve reconnect semantics beyond best-effort SSE recovery.
+
+---
+
+## Technology Stack (Current)
 
 | Layer | Technology |
-|-------|-----------|
+|---|---|
 | Runtime | Node.js 22+ (ESM) |
 | Agent SDK | `@anthropic-ai/claude-agent-sdk` |
-| Language | TypeScript (strict) |
-| Build | `tsc` (TypeScript compiler) |
-| Dev Runner | `tsx` (watch mode) |
-| Channels | Discord.js, Lark SDK, DingTalk Stream, HTTP/SSE |
-| Storage | Filesystem (JSON/JSONL/Markdown) |
-| Cloud Sync | Supabase (optional) |
+| Language | TypeScript |
+| Build | `tsc` |
+| Dev Runner | `tsx` |
+| Channels | Discord.js, Lark SDK, HTTP/SSE, ACP (DingTalk implementation available) |
+| Storage | Filesystem (JSON/JSONL/YAML/Markdown) |
+| Sync | Supabase (optional) |
 | Hub Transport | WebSocket (`ws`) |
 | Logging | Pino |
 | Testing | Vitest |
-| Deployment | Render.com (Blueprint) |
+| Deployment | Render blueprint + self-hosted variants |
 
 ---
 
-*Last Updated: March 2026*
+## Tracking
+
+Implementation delta and priority backlog are tracked in:
+- `docs/IMPLEMENTATION_GAPS.md`
+
+---
+
+*Last Updated: March 17, 2026*

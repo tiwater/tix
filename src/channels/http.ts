@@ -27,13 +27,14 @@ import fs from 'fs';
 import http from 'http';
 import os from 'os';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import { URL } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 
 import {
   ACP_ENABLED,
   AGENTS_DIR,
+  HTTP_API_KEY,
   NODE_HOSTNAME,
   HTTP_ENABLED,
   HTTP_PORT,
@@ -59,11 +60,15 @@ import {
   getAgent,
   getRecentMessages,
   getSession,
+  getSessionForAgent,
   getSessionsForAgent,
   getSchedulesForAgent,
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  deleteSession,
+  deleteSessionForAgent,
+  resolveFromChatJid,
 } from '../core/store.js';
 import { SkillsRegistry } from '../skills/registry.js';
 import {
@@ -110,6 +115,14 @@ app.on('send', async (data: { jid: string; text: string }) => {
 
 function buildHttpSessionId(agentId: string, sessionId: string): string {
   return `${WEB_JID_PREFIX}${agentId}:${sessionId}`;
+}
+
+function resolveSessionContext(chatJid: string): SessionContext | undefined {
+  const resolved = resolveFromChatJid(chatJid);
+  if (!resolved) return undefined;
+  return getSessionForAgent(resolved.agentId, resolved.sessionId) as
+    | SessionContext
+    | undefined;
 }
 
 function addClient(
@@ -167,6 +180,125 @@ function writeJson(
     'Expires': '0',
   });
   res.end(JSON.stringify(payload));
+}
+
+function readSingleHeaderValue(
+  value: string | string[] | undefined,
+): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    const first = value[0]?.trim();
+    return first || null;
+  }
+  return null;
+}
+
+function extractApiKey(req: http.IncomingMessage): string | null {
+  const direct = readSingleHeaderValue(req.headers['x-api-key']);
+  if (direct) return direct;
+
+  const auth = readSingleHeaderValue(req.headers.authorization);
+  if (!auth) return null;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+  const token = match[1]?.trim();
+  return token || null;
+}
+
+function safeEquals(input: string, expected: string): boolean {
+  const a = Buffer.from(input, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function isLoopbackAddress(remote: string | undefined): boolean {
+  const value = remote || '';
+  return (
+    value === '127.0.0.1' ||
+    value === '::1' ||
+    value === '::ffff:127.0.0.1'
+  );
+}
+
+function requiresAdminApiAccess(pathname: string, method: string): boolean {
+  if (pathname === '/runs' && method === 'POST') return true;
+  if (!pathname.startsWith('/api/')) return false;
+  if (method === 'OPTIONS') return false;
+  return true;
+}
+
+type HttpAdminContext = {
+  actor: string;
+  isAdmin: true;
+  approveLevel3: true;
+};
+
+function resolveHttpAdminContextFromInput(
+  providedApiKey: string | null,
+  isLoopback: boolean,
+): HttpAdminContext | null {
+  const configuredApiKey = HTTP_API_KEY.trim();
+  if (configuredApiKey) {
+    if (providedApiKey && safeEquals(providedApiKey, configuredApiKey)) {
+      return {
+        actor: 'http-api-key',
+        isAdmin: true,
+        approveLevel3: true,
+      };
+    }
+    return null;
+  }
+
+  if (isLoopback) {
+    return {
+      actor: 'http-loopback',
+      isAdmin: true,
+      approveLevel3: true,
+    };
+  }
+
+  return null;
+}
+
+function resolveHttpAdminContext(
+  req: http.IncomingMessage,
+): HttpAdminContext | null {
+  return resolveHttpAdminContextFromInput(
+    extractApiKey(req),
+    isLoopbackAddress(req.socket.remoteAddress),
+  );
+}
+
+function requireHttpAdminContext(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): HttpAdminContext | null {
+  const context = resolveHttpAdminContext(req);
+  if (context) return context;
+
+  if (HTTP_API_KEY.trim()) {
+    writeProtocolError(
+      res,
+      401,
+      'auth_error',
+      'invalid_api_key',
+      'Valid API key required. Send X-API-Key or Authorization: Bearer <key>.',
+    );
+    return null;
+  }
+
+  writeProtocolError(
+    res,
+    403,
+    'auth_error',
+    'admin_loopback_only',
+    'Endpoint is restricted to loopback requests when HTTP_API_KEY is not configured.',
+  );
+  return null;
 }
 
 function writeProtocolError(
@@ -269,8 +401,9 @@ export class HttpChannel implements Channel {
     );
   }
 
-  private handleWebSocket(ws: WebSocket, _req: http.IncomingMessage): void {
+  private handleWebSocket(ws: WebSocket, req: http.IncomingMessage): void {
     let chatJid: string | null = null;
+    const remoteAddress = req.socket.remoteAddress;
 
     ws.on('message', async (data) => {
       try {
@@ -279,6 +412,27 @@ export class HttpChannel implements Channel {
           payload;
 
         if (type === 'auth') {
+          const wsApiKey =
+            typeof payload.api_key === 'string' && payload.api_key.trim()
+              ? payload.api_key.trim()
+              : null;
+          const wsContext = resolveHttpAdminContextFromInput(
+            wsApiKey,
+            isLoopbackAddress(remoteAddress),
+          );
+          if (!wsContext) {
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                error: HTTP_API_KEY.trim()
+                  ? 'invalid_api_key'
+                  : 'admin_loopback_only',
+              }),
+            );
+            ws.close();
+            return;
+          }
+
           if (!agent_id || !session_id) {
             ws.send(
               JSON.stringify({
@@ -363,8 +517,9 @@ export class HttpChannel implements Channel {
   ): Promise<void> {
     const url = new URL(req.url ?? '/', `http://localhost:${HTTP_PORT}`);
     const pathname = url.pathname;
+    const method = req.method || 'GET';
 
-    if (req.method === 'OPTIONS') {
+    if (method === 'OPTIONS') {
       setCorsHeaders(res);
       res.writeHead(204);
       res.end();
@@ -375,6 +530,14 @@ export class HttpChannel implements Channel {
 
     try {
       if (await maybeHandleAcpRequest(req, res, url)) {
+        return;
+      }
+
+      const adminGuardRequired = requiresAdminApiAccess(pathname, method);
+      const adminContext = adminGuardRequired
+        ? requireHttpAdminContext(req, res)
+        : null;
+      if (adminGuardRequired && !adminContext) {
         return;
       }
 
@@ -439,7 +602,7 @@ export class HttpChannel implements Channel {
       }
 
       if (pathname === '/api/mind' && req.method === 'GET') {
-        // Mind state is now defined by Markdown files (SOUL.md, MEMORY.md)
+        // Long-term mind view (root files only): SOUL + MEMORY
         const agentId = url.searchParams.get('agent_id');
         const baseDir = agentId ? agentPaths(agentId).base : AGENTS_DIR;
         const soul = fs.existsSync(path.join(baseDir, 'SOUL.md'))
@@ -452,7 +615,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Mind Files (SOUL, MEMORY, IDENTITY, USER) ──
+      // ── Root Mind Files (SOUL, MEMORY, IDENTITY, USER) ──
 
       if (pathname === '/api/mind/files' && req.method === 'GET') {
         const agentId = url.searchParams.get('agent_id');
@@ -782,13 +945,17 @@ export class HttpChannel implements Channel {
       if (
         pathname.startsWith('/api/skills/') &&
         (pathname.endsWith('/enable') || pathname.endsWith('/disable')) &&
-        req.method === 'POST'
+        method === 'POST'
       ) {
         const parts = pathname.split('/');
         const skillName = parts[3];
         const action = parts[4] as 'enable' | 'disable';
         const registry = new SkillsRegistry(SKILLS_CONFIG);
-        const ctx = { actor: 'web-ui', isAdmin: true, approveLevel3: true };
+        const ctx = adminContext || {
+          actor: 'web-ui',
+          isAdmin: false,
+          approveLevel3: false,
+        };
         try {
           let result;
           if (action === 'enable') {
@@ -933,15 +1100,34 @@ export class HttpChannel implements Channel {
       const sessionDeleteMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
       if (sessionDeleteMatch && req.method === 'DELETE') {
         const id = decodeURIComponent(sessionDeleteMatch[1]);
-        const dbPath = path.join(AGENTS_DIR, '.sessions', `${id}.json`);
-        
+        const agentIdRaw = url.searchParams.get('agent_id');
+        const agentId =
+          typeof agentIdRaw === 'string' && agentIdRaw.trim()
+            ? agentIdRaw.trim()
+            : '';
+
         try {
-          if (fs.existsSync(dbPath)) {
-            fs.unlinkSync(dbPath);
+          if (agentId) {
+            const deleted = deleteSessionForAgent(agentId, id);
+            if (!deleted) {
+              writeProtocolError(
+                res,
+                404,
+                'input_error',
+                'session_not_found',
+                `Session "${id}" not found for agent "${agentId}"`,
+              );
+              return;
+            }
+          } else {
+            // Backward-compatible fallback for older clients.
+            deleteSession(id);
           }
-          // Also try removing the messages file just in case it's stored similarly, but we only have a clean mapping for sessions right now
         } catch (e) {
-          logger.warn({ id, error: e }, 'Failed to delete session file');
+          logger.warn(
+            { id, agentId: agentId || undefined, error: e },
+            'Failed to delete session directory',
+          );
         }
 
         writeJson(res, 200, { ok: true });
@@ -1109,7 +1295,7 @@ export class HttpChannel implements Channel {
     options?: { embeds?: any[]; message_id?: string },
   ): Promise<void> {
     if (!text.trim()) return;
-    const session = getSession(jid);
+    const session = resolveSessionContext(jid) || getSession(jid);
     broadcastToChat(jid, {
       type: 'message',
       id: options?.message_id,
@@ -1141,7 +1327,7 @@ export class HttpChannel implements Channel {
     }
 
     // Resolve file URL relative to the agent's workspace
-    const session = getSession(jid);
+    const session = resolveSessionContext(jid) || getSession(jid);
     const agentId = session?.agent_id || 'default';
     const workspace = agentPaths(agentId).workspace;
     const mime = inferMimeType(filePath);

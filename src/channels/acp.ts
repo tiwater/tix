@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { ACP_ENABLED, ACP_HUB_URL } from '../core/config.js';
 import { ensureSession } from '../core/store.js';
 import { logger } from '../core/logger.js';
+import { validateOutboundEndpoint } from '../core/security.js';
 import { submitTask } from '../task-executor.js';
 import { ACPClient } from '../acp-client.js';
 import type {
@@ -1015,9 +1016,21 @@ export class AcpChannel implements Channel {
     this.opts = opts;
     runtimeOpts = opts;
     if (ACP_HUB_URL) {
-      defaultClient = new ACPClient({
-        baseUrl: ACP_HUB_URL,
-      });
+      try {
+        const trustedEndpoint = validateOutboundEndpoint(ACP_HUB_URL, {
+          allowedProtocols: ['http:', 'https:'],
+          label: 'ACP_HUB_URL',
+        });
+        defaultClient = new ACPClient({
+          baseUrl: trustedEndpoint.toString(),
+        });
+      } catch (err: any) {
+        logger.error(
+          { err: err.message, acp_hub_url: ACP_HUB_URL },
+          'ACP channel disabled remote sync due to endpoint security policy',
+        );
+        defaultClient = null;
+      }
     }
   }
 
