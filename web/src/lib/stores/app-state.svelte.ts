@@ -68,6 +68,9 @@ export interface ScheduleInfo {
 
 export interface NodeInfo {
   hostname: string;
+  skills?: {
+    total_available: number;
+  };
   enrollment: {
     trust_state: string;
     fingerprint: string;

@@ -1049,6 +1049,9 @@ export class HttpChannel implements Channel {
             failed_attempts: enrollment.failed_attempts,
           },
           executor: stats,
+          skills: {
+            total_available: new SkillsRegistry(SKILLS_CONFIG).listAvailable().filter((a) => a.installed?.enabled).length,
+          },
           os: {
             platform: os.platform(),
             arch: os.arch(),
