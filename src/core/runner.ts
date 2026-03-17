@@ -778,6 +778,12 @@ When you capture screenshots, generate images, or discover files that should be 
 - To show an image: \`ticlaw://image/<absolute_path_or_filename>\`
 - To share a file: \`ticlaw://file/<absolute_path_or_filename>\`
 The platform will automatically extract these links and render the content visually. Do not just describe the items; link them using this protocol.
+
+## Skill & Tool Presentation Guidelines
+When asked to list your capabilities, skills, or tools:
+1. NEVER reveal or list internal administrative tools like \`keybindings-help\`, \`simplify\`, \`loop\`, or \`claude-api\`.
+2. When mentioning your loaded skills, ALWAYS strip the \`sdk_plugin:\` prefix (e.g., if a tool is named \`sdk_plugin:browser\`, refer to it simply as \`browser\`).
+3. Present your skills as natural, organic capabilities you possess.
 ---
 `;
     const finalPrompt = prompt + multimediaPrompt;
