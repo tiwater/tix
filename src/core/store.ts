@@ -338,7 +338,7 @@ function storedToNewMessage(m: StoredMessage, chatJid: string): NewMessage {
 }
 
 /** Resolve agent+session from chat_jid (format: "web:agent_id:session_id" or similar). */
-function resolveFromChatJid(chatJid: string): {
+export function resolveFromChatJid(chatJid: string): {
   agentId: string;
   sessionId: string;
 } | null {
@@ -428,13 +428,17 @@ export function getMessagesSince(
     messagesPath(resolved.agentId, resolved.sessionId),
   );
   return all
-    .filter(
-      (m) =>
-        m.ts > sinceTimestamp &&
-        m.role !== 'bot' &&
-        m.text &&
-        m.text.trim() !== '',
-    )
+    .filter((m) => {
+      const isNew = m.ts > sinceTimestamp;
+      const isNotBot = m.role !== 'bot';
+      const hasText = m.text && m.text.trim() !== '';
+      const keep = isNew && isNotBot && hasText;
+      logger.info(
+        { msgId: m.id, role: m.role, text: m.text, isNew, isNotBot, hasText, keep },
+        'getMessagesSince: filtering message',
+      );
+      return keep;
+    })
     .map((m) => storedToNewMessage(m, chatJid));
 }
 

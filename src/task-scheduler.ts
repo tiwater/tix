@@ -13,6 +13,7 @@ import {
   updateSchedule,
   updateScheduleAfterRun,
   deleteSchedule,
+  ensureSession,
 } from './core/store.js';
 import { logger } from './core/logger.js';
 import { SCHEDULER_POLL_INTERVAL, TIMEZONE } from './core/config.js';
@@ -95,6 +96,14 @@ export function startSchedulerLoop(_deps: SchedulerDependencies): void {
           : baseJid;
           
         const taskId = `schedule-${current.id}-${Date.now()}`;
+        let session_id = current.agent_id;
+        if (isIsolated) {
+          session_id = `sched-${current.id}`;
+        } else if (current.target_jid) {
+          const parts = current.target_jid.split(':');
+          session_id = parts.length > 2 ? parts[2] : parts[parts.length - 1];
+        }
+
         const msg: NewMessage = {
           id: randomUUID(),
           chat_jid: chatJid,
@@ -104,9 +113,16 @@ export function startSchedulerLoop(_deps: SchedulerDependencies): void {
           timestamp: new Date().toISOString(),
           is_from_me: false, // from the user's perspective, it's an inbound command
           agent_id: current.agent_id,
-          session_id: chatJid,
+          session_id,
           task_id: taskId,
         };
+        
+        ensureSession({
+          agent_id: current.agent_id,
+          session_id,
+          channel: current.target_jid ? current.target_jid.split(':')[0] : 'web',
+          source_ref: chatJid,
+        });
         logger.info(
           { schedule_id: current.id, chat_jid: msg.chat_jid, prompt: msg.content, isolated: isIsolated },
           'Queueing scheduled task via Dispatcher',

@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup EXIT
 wait_for_server $TEST_PORT
 
-AGENT_ID="sched-agent-1"
+AGENT_ID="sched-agent-$(date +%s)"
 
 # Create a schedule
 echo -e "\n${YELLOW}▶ Creating a schedule for $AGENT_ID...${NC}"
@@ -45,7 +45,7 @@ sleep 8
 echo -e "\n${YELLOW}▶ Fetching messages for $AGENT_ID...${NC}"
 MSGS_RES=$(curl -sX GET "http://localhost:${TEST_PORT}/api/messages?agent_id=$AGENT_ID&session_id=web:$AGENT_ID:sched-$SCHED_ID")
 
-LAST_MSG=$(echo "$MSGS_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('messages',[])[-1].get('content','') if isinstance(d.get('messages'), list) and len(d.get('messages')) > 0 else '')")
+LAST_MSG=$(echo "$MSGS_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('messages',[])[-1].get('text','') if isinstance(d.get('messages'), list) and len(d.get('messages')) > 0 else '')")
 
 assert_contains "Schedule run result" "$LAST_MSG" "SCHEDULE_TICK"
 
@@ -66,7 +66,7 @@ echo -e "\n${YELLOW}▶ Fetching messages for Feishu group...${NC}"
 # Actually, the base JID is `feishu:testgrp` and isolated creates `feishu:testgrp:sched-XYZ`. But `storeMessage` routes it. Let's just fetch recent from `feishu:testgrp:sched-XYZ` or `feishu:testgrp`. The Dispatcher uses the session id `feishu:testgrp:sched-XYZ`.
 SCHED2_ID=$(echo "$CREATE_FEISHU" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('schedule',{}).get('id',''))")
 FEISHU_MSGS=$(curl -sX GET "http://localhost:${TEST_PORT}/api/messages?agent_id=$AGENT_ID&session_id=feishu:testgrp:sched-$SCHED2_ID")
-LAST_FEISHU=$(echo "$FEISHU_MSGS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('messages',[])[-1].get('content','') if isinstance(d.get('messages'), list) and len(d.get('messages')) > 0 else '')")
+LAST_FEISHU=$(echo "$FEISHU_MSGS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('messages',[])[-1].get('text','') if isinstance(d.get('messages'), list) and len(d.get('messages')) > 0 else '')")
 
 assert_contains "Feishu schedule result" "$LAST_FEISHU" "FEISHU_TICK"
 

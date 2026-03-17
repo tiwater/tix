@@ -35,6 +35,7 @@ import {
   storeChatMetadata,
   storeMessage,
   getRecentMessages,
+  resolveFromChatJid,
 } from './core/store.js';
 
 import { logger } from './core/logger.js';
@@ -132,13 +133,19 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
   // Resolve or create a session for this chat so directories exist
   let agentId = (group as any).agent_id || group.folder;
+  let sessionId = chatJid;
   if (agentId === 'unknown') {
-    const parts = chatJid.split(':');
-    if (parts.length >= 2) {
-      agentId = parts[1];
+    const resolved = resolveFromChatJid(chatJid);
+    if (resolved) {
+      agentId = resolved.agentId;
+      sessionId = resolved.sessionId;
+    } else {
+      const parts = chatJid.split(':');
+      if (parts.length >= 2) {
+        agentId = parts[1];
+      }
     }
   }
-  const sessionId = chatJid;
   const channel = chatJid.startsWith('dc:')
     ? 'discord'
     : chatJid.startsWith('web:')
@@ -151,10 +158,16 @@ async function processMessages(chatJid: string): Promise<boolean> {
     session_id: sessionId,
     channel,
     agent_name: group.name,
+    source_ref: chatJid,
   });
 
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
   const messages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+
+  logger.info(
+    { chatJid, sinceTimestamp, retrievedCount: messages.length },
+    'processMessages: retrieved messages',
+  );
 
   if (messages.length === 0) return true;
 
@@ -325,7 +338,6 @@ async function processMessages(chatJid: string): Promise<boolean> {
       );
 
       try {
-        const agentId = (group as any).agent_id || group.folder;
         const runner = new AgentRunner(
           agentId,
           { ...session, task_id: taskId }.session_id,
