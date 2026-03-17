@@ -166,12 +166,18 @@
         <span>Sessions</span>
       </Sidebar.GroupLabel>
       <Sidebar.GroupAction 
-        onclick={() => { 
-          if(appState.selectedAgentId) { appState.newSessionAgentId = appState.selectedAgentId; appState.showNewSession = true; }
-          else { appState.showNewAgent = true; } 
+        onclick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if(appState.selectedAgentId) { 
+            appState.newSessionAgentId = appState.selectedAgentId; 
+            appState.showNewSession = true; 
+          } else { 
+            appState.showNewAgent = true; 
+          } 
         }}
         title="New Session"
-        class="top-1"
+        class="right-2 top-0 hover:bg-muted"
       >
         <Plus size={14} />
       </Sidebar.GroupAction>
