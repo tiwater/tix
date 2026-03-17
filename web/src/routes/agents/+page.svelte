@@ -2,7 +2,8 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { appState } from '$lib/stores/app-state.svelte';
-  import { Bot, Plus, RefreshCw } from 'lucide-svelte';
+  import { Bot, Plus, RefreshCw, MessageSquare, Trash2, ExternalLink } from 'lucide-svelte';
+  import * as Accordion from "$lib/components/ui/accordion";
 
   onMount(() => { appState.fetchAgents(); });
 </script>
@@ -27,30 +28,91 @@
       <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md shadow hover:bg-primary/90" onclick={() => { appState.showNewAgent = true; }}><Plus size={16} /> New Agent</button>
     </div>
   {:else}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {#each appState.agents as agent}
-        <button
-          class="flex flex-col items-start bg-card border border-border text-left px-5 py-4 rounded-xl cursor-pointer transition-all hover:bg-accent hover:border-accent-foreground/20 hover:shadow-sm"
-          onclick={() => {
-            appState.fetchSessionsForAgent(agent.agent_id);
-            appState.newSessionAgentId = agent.agent_id;
-            appState.showNewSession = true;
-          }}
-        >
-          <div class="flex items-center gap-3 w-full mb-3">
-            <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-              <Bot size={20} />
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="text-[15px] font-semibold text-foreground truncate">{agent.agent_id}</div>
-              <div class="text-[12px] text-muted-foreground mt-0.5">{agent.session_count} active session{agent.session_count !== 1 ? 's' : ''}</div>
-            </div>
-          </div>
-          <div class="w-full mt-auto pt-3 border-t border-border flex flex-row-reverse items-center justify-between text-[11px] text-muted-foreground">
-            <span class="inline-flex items-center gap-1 font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-md hover:bg-primary/20"><Plus size={11} /> New Session</span>
-          </div>
-        </button>
-      {/each}
+    <div class="max-w-4xl mx-auto">
+      <Accordion.Root type="multiple" class="w-full space-y-3">
+        {#each appState.agents as agent}
+          <Accordion.Item value={agent.agent_id} class="bg-card border border-border rounded-xl overflow-hidden shadow-sm px-1 data-[state=open]:border-primary/30 transition-colors">
+            <Accordion.Trigger class="px-5 py-4 hover:no-underline hover:bg-accent/50 rounded-lg group" onclick={() => { if (!appState.sessions.some(s => s.agent_id === agent.agent_id)) appState.fetchSessionsForAgent(agent.agent_id); }}>
+              <div class="flex gap-4 w-full text-left items-center mr-4">
+                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:bg-primary/20 transition-colors">
+                  <Bot size={20} />
+                </div>
+                <div class="flex flex-col flex-1">
+                  <div class="text-base font-semibold text-foreground truncate">{agent.agent_id}</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">{agent.session_count} active session{agent.session_count !== 1 ? 's' : ''}</div>
+                </div>
+                <div class="hidden sm:flex text-[11px] text-muted-foreground">
+                  Last Active: {appState.formatDate(agent.last_active) || 'Unknown'}
+                </div>
+              </div>
+            </Accordion.Trigger>
+            
+            <Accordion.Content class="px-5 pb-5 pt-2">
+              <div class="px-2">
+                <div class="flex items-center justify-between mb-3">
+                  <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Sessions</h4>
+                  <button 
+                    class="inline-flex items-center gap-1.5 font-medium text-primary bg-primary/10 px-2 py-1 rounded-md hover:bg-primary/20 text-xs transition-colors"
+                    onclick={() => {
+                      appState.newSessionAgentId = agent.agent_id;
+                      appState.showNewSession = true;
+                    }}
+                  >
+                    <Plus size={12} /> New Session
+                  </button>
+                </div>
+                
+                {#if appState.sessions.filter(s => s.agent_id === agent.agent_id).length === 0}
+                  <div class="px-2 py-4 text-center flex flex-col items-center justify-center gap-2">
+                    <MessageSquare size={16} class="text-muted-foreground/50" />
+                    <span class="text-xs text-muted-foreground">No active sessions for this agent.</span>
+                  </div>
+                {:else}
+                  <div class="flex flex-col">
+                    {#each appState.sessions.filter(s => s.agent_id === agent.agent_id) as sess}
+                      <div class="flex items-center justify-between px-3 py-2.5 hover:bg-muted/50 rounded-md transition-colors group cursor-default">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                          <MessageSquare size={14} class="text-primary/70 shrink-0" />
+                          <span class="text-sm font-medium truncate" title={sess.session_id}>{sess.session_id}</span>
+                          {#if sess.channel !== 'web' && sess.channel !== 'http'}
+                            <span class="text-[9px] uppercase font-semibold bg-muted px-1.5 py-0.5 rounded border border-border/50 text-muted-foreground shrink-0">{sess.channel}</span>
+                          {/if}
+                        </div>
+                        
+                        <div class="flex items-center gap-4 shrink-0">
+                          <span class="text-[11px] text-muted-foreground w-16 text-right">{appState.formatShortDate(sess.created_at)}</span>
+                          <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              class="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded" 
+                              title="Open chat"
+                              onclick={() => {
+                                appState.selectSession(sess);
+                                goto('/chat');
+                              }}
+                            >
+                              <ExternalLink size={14} />
+                            </button>
+                            <button 
+                              class="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded" 
+                              title="Delete session"
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                appState.deleteSession(sess.session_id);
+                              }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            </Accordion.Content>
+          </Accordion.Item>
+        {/each}
+      </Accordion.Root>
     </div>
   {/if}
 </div>

@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { appState } from '$lib/stores/app-state.svelte';
   import { Server, RefreshCw, ShieldCheck, ShieldAlert, Cpu, HardDrive, Zap, Info, Clock, Fingerprint, Unlock, Activity, Database, Network } from 'lucide-svelte';
+  import * as Accordion from "$lib/components/ui/accordion";
 
   let refreshTimer: NodeJS.Timeout;
 
@@ -214,51 +215,55 @@
       {/if}
 
       <!-- Technical Details Section -->
-      <div class="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-2">
-          <Info size={16} class="text-muted-foreground" />
-          <h3 class="text-sm font-semibold">Technical Details</h3>
-        </div>
-        
-        <div class="divide-y divide-border">
-          <!-- Fingerprint -->
-          <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div class="flex items-center gap-2 text-muted-foreground">
-              <Fingerprint size={15} />
-              <span class="text-[13px] font-medium">Hardware Fingerprint</span>
+      <Accordion.Root type="single" class="w-full">
+        <Accordion.Item value="technical-details" class="bg-card border border-border rounded-2xl shadow-sm overflow-hidden px-0 data-[state=open]:border-primary/30 transition-colors">
+          <Accordion.Trigger class="px-6 py-4 hover:no-underline hover:bg-muted/30 border-b border-transparent data-[state=open]:border-border group">
+            <div class="flex items-center gap-2">
+              <Info size={16} class="text-muted-foreground group-hover:text-foreground transition-colors" />
+              <h3 class="text-sm font-semibold">Technical Details</h3>
             </div>
-            <code class="text-xs bg-muted/80 px-2.5 py-1.5 rounded-md border border-border/50 font-mono text-foreground break-all max-w-full sm:max-w-md text-right">
-              {appState.nodeInfo.enrollment.fingerprint || 'Not Registered'}
-            </code>
-          </div>
-
-          <!-- Trust Issue Date -->
-          {#if appState.nodeInfo.enrollment.trusted_at}
+          </Accordion.Trigger>
+          
+          <Accordion.Content class="divide-y divide-border pt-0 pb-0">
+            <!-- Fingerprint -->
             <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div class="flex items-center gap-2 text-muted-foreground">
-                <ShieldCheck size={15} />
-                <span class="text-[13px] font-medium">Trust Issued</span>
+                <Fingerprint size={15} />
+                <span class="text-[13px] font-medium">Hardware Fingerprint</span>
               </div>
-              <span class="text-[13px] font-medium text-foreground">
-                {appState.formatDate(appState.nodeInfo.enrollment.trusted_at)}
-              </span>
+              <code class="text-xs bg-muted/80 px-2.5 py-1.5 rounded-md border border-border/50 text-foreground break-all max-w-full sm:max-w-md text-right">
+                {appState.nodeInfo.enrollment.fingerprint || 'Not Registered'}
+              </code>
             </div>
-          {/if}
-          
-          <!-- Failure Log (if any) -->
-          {#if appState.nodeInfo.enrollment.failed_attempts && appState.nodeInfo.enrollment.failed_attempts > 0}
-            <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div class="flex items-center gap-2 text-rose-500">
-                <ShieldAlert size={15} />
-                <span class="text-[13px] font-medium">Failed Connection Attempts</span>
+
+            <!-- Trust Issue Date -->
+            {#if appState.nodeInfo.enrollment.trusted_at}
+              <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div class="flex items-center gap-2 text-muted-foreground">
+                  <ShieldCheck size={15} />
+                  <span class="text-[13px] font-medium">Trust Issued</span>
+                </div>
+                <span class="text-[13px] font-medium text-foreground">
+                  {appState.formatDate(appState.nodeInfo.enrollment.trusted_at)}
+                </span>
               </div>
-              <span class="inline-flex items-center justify-center px-2 py-1 rounded-md bg-rose-500/10 text-rose-600 font-bold text-xs">
-                {appState.nodeInfo.enrollment.failed_attempts}
-              </span>
-            </div>
-          {/if}
-        </div>
-      </div>
+            {/if}
+            
+            <!-- Failure Log (if any) -->
+            {#if appState.nodeInfo.enrollment.failed_attempts && appState.nodeInfo.enrollment.failed_attempts > 0}
+              <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div class="flex items-center gap-2 text-rose-500">
+                  <ShieldAlert size={15} />
+                  <span class="text-[13px] font-medium">Failed Connection Attempts</span>
+                </div>
+                <span class="inline-flex items-center justify-center px-2 py-1 rounded-md bg-rose-500/10 text-rose-600 font-bold text-xs">
+                  {appState.nodeInfo.enrollment.failed_attempts}
+                </span>
+              </div>
+            {/if}
+          </Accordion.Content>
+        </Accordion.Item>
+      </Accordion.Root>
       
     </div>
   {:else}

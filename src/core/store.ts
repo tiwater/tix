@@ -17,7 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 
-import { AGENTS_DIR, TICLAW_HOME } from './config.js';
+import { AGENTS_DIR, TICLAW_HOME, TIMEZONE } from './config.js';
 import { logger } from './logger.js';
 import type {
   AgentRecord,
@@ -464,12 +464,15 @@ export function getNewMessages(
 // Schedules
 // ═══════════════════════════════════════════════════════════════
 
+import { CronExpressionParser } from 'cron-parser';
+
 export function createSchedule(input: {
   agent_id: string;
   cron: string;
   prompt: string;
   type?: 'cron' | 'one-shot';
   session?: 'main' | 'isolated';
+  target_jid?: string;
   next_run?: string;
 }): ScheduleRecord {
   if (!input.agent_id) {
@@ -480,6 +483,16 @@ export function createSchedule(input: {
 
   ensureAgent({ agent_id: input.agent_id });
 
+  let nextRun = input.next_run || null;
+  if (!nextRun && input.cron) {
+    try {
+      const interval = CronExpressionParser.parse(input.cron, { tz: TIMEZONE });
+      nextRun = interval.next().toISOString();
+    } catch (e) {
+      // invalid cron, let it be null
+    }
+  }
+
   const record: ScheduleRecord = {
     id,
     agent_id: input.agent_id,
@@ -488,8 +501,9 @@ export function createSchedule(input: {
     type: input.type || 'cron',
     session: input.session || 'isolated',
     status: 'active',
+    target_jid: input.target_jid,
     delete_after_run: false,
-    next_run: input.next_run || null,
+    next_run: nextRun,
     created_at: now,
   };
 
@@ -535,10 +549,10 @@ export function getSchedulesForAgent(agentId: string): ScheduleRecord[] {
   );
 }
 
-export function getDueSchedules(): ScheduleRecord[] {
+export function getDueSchedules(forceAll: boolean = false): ScheduleRecord[] {
   const now = new Date().toISOString();
   return getAllSchedules().filter(
-    (s) => s.status === 'active' && s.next_run && s.next_run <= now,
+    (s) => s.status === 'active' && (forceAll || (s.next_run && s.next_run <= now)),
   );
 }
 

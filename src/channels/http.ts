@@ -109,7 +109,7 @@ app.on('send', async (data: { jid: string; text: string }) => {
 });
 
 function buildHttpSessionId(agentId: string, sessionId: string): string {
-  return `${WEB_JID_PREFIX}${encodeURIComponent(agentId)}:${encodeURIComponent(sessionId)}`;
+  return `${WEB_JID_PREFIX}${agentId}:${sessionId}`;
 }
 
 function addClient(
@@ -963,6 +963,7 @@ export class HttpChannel implements Channel {
         const prompt =
           typeof body.prompt === 'string' ? body.prompt.trim() : '';
         const cron = typeof body.cron === 'string' ? body.cron.trim() : '';
+        const targetJid = typeof body.target_jid === 'string' ? body.target_jid.trim() : undefined;
         if (!agentId || !prompt || !cron) {
           writeProtocolError(
             res,
@@ -977,6 +978,7 @@ export class HttpChannel implements Channel {
           agent_id: agentId,
           prompt,
           cron,
+          target_jid: targetJid,
         });
         writeJson(res, 201, { schedule });
         return;

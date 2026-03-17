@@ -194,9 +194,9 @@
                       onclick={() => appState.selectSession(sess)}
                     >
                       <div class="flex flex-col overflow-hidden leading-tight group-hover/session-link:pr-6 transition-all">
-                        <span class="font-medium whitespace-nowrap overflow-hidden text-ellipsis font-mono">{sess.session_id}</span>
+                        <span class="font-medium whitespace-nowrap overflow-hidden text-ellipsis">{sess.session_id}</span>
                         {#if sess.channel !== 'web' && sess.channel !== 'http'}
-                          <span class="text-[10px] font-mono opacity-70 mt-0.5">{sess.channel}</span>
+                          <span class="text-[10px] opacity-70 mt-0.5">{sess.channel}</span>
                         {/if}
                       </div>
                     </a>

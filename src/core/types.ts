@@ -164,6 +164,7 @@ export interface ScheduleRecord {
   type?: 'cron' | 'one-shot';
   session?: 'main' | 'isolated';
   status: 'active' | 'paused';
+  target_jid?: string;
   delete_after_run?: boolean;
   next_run: string | null;
   last_run?: string | null;

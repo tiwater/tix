@@ -741,7 +741,7 @@ async function main(): Promise<void> {
 
   startSchedulerLoop({
     registeredProjects: () => registeredProjects,
-    sendMessage: sendFn,
+    enqueueMessage: channelOpts.onMessage,
   });
 
   const shutdown = async (signal: string) => {

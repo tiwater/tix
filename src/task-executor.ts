@@ -20,53 +20,15 @@ export async function executeTask(task: any) {
 export function submitTask(input: any): any {
   return { id: 'stub' };
 }
-import { getSessionsForAgent } from './core/store.js';
-import type { ScheduleRecord } from './core/types.js';
 
-export function submitScheduleTask(schedule: ScheduleRecord): any {
-  // Execute asynchronously in the background
-  (async () => {
-    try {
-      let runSessionId = `cron_${schedule.id}`; // Default isolated
-
-      if (schedule.session === 'main') {
-        const activeSessions = getSessionsForAgent(schedule.agent_id);
-        if (activeSessions.length > 0) {
-          runSessionId = activeSessions[0].session_id;
-        }
-      }
-
-      const runner = new AgentRunner(schedule.agent_id, runSessionId, {
-        onReply: async (text) => {
-          logger.info(
-            { scheduleId: schedule.id, text },
-            'Schedule Execution Reply',
-          );
-        },
-      });
-      logger.info(
-        { scheduleId: schedule.id, runSessionId, prompt: schedule.prompt },
-        'Starting scheduled task',
-      );
-      await runner.run(
-        [{ role: 'user', content: schedule.prompt }],
-        `schedule-${schedule.id}-${Date.now()}`,
-      );
-    } catch (err) {
-      logger.error(
-        { err, scheduleId: schedule.id },
-        'Scheduled task execution failed',
-      );
-    }
-  })();
-  return { id: `schedule-task-${schedule.id}` };
-}
 export function getActiveTaskById(id: string): any {
   return null;
 }
+
 export function listActiveTasks() {
   return [];
 }
+
 export function getExecutorStats() {
   return {};
 }
