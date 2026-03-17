@@ -505,7 +505,7 @@ export function getMessagesSince(
       const isNotBot = m.role !== 'bot';
       const hasText = m.text && m.text.trim() !== '';
       const keep = isNew && isNotBot && hasText;
-      logger.info(
+      logger.debug(
         { msgId: m.id, role: m.role, text: m.text, isNew, isNotBot, hasText, keep },
         'getMessagesSince: filtering message',
       );

@@ -56,7 +56,7 @@
   />
 </svelte:head>
 
-<Sidebar.Provider>
+<Sidebar.Provider class="h-[100dvh] overflow-hidden">
   <Sidebar.Root>
     <Sidebar.Header class="px-4 pt-4">
       <a
@@ -267,7 +267,7 @@
         </div>
 
         <Sidebar.GroupContent
-          class="flex flex-col gap-0.5 overflow-y-auto flex-1 pb-4 px-1"
+          class="flex flex-col gap-0.5 overflow-y-auto flex-1 pb-4"
         >
           <Sidebar.Menu>
             {#if !appState.selectedAgentId}
@@ -279,11 +279,10 @@
                 No sessions
               </div>
             {:else}
-              {#each appState.sessions as sess}
+              {#each appState.sessions as sess (sess.session_id)}
                 <Sidebar.MenuItem>
                   <Sidebar.MenuButton
-                    isActive={appState.sessionId === sess.session_id &&
-                      isActive('/chat')}
+                    isActive={$page.url.pathname === `/sessions/${sess.session_id}`}
                   >
                     {#snippet child({
                       props,
@@ -291,7 +290,7 @@
                       props: Record<string, unknown>;
                     })}
                       <a
-                        href="/chat"
+                        href={`/sessions/${sess.session_id}`}
                         {...props}
                         class={[
                           props.class,
@@ -299,7 +298,9 @@
                           'justify-start',
                           'group/session-link',
                         ].join(' ')}
-                        onclick={() => appState.selectSession(sess)}
+                        onclick={() => {
+                          appState.selectSession(sess);
+                        }}
                       >
                         <div
                           class="flex flex-col overflow-hidden leading-tight group-hover/session-link:pr-6 transition-all"
@@ -355,7 +356,7 @@
   </Sidebar.Root>
 
   <!-- Main Content + optional sidebar -->
-  <main class="w-full flex-1 flex flex-col overflow-hidden bg-background">
+  <main class="w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden bg-background">
     {#if appState.nodeInfo && appState.nodeInfo.enrollment.trust_state !== 'trusted'}
       <div
         class="flex items-center justify-between gap-3 px-5 py-2.5 bg-destructive/10 border-b border-destructive/20 text-sm"

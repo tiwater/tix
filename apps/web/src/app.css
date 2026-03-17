@@ -120,8 +120,9 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground font-sans;
+  html, body {
+    height: 100dvh;
+    @apply overflow-hidden bg-background text-foreground font-sans;
   }
 
   /* ── Global Scrollbar Styling ── */

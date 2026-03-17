@@ -28,7 +28,7 @@
   {@const installedSkills = appState.skills.filter((s) => s.installed)}
   {@const availableSkills = appState.skills.filter((s) => !s.installed)}
 
-  <div class="p-6 flex flex-col gap-6 overflow-y-auto flex-1">
+  <div class="p-6 flex flex-col gap-6 overflow-y-auto flex-1 min-h-0">
     <div>
       <h3 class="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5 pb-1.5 border-b border-border">Installed</h3>
       {#if installedSkills.length === 0}

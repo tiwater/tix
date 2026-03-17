@@ -1,4 +1,5 @@
 import { tick } from 'svelte';
+import { goto } from '$app/navigation';
 
 const isBrowser = typeof window !== 'undefined';
 const API_KEY_STORAGE_KEY = 'ticlaw_http_api_key';
@@ -409,18 +410,28 @@ function createAppState() {
 
   async function deleteSession(id: string) {
     try { 
+      const idx = sessions.findIndex(s => s.session_id === id);
+      let nextSessionId = '';
+      if (idx !== -1 && sessions.length > 1) {
+        const nextIdx = idx < sessions.length - 1 ? idx + 1 : idx - 1;
+        nextSessionId = sessions[nextIdx].session_id;
+      }
+      sessions = sessions.filter(s => s.session_id !== id);
       await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); 
-      if (selectedAgentId) await fetchSessionsForAgent(selectedAgentId); 
       if (sessionId === id) {
-        sessionId = '';
-        if (isBrowser) localStorage.removeItem('sessionId');
-        messages = [];
-        resetStreamingState();
-        isThinking = false;
-        progressCategory = '';
-        disconnectSSE();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/';
+        if (nextSessionId && typeof window !== 'undefined') {
+          goto(`/sessions/${nextSessionId}`);
+        } else {
+          sessionId = '';
+          if (isBrowser) localStorage.removeItem('sessionId');
+          messages = [];
+          resetStreamingState();
+          isThinking = false;
+          progressCategory = '';
+          disconnectSSE();
+          if (typeof window !== 'undefined') {
+            goto('/');
+          }
         }
       }
     } catch { /* */ }

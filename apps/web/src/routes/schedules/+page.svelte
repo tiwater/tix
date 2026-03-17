@@ -14,7 +14,7 @@
   </div>
 </div>
 
-<div class="flex-1 overflow-y-auto">
+<div class="flex-1 min-h-0 overflow-y-auto">
   {#if appState.schedulesLoading}
     <div class="flex flex-col items-center justify-center flex-1 gap-2.5 p-10 text-muted-foreground">
       <div class="text-4xl">⏳</div>

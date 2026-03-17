@@ -5,6 +5,10 @@ source "$(dirname "$0")/lib.sh"
 
 echo -e "\n${BOLD}${CYAN}=== Testing Schedules ===${NC}"
 
+# Use an isolated home directory for schedules so they don't persist into dev
+export TICLAW_HOME="/tmp/ticlaw-schedules-test-$$"
+mkdir -p "$TICLAW_HOME"
+
 # Start server in background
 TEST_PORT=2759
 HTTP_PORT=$TEST_PORT npx tsx packages/edge/src/index.ts > /tmp/ticlaw-schedules.log 2>&1 &
@@ -14,6 +18,7 @@ cleanup() {
   echo -e "${YELLOW}Stopping server (PID $SERVER_PID)...${NC}"
   kill $SERVER_PID 2>/dev/null || true
   wait $SERVER_PID 2>/dev/null || true
+  rm -rf "$TICLAW_HOME"
 }
 trap cleanup EXIT
 wait_for_server $TEST_PORT

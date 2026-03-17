@@ -17,7 +17,7 @@
   </div>
 </div>
 
-<div class="flex-1 overflow-y-auto p-6">
+<div class="flex-1 min-h-0 overflow-y-auto p-6">
   {#if appState.agentsLoading}
     <div class="p-4 text-xs text-muted-foreground text-center">⏳ Loading…</div>
   {:else if appState.agents.length === 0}
