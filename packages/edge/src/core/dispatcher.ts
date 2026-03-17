@@ -8,12 +8,26 @@ export interface DispatcherDependencies {
   sendMessage: (jid: string, text: string) => Promise<void>;
 }
 
+/** A pending message that arrived while the runner was busy. */
+interface PendingMsg {
+  chatJid: string;
+  msg: NewMessage;
+}
+
 /**
  * Dispatcher: The central "Heart" (中枢) that coordinates Agents across all channels.
  * It manages individual AgentRunner instances, ensuring context isolation by Session Key.
+ *
+ * Queuing behaviour (single-slot per session):
+ *   - If a runner is busy and the new message is NOT an urgent interrupt, it is held
+ *     in a single-slot pending queue (newer message replaces older pending one).
+ *   - When the runner becomes idle after a run, we drain the queue automatically.
+ *   - This ensures rapid consecutive messages (e.g. multi-turn tests, human typing) are
+ *     never silently dropped, while preserving the single-threaded agent execution model.
  */
 export class Dispatcher {
   private runners = new Map<string, AgentRunner>();
+  private pending = new Map<string, PendingMsg>(); // single-slot queue per session key
   private deps: DispatcherDependencies;
 
   constructor(deps: DispatcherDependencies) {
@@ -76,7 +90,7 @@ export class Dispatcher {
       this.runners.set(runnerKey, runner);
     }
 
-    // 3. Preemption: Handle interruptions if the runner is busy
+    // 3. Preemption / Queuing: Handle new messages while runner is busy
     const status = runner.getState().status;
     if (status === 'busy') {
       if (this.isUrgentInterrupt(content)) {
@@ -88,31 +102,48 @@ export class Dispatcher {
         // Give the runner time to cleanup/abort gracefully before taking the new message
         await new Promise((resolve) => setTimeout(resolve, 800));
       } else {
-        // Queue/Inform non-interrupting messages
-        await this.deps.sendMessage(
-          chatJid,
-          'Agent is currently processing a task. Send "STOP" or a similar urgent command to interrupt.',
+        // Single-slot queue: hold message, drain after current run finishes.
+        // If there was already a pending message it is replaced (last-write-wins).
+        logger.info(
+          { agent_id, session_id },
+          'Dispatcher: Runner busy — queuing message (will deliver when idle)',
         );
+        this.pending.set(runnerKey, { chatJid, msg });
         return;
       }
     }
 
     // 4. Execution: Pass the message into the Agent Loop
+    await this._run(runner, runnerKey, chatJid, msg);
+  }
+
+  /** Execute a run and drain any pending message afterwards. */
+  private async _run(
+    runner: AgentRunner,
+    runnerKey: string,
+    chatJid: string,
+    msg: NewMessage,
+  ): Promise<void> {
     try {
-      await runner.run([{ role: 'user', content }], task_id);
+      await runner.run([{ role: 'user', content: msg.content }], msg.task_id);
     } catch (err: any) {
       if (err.message?.includes('aborted')) {
         logger.debug(
-          { agent_id, session_id },
+          { runnerKey },
           'Dispatcher: Task was successfully aborted',
         );
       } else {
-        logger.error(
-          { err, agent_id, session_id },
-          'Dispatcher: Runner execution failed',
-        );
+        logger.error({ err, runnerKey }, 'Dispatcher: Runner execution failed');
         await this.deps.sendMessage(chatJid, `Task Error: ${err.message}`);
       }
+    }
+
+    // 5. Drain queue: if a message arrived while we were running, process it now
+    const queued = this.pending.get(runnerKey);
+    if (queued) {
+      this.pending.delete(runnerKey);
+      logger.info({ runnerKey }, 'Dispatcher: Draining queued message');
+      await this._run(runner, runnerKey, queued.chatJid, queued.msg);
     }
   }
 

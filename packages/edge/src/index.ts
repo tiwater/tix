@@ -114,6 +114,40 @@ let messageLoopRunning = false;
 // Simple mutex per channel to prevent overlapping agent runs
 const activeAgentLocks = new Map<string, Promise<any>>();
 
+// Pending-run flags: if a second message arrives while the lock is held,
+// set the flag so the run drains immediately after the current one finishes.
+const pendingRuns = new Set<string>();
+
+/**
+ * Schedule a processMessages run for a chatJid.
+ * - If no run is in progress, starts one immediately.
+ * - If one is already running, marks a pending flag so a drain run kicks off
+ *   as soon as the current one finishes — no message is silently dropped.
+ */
+function scheduleRun(chatJid: string): void {
+  if (!activeAgentLocks.has(chatJid)) {
+    const agentPromise = runAndDrain(chatJid);
+    activeAgentLocks.set(chatJid, agentPromise);
+  } else {
+    // Mark that we need another run after the current one finishes
+    pendingRuns.add(chatJid);
+  }
+}
+
+/** Run processMessages, then drain any pending message that arrived mid-run. */
+async function runAndDrain(chatJid: string): Promise<void> {
+  try {
+    await processMessages(chatJid);
+  } finally {
+    activeAgentLocks.delete(chatJid);
+    if (pendingRuns.has(chatJid)) {
+      pendingRuns.delete(chatJid);
+      scheduleRun(chatJid);
+    }
+  }
+}
+
+
 async function processMessages(chatJid: string): Promise<boolean> {
   let group = registeredProjects[chatJid];
   if (!group) {
@@ -519,17 +553,7 @@ async function startMessageLoop(): Promise<void> {
             'Trigger matched, checking locks',
           );
 
-          if (!activeAgentLocks.has(chatJid)) {
-            const agentPromise = processMessages(chatJid).finally(() => {
-              activeAgentLocks.delete(chatJid);
-            });
-            activeAgentLocks.set(chatJid, agentPromise);
-          } else {
-            logger.debug(
-              { chatJid },
-              'Agent already running for this channel, skipping enqueue',
-            );
-          }
+          scheduleRun(chatJid);
         }
       }
     } catch (err) {
@@ -582,12 +606,7 @@ function recoverPendingMessages(): void {
         { group: group.name, pendingCount: pending.length },
         'Recovery: replaying unprocessed messages',
       );
-      if (!activeAgentLocks.has(chatJid)) {
-        const agentPromise = processMessages(chatJid).finally(() => {
-          activeAgentLocks.delete(chatJid);
-        });
-        activeAgentLocks.set(chatJid, agentPromise);
-      }
+      scheduleRun(chatJid);
     }
   }
 }
@@ -625,12 +644,7 @@ async function main(): Promise<void> {
       storeMessage(msg);
       // Event-driven: immediately process incoming messages instead of waiting for poll
       if (!msg.is_from_me) {
-        if (!activeAgentLocks.has(chatJid)) {
-          const agentPromise = processMessages(chatJid).finally(() => {
-            activeAgentLocks.delete(chatJid);
-          });
-          activeAgentLocks.set(chatJid, agentPromise);
-        }
+        scheduleRun(chatJid);
       }
     },
     onChatMetadata: (
