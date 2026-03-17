@@ -4,6 +4,7 @@ node_modules/
 
 # Build output
 dist/
+build/
 
 # Local logs
 logs/
@@ -27,3 +28,6 @@ coverage/
 agents-sdk-docs
 
 .claude
+
+# SvelteKit
+.svelte-kit/
