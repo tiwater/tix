@@ -724,17 +724,29 @@ async function main(): Promise<void> {
   recoverPendingMessages();
 
   // --- Auto-enable default skills ---
+  // SECURITY: We do NOT grant approveLevel3 here. Any skill listed in
+  // defaultEnabled that requires Level 3 will be skipped at startup with a
+  // warning. Level 3 skills require explicit operator approval via the CLI.
   try {
     const registry = new SkillsRegistry(SKILLS_CONFIG);
     const defaultSkills = SKILLS_CONFIG.defaultEnabled;
-    const ctx = { actor: 'system-init', isAdmin: true, approveLevel3: true };
+    const ctx = { actor: 'system-init', isAdmin: true, approveLevel3: false };
     for (const skillName of defaultSkills) {
       try {
         if (!registry.getInstalled(skillName)) {
           registry.installSkill(skillName, ctx);
         }
         const installed = registry.getInstalled(skillName);
-        if (installed && !installed.enabled) {
+        if (!installed) continue;
+        // Issue #50: skip Level 3 skills — they must be explicitly approved
+        if (installed.permissionLevel === 3) {
+          logger.warn(
+            { skill: skillName },
+            'Skipping auto-enable of Level 3 default skill — explicit approval required. Use `ticlaw skills enable --approve` to enable it.',
+          );
+          continue;
+        }
+        if (!installed.enabled) {
           registry.enableSkill(skillName, ctx);
           logger.info(`Auto-enabled default skill: ${skillName}`);
         }
@@ -745,6 +757,7 @@ async function main(): Promise<void> {
   } catch (err: any) {
     logger.warn(`Failed to initialize default skills: ${err.message}`);
   }
+
 
   startMessageLoop();
 
