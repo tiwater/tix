@@ -161,26 +161,29 @@
       </Sidebar.Group>
     <!-- Sessions Group -->
     <Sidebar.Group class="mt-4 flex flex-col gap-1 flex-1 min-h-0 overflow-hidden px-2 py-0">
-      <Sidebar.GroupLabel class="flex items-center gap-1.5 px-1.5">
-        <MessageSquare size={12} />
-        <span>Sessions</span>
-      </Sidebar.GroupLabel>
-      <Sidebar.GroupAction 
-        onclick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if(appState.selectedAgentId) { 
-            appState.newSessionAgentId = appState.selectedAgentId; 
-            appState.showNewSession = true; 
-          } else { 
-            appState.showNewAgent = true; 
-          } 
-        }}
-        title="New Session"
-        class="right-2 top-0 hover:bg-muted"
-      >
-        <Plus size={14} />
-      </Sidebar.GroupAction>
+      <div class="flex items-center justify-between px-1.5 relative">
+        <Sidebar.GroupLabel class="flex items-center gap-1.5 px-0 m-0 cursor-default">
+          <MessageSquare size={12} />
+          <span>Sessions</span>
+        </Sidebar.GroupLabel>
+        
+        <button 
+          title="New Session"
+          class="w-5 h-5 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground text-muted-foreground transition-colors cursor-pointer mr-1 z-10"
+          onclick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if(appState.selectedAgentId) { 
+              appState.newSessionAgentId = appState.selectedAgentId; 
+              appState.showNewSession = true; 
+            } else { 
+              appState.showNewAgent = true; 
+            } 
+          }}
+        >
+          <Plus size={14} />
+        </button>
+      </div>
 
       <Sidebar.GroupContent class="flex flex-col gap-0.5 overflow-y-auto flex-1 pb-4 px-1">
         <Sidebar.Menu>
@@ -210,7 +213,16 @@
                 </Sidebar.MenuButton>
                 <Sidebar.MenuAction 
                   showOnHover={true}
-                  onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); appState.deleteSession(sess.session_id); }}
+                  onclick={async (e: MouseEvent) => { 
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    const target = e.currentTarget as HTMLButtonElement | null;
+                    if (target) {
+                       target.style.opacity = '0.5';
+                       target.style.pointerEvents = 'none';
+                    }
+                    await appState.deleteSession(sess.session_id); 
+                  }}
                   title="Delete session"
                 >
                   <Trash2 size={13} />
