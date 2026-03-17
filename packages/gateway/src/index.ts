@@ -6,6 +6,7 @@
  */
 
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 
 export interface NodeInfo {
@@ -55,6 +56,58 @@ const ALLOWED_NODE_IDS = parseCsvSet(process.env.HUB_ALLOWED_NODE_IDS);
 const ALLOWED_NODE_FINGERPRINTS = parseCsvSet(
   process.env.HUB_ALLOWED_NODE_FINGERPRINTS,
 );
+
+/**
+ * GATEWAY_SECRET — pre-shared secret for node authentication.
+ * When set, every enroll/auth message MUST include a valid HMAC token.
+ * Token format: `${nodeId}.${timestampMs}.${hmacHex}` where hmacHex is
+ * HMAC-SHA256(secret, `${nodeId}:${timestampMs}`).
+ * Timestamps more than TOKEN_VALIDITY_MS old are rejected (replay protection).
+ */
+const GATEWAY_SECRET = process.env.GATEWAY_SECRET || '';
+const TOKEN_VALIDITY_MS = 5 * 60 * 1000; // 5 minutes
+
+function verifyNodeToken(
+  token: string | undefined,
+  nodeId: string,
+): { ok: boolean; code?: string } {
+  if (!GATEWAY_SECRET) {
+    // No secret configured — gateway is in open mode (warn once at startup)
+    return { ok: true };
+  }
+  if (!token) {
+    return { ok: false, code: 'token_required' };
+  }
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return { ok: false, code: 'token_malformed' };
+  }
+  const [tokenNodeId, tsStr, givenHmac] = parts as [string, string, string];
+  if (tokenNodeId !== nodeId) {
+    return { ok: false, code: 'token_node_mismatch' };
+  }
+  const ts = parseInt(tsStr, 10);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > TOKEN_VALIDITY_MS) {
+    return { ok: false, code: 'token_expired' };
+  }
+  const expected = crypto
+    .createHmac('sha256', GATEWAY_SECRET)
+    .update(`${nodeId}:${tsStr}`)
+    .digest('hex');
+  try {
+    const givenBuf = Buffer.from(givenHmac, 'hex');
+    const expectedBuf = Buffer.from(expected, 'hex');
+    if (
+      givenBuf.length !== expectedBuf.length ||
+      !crypto.timingSafeEqual(givenBuf, expectedBuf)
+    ) {
+      return { ok: false, code: 'token_invalid' };
+    }
+  } catch {
+    return { ok: false, code: 'token_invalid' };
+  }
+  return { ok: true };
+}
 
 function isNodeAllowed(nodeId: string, nodeFingerprint: string): boolean {
   if (ALLOWED_NODE_IDS.size > 0 && !ALLOWED_NODE_IDS.has(nodeId)) {
@@ -130,6 +183,22 @@ function handleNodeMessage(
     case 'enroll': {
       const node_id = msg.node_id as string;
       const node_fingerprint = msg.node_fingerprint as string;
+      // gateway_token = HMAC credential (separate from enrollment trust_token)
+      const tokenCheck = verifyNodeToken(msg.gateway_token as string | undefined, node_id);
+      if (!tokenCheck.ok) {
+        log?.warn?.(
+          `[gateway] Rejected node enrollment for id=${node_id}: ${tokenCheck.code}`,
+        );
+        ws.send(
+          JSON.stringify({
+            type: 'enrollment_result',
+            ok: false,
+            code: tokenCheck.code,
+          }),
+        );
+        ws.close();
+        break;
+      }
       if (!isNodeAllowed(node_id, node_fingerprint)) {
         log?.warn?.(
           `[gateway] Rejected node enrollment for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
@@ -160,6 +229,21 @@ function handleNodeMessage(
     case 'auth': {
       const node_id = msg.node_id as string;
       const node_fingerprint = msg.node_fingerprint as string;
+      const tokenCheck = verifyNodeToken(msg.token as string | undefined, node_id);
+      if (!tokenCheck.ok) {
+        log?.warn?.(
+          `[gateway] Rejected node auth for id=${node_id}: ${tokenCheck.code}`,
+        );
+        ws.send(
+          JSON.stringify({
+            type: 'auth_result',
+            ok: false,
+            code: tokenCheck.code,
+          }),
+        );
+        ws.close();
+        break;
+      }
       if (!isNodeAllowed(node_id, node_fingerprint)) {
         log?.warn?.(
           `[gateway] Rejected node auth for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,

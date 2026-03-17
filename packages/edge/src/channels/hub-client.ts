@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import http from 'http';
+import crypto from 'crypto';
 import { logger } from '../core/logger.js';
 import { readHubConfig, HubConfig } from '../core/hub-config.js';
 import { validateOutboundEndpoint } from '../core/security.js';
@@ -85,6 +86,7 @@ export class HubClientChannel implements Channel {
 
   private authenticate(): void {
     const state = readEnrollmentState(NODE_HOSTNAME || undefined);
+    const gatewayToken = this.buildGatewayToken(state.node_id);
 
     // If we have a trust_token in config and we are not yet trusted, attempt enrollment
     if (this.config.trust_token && state.trust_state !== 'trusted') {
@@ -93,6 +95,7 @@ export class HubClientChannel implements Channel {
         JSON.stringify({
           type: 'enroll',
           token: this.config.trust_token,
+          gateway_token: gatewayToken,
           node_id: state.node_id,
           node_fingerprint: state.node_fingerprint,
         }),
@@ -101,11 +104,29 @@ export class HubClientChannel implements Channel {
       this.ws?.send(
         JSON.stringify({
           type: 'auth',
+          // gateway_token carries the HMAC credential when GATEWAY_SECRET is set
+          token: gatewayToken,
           node_id: state.node_id,
           node_fingerprint: state.node_fingerprint,
         }),
       );
     }
+  }
+
+  /**
+   * Build a HMAC token for gateway authentication.
+   * Format: `${nodeId}.${timestampMs}.${hmacHex}`
+   * Only generated when the GATEWAY_SECRET env var is set on the edge side.
+   */
+  private buildGatewayToken(nodeId: string): string | undefined {
+    const secret = process.env.GATEWAY_SECRET;
+    if (!secret) return undefined;
+    const ts = Date.now().toString();
+    const hmac = crypto
+      .createHmac('sha256', secret)
+      .update(`${nodeId}:${ts}`)
+      .digest('hex');
+    return `${nodeId}.${ts}.${hmac}`;
   }
 
   private startReporting(): void {
