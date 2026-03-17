@@ -79,9 +79,9 @@
   });
 </script>
 
-<div class="flex h-full">
+<div class="flex flex-1 h-full min-h-0 overflow-hidden">
   <!-- Main Chat Area -->
-  <div class="flex flex-col flex-1 min-w-0">
+  <div class="flex flex-col flex-1 min-w-0 h-full">
     <!-- Chat Header -->
     <div
       class="flex items-center gap-4 px-5 py-2 border-b border-border bg-card"
@@ -287,7 +287,7 @@
   <!-- Right Settings Pane -->
   {#if showSettings}
     <div
-      class="w-[300px] border-l border-border bg-card flex flex-col shrink-0 overflow-hidden"
+      class="w-[300px] border-l border-border bg-card flex flex-col shrink-0 overflow-hidden h-full"
     >
       <!-- Header -->
       <div
