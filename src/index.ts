@@ -115,7 +115,43 @@ const activeAgentLocks = new Map<string, Promise<any>>();
 
 async function processMessages(chatJid: string): Promise<boolean> {
   let group = registeredProjects[chatJid];
-  if (!group) return false;
+  if (!group) {
+    logger.info(
+      { chatJid },
+      'Creating temporary context for unregistered chat',
+    );
+    group = {
+      name: 'unknown',
+      folder: 'unknown',
+      trigger: `@${ASSISTANT_NAME}`,
+      added_at: new Date().toISOString(),
+      requiresTrigger: true,
+      isMain: false,
+    };
+  }
+
+  // Resolve or create a session for this chat so directories exist
+  let agentId = (group as any).agent_id || group.folder;
+  if (agentId === 'unknown') {
+    const parts = chatJid.split(':');
+    if (parts.length >= 2) {
+      agentId = parts[1];
+    }
+  }
+  const sessionId = chatJid;
+  const channel = chatJid.startsWith('dc:')
+    ? 'discord'
+    : chatJid.startsWith('web:')
+      ? 'http'
+      : chatJid.startsWith('feishu:')
+        ? 'feishu'
+        : 'unknown';
+  const session = ensureSession({
+    agent_id: agentId,
+    session_id: sessionId,
+    channel,
+    agent_name: group.name,
+  });
 
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
   const messages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
@@ -207,6 +243,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
     }
 
     // Check if we have a valid workspace for this group
+    // (group is guaranteed to be set now because of our fallback logic at the top)
     const workspace = getFactoryPath(group);
     const hasWorkspace = fs.existsSync(workspace);
     logger.info(
@@ -222,38 +259,6 @@ async function processMessages(chatJid: string): Promise<boolean> {
     }));
 
     try {
-      if (!registeredProjects[chatJid] && !hasWorkspace) {
-        logger.info(
-          { chatJid },
-          'Creating temporary context for unregistered chat',
-        );
-        group = {
-          name: 'unknown',
-          folder: 'unknown',
-          trigger: `@${ASSISTANT_NAME}`,
-          added_at: new Date().toISOString(),
-          requiresTrigger: true,
-          isMain: false,
-        };
-      }
-
-      // Resolve or create a session for this chat
-      const agentId = (group as any).agent_id || group.folder;
-      const sessionId = chatJid;
-      const channel = chatJid.startsWith('dc:')
-        ? 'discord'
-        : chatJid.startsWith('web:')
-          ? 'http'
-          : chatJid.startsWith('feishu:')
-            ? 'feishu'
-            : 'unknown';
-      const session = ensureSession({
-        agent_id: agentId,
-        session_id: sessionId,
-        channel,
-        agent_name: group.name,
-      });
-
       let statusMessageId: string | null = null;
       let lastProgressSentAt = 0;
       let lastProgressKey = '';
@@ -614,8 +619,8 @@ async function main(): Promise<void> {
   const channelOpts: ChannelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
       storeMessage(msg);
-      // Event-driven: immediately process web messages instead of waiting for poll
-      if (chatJid.startsWith('web:') && !msg.is_from_me) {
+      // Event-driven: immediately process incoming messages instead of waiting for poll
+      if (!msg.is_from_me) {
         if (!activeAgentLocks.has(chatJid)) {
           const agentPromise = processMessages(chatJid).finally(() => {
             activeAgentLocks.delete(chatJid);

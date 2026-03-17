@@ -829,7 +829,10 @@ export class HttpChannel implements Channel {
           );
           return;
         }
-        const chatJid = buildHttpSessionId(agentId, sessionId);
+        let chatJid = sessionId;
+        if (!sessionId.includes(':')) {
+           chatJid = buildHttpSessionId(agentId, sessionId);
+        }
         const msgs = getRecentMessages(chatJid, limit);
         writeJson(res, 200, {
           messages: msgs.map((m) => ({
