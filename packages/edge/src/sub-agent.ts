@@ -151,11 +151,19 @@ async function pollTaskCompletion(
 
     const task = getActiveTaskById(taskId);
     if (!task) {
-      // Task completed and was removed from the queue
+      // Task not found — this is a failure case, not a success:
+      // • A successfully completed task remains in the registry with a terminal
+      //   status until the callers reads it (task-executor contract).
+      // • If the task disappears before reaching a terminal status it indicates
+      //   a crash, eviction, or internal error — never a clean success.
+      logger.error(
+        { taskId },
+        'sub-agent: delegated task disappeared without terminal status — treating as failed',
+      );
       return {
         taskId,
-        status: 'succeeded',
-        resultText: undefined,
+        status: 'failed',
+        error: 'task_not_found: task disappeared without reaching a terminal status',
         durationMs: Date.now() - startMs,
       };
     }
