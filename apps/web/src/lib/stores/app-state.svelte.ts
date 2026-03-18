@@ -89,6 +89,7 @@ export interface SessionInfo {
   session_id: string;
   agent_id: string;
   channel: string;
+  title?: string;
   status: string;
   created_at: string;
   updated_at: string;
@@ -179,10 +180,74 @@ function createAppState() {
   let newAgentName = $state('');
   let newSessionAgentId = $state('');
 
+  // File uploads
+  interface PendingFile {
+    file: File;
+    name: string;
+    uploading: boolean;
+    ticlawUrl?: string;
+  }
+  let pendingFiles = $state<PendingFile[]>([]);
+
+  function addFiles(files: FileList | File[]) {
+    const arr = Array.from(files);
+    pendingFiles = [...pendingFiles, ...arr.map(f => ({ file: f, name: f.name, uploading: false }))];
+  }
+
+  function removeFile(index: number) {
+    pendingFiles = pendingFiles.filter((_, i) => i !== index);
+  }
+
+  async function uploadPendingFiles(): Promise<{ refs: string[]; names: string[] }> {
+    if (pendingFiles.length === 0) return { refs: [], names: [] };
+    const refs: string[] = [];
+    const names: string[] = [];
+    const toUpload = [...pendingFiles];
+    pendingFiles = toUpload.map(f => ({ ...f, uploading: true }));
+
+    // Convert files to base64 for JSON transport (works through gateway relay)
+    const filesPayload: { name: string; data: string }[] = [];
+    for (const pf of toUpload) {
+      names.push(pf.name);
+      const buf = await pf.file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      const base64 = btoa(binary);
+      filesPayload.push({ name: pf.name, data: base64 });
+    }
+
+    try {
+      const res = await fetch(`/api/workspace/upload?agent_id=${encodeURIComponent(agentId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: filesPayload }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        for (const f of data.files || []) {
+          refs.push(f.ticlawUrl);
+        }
+      } else {
+        const errText = await res.text().catch(() => '');
+        messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ File upload failed (${res.status}): ${errText}`, time: '' }];
+      }
+    } catch (e: any) {
+      messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ File upload error: ${e.message || 'Network error'}`, time: '' }];
+    }
+
+    pendingFiles = [];
+    return { refs, names };
+  }
+
   let eventSource: EventSource | null = null;
 
   // --- SSE Helpers ---
   let lastLoggedCategory = '';
+  let lastLoggedTool = '';
   function addLog(msg: string) {
     sseLog = [...sseLog.slice(-29), `${new Date().toLocaleTimeString()} ${msg}`];
   }
@@ -269,8 +334,12 @@ function createAppState() {
             addLog(`⚡ Skill: ${data.skill}${argStr}`);
             lastLoggedCategory = 'skill';
           } else if (data.category === 'tool' && data.tool) {
-            const targetStr = data.target ? ` → ${data.target}` : '';
-            addLog(`🔧 ${data.tool}${targetStr}`);
+            const toolKey = `${data.tool}|${data.target || ''}`;
+            if (toolKey !== lastLoggedTool) {
+              const targetStr = data.target ? ` → ${data.target}` : '';
+              addLog(`🔧 ${data.tool}${targetStr}`);
+              lastLoggedTool = toolKey;
+            }
             lastLoggedCategory = 'tool';
           } else if (data.category === 'thinking' && lastLoggedCategory !== 'thinking') {
             addLog('💭 Thinking…');
@@ -284,7 +353,7 @@ function createAppState() {
           }
           return;
         }
-        if (data.type === 'progress_end') { progressCategory = ''; lastLoggedCategory = ''; return; }
+        if (data.type === 'progress_end') { progressCategory = ''; lastLoggedCategory = ''; lastLoggedTool = ''; return; }
 
         if (data.type === 'stream_delta' && data.text) {
           const { isDuplicate, isNewStream } = advanceStreamEvent(data);
@@ -445,6 +514,37 @@ function createAppState() {
     return agentSessions[agentId] || [];
   }
 
+  function findSession(sid: string): SessionInfo | undefined {
+    for (const sessions of Object.values(agentSessions)) {
+      const found = sessions.find(s => s.session_id === sid);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  async function generateSessionTitle(aid: string, sid: string, message: string) {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/generate-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: aid, message }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title) {
+          // Update local state so sidebar reflects the new title immediately
+          const updated = { ...agentSessions };
+          if (updated[aid]) {
+            updated[aid] = updated[aid].map(s =>
+              s.session_id === sid ? { ...s, title: data.title } : s
+            );
+            agentSessions = updated;
+          }
+        }
+      }
+    } catch { /* fire-and-forget */ }
+  }
+
   async function fetchSchedules() {
     schedulesLoading = true;
     try { const res = await fetch('/api/schedules'); if (res.ok) { const data = await res.json(); schedules = data.schedules || []; } } catch { /* */ }
@@ -549,18 +649,33 @@ function createAppState() {
       }
 
       await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); 
-      if (sessionId === id) {
-        if (nextSessionId && typeof window !== 'undefined') {
+
+      // Check if we're currently viewing this session (use URL as source of truth)
+      const isViewingDeleted = typeof window !== 'undefined' && 
+        window.location.pathname === `/sessions/${id}`;
+
+      if (isViewingDeleted || sessionId === id) {
+        if (nextSessionId) {
           goto(`/sessions/${nextSessionId}`);
         } else {
-          sessionId = '';
-          if (isBrowser) localStorage.removeItem('sessionId');
-          messages = [];
-          resetStreamingState();
-          isThinking = false;
-          progressCategory = '';
-          disconnectSSE();
-          if (typeof window !== 'undefined') {
+          // No sibling session — search across all agents for any session
+          let fallbackSessionId = '';
+          for (const sessions of Object.values(agentSessions)) {
+            if (sessions.length > 0) {
+              fallbackSessionId = sessions[0].session_id;
+              break;
+            }
+          }
+          if (fallbackSessionId) {
+            goto(`/sessions/${fallbackSessionId}`);
+          } else {
+            sessionId = '';
+            if (isBrowser) localStorage.removeItem('sessionId');
+            messages = [];
+            resetStreamingState();
+            isThinking = false;
+            progressCategory = '';
+            disconnectSSE();
             goto('/');
           }
         }
@@ -570,15 +685,40 @@ function createAppState() {
 
   async function send() {
     const content = inputText.trim();
-    if (!content || sending) return;
-    messages = [...messages, { id: `user-${Date.now()}`, role: 'user', text: content, time: new Date().toLocaleTimeString() }];
+    if ((!content && pendingFiles.length === 0) || sending) return;
+
+    // Upload pending files first
+    const { refs, names } = await uploadPendingFiles();
+
+    // Build the content sent to the agent (includes ticlaw:// paths)
+    let fullContent = content;
+    if (refs.length > 0) {
+      const refLines = refs.map((url, i) => `[Attached file: ${names[i] || 'file'} → ${url}]`).join('\n');
+      fullContent = fullContent ? `${refLines}\n\n${fullContent}` : refLines;
+    }
+    if (!fullContent) return;
+
+    // Build the user-visible message (friendly file names)
+    let displayContent = content;
+    if (names.length > 0) {
+      const fileChips = names.map(n => `📎 ${n}`).join('  ');
+      displayContent = displayContent ? `${fileChips}\n${displayContent}` : fileChips;
+    }
+
+    messages = [...messages, { id: `user-${Date.now()}`, role: 'user', text: displayContent, time: new Date().toLocaleTimeString() }];
     inputText = '';
     sending = true;
     isThinking = true;
     progressCategory = '';
 
+    // Auto-generate title for untitled sessions (fire-and-forget)
+    const currentSession = findSession(sessionId);
+    if (currentSession && !currentSession.title) {
+      generateSessionTitle(agentId, sessionId, content || names.join(', '));
+    }
+
     try {
-      const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content }) });
+      const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content: fullContent }) });
       if (!res.ok) {
         isThinking = false; progressCategory = '';
         if (res.status === 403) {
@@ -601,6 +741,7 @@ function createAppState() {
   }
 
   function selectSession(sess: SessionInfo) {
+    if (sessionId === sess.session_id) return; // already active — do nothing
     agentId = sess.agent_id;
     if (isBrowser) localStorage.setItem('agentId', agentId);
     sessionId = sess.session_id;
@@ -609,6 +750,8 @@ function createAppState() {
     resetStreamingState();
     isThinking = false;
     progressCategory = '';
+    // Reconnect SSE to reload messages (fixes blank page when clicking active session)
+    connectSSE();
   }
 
   function reconnect() {
@@ -686,12 +829,15 @@ function createAppState() {
     set showAgentInspector(v: boolean) { showAgentInspector = v; },
     get inspectedAgentId() { return inspectedAgentId; },
 
+    get pendingFiles() { return pendingFiles; },
+
     // Methods
     connectSSE, disconnectSSE, addLog,
     fetchMind, fetchMindFiles, fetchSkills, fetchAgents,
     fetchSchedules, fetchNode, trustNode, toggleSkill, fetchModels,
     createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession,
     send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent, updateAgentModel,
+    addFiles, removeFile,
     formatDate, formatShortDate,
     openAgentInspector(agentId: string) { inspectedAgentId = agentId; showAgentInspector = true; },
   };

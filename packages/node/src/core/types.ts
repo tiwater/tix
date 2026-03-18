@@ -51,6 +51,7 @@ export interface SessionRecord {
   agent_id: string;
   channel: string;
   source_ref?: string;
+  title?: string;
   status: 'active' | 'completed' | 'error';
   created_at: string;
   updated_at: string;

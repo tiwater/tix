@@ -2,8 +2,8 @@
 name: office-jxa
 description: Cross-platform Office automation via JXA — Word (.docx) and Excel (.xlsx) reading, creation, and review
 version: 3.0.0
-requires: []
-install: []
+requires: [python3]
+install: ["pip3 install -q python-docx openpyxl"]
 permissions:
   - read
   - write

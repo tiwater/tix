@@ -69,6 +69,7 @@ import {
   deleteSchedule,
   deleteSession,
   deleteSessionForAgent,
+  updateSessionTitle,
   resolveFromChatJid,
 } from '../core/store.js';
 import { SkillsRegistry } from '../skills/registry.js';
@@ -557,14 +558,14 @@ export class HttpChannel implements Channel {
       }
 
       // ── Workspace file access ──
-      const workspaceMatch = pathname.match(/^\/api\/workspace\/(.+)$/);
+      const workspaceMatch = pathname.match(/^\/api\/workspace\/(.*)$/);
       if (workspaceMatch && req.method === 'GET') {
         const agentId = url.searchParams.get('agent_id');
         if (!agentId) {
           writeJson(res, 400, { error: 'agent_id query parameter is required' });
           return;
         }
-        const relPath = decodeURIComponent(workspaceMatch[1]);
+        const relPath = decodeURIComponent(workspaceMatch[1] || '.') || '.';
         // Prevent path traversal
         const normalized = path.normalize(relPath);
         if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
@@ -608,6 +609,63 @@ export class HttpChannel implements Channel {
             : 'inline',
         });
         fs.createReadStream(filePath).pipe(res);
+        return;
+      }
+
+      // ── Workspace file upload (JSON with base64-encoded files) ──
+      if (pathname === '/api/workspace/upload' && req.method === 'POST') {
+        const agentId = url.searchParams.get('agent_id');
+        if (!agentId) {
+          writeJson(res, 400, { error: 'agent_id query parameter is required' });
+          return;
+        }
+
+        // Body is already parsed by the gateway relay as JSON
+        // Format: { files: [{ name: string, data: string (base64) }] }
+        const reqBody = (req as any)._body || await new Promise<any>((resolve) => {
+          let raw = '';
+          req.on('data', (chunk: Buffer) => { raw += chunk; });
+          req.on('end', () => {
+            try { resolve(JSON.parse(raw)); } catch { resolve(null); }
+          });
+        });
+
+        if (!reqBody?.files || !Array.isArray(reqBody.files)) {
+          writeJson(res, 400, { error: 'Request body must contain files array with { name, data } objects' });
+          return;
+        }
+
+        const workspace = agentPaths(agentId).workspace;
+        const uploadDir = path.join(workspace, '.uploads');
+        fs.mkdirSync(uploadDir, { recursive: true });
+
+        const uploadedFiles: { name: string; path: string; ticlawUrl: string; size: number }[] = [];
+
+        for (const file of reqBody.files) {
+          if (!file.name || !file.data) continue;
+          const originalName = path.basename(file.name); // sanitize
+          const content = Buffer.from(file.data, 'base64');
+
+          // 50MB per-file limit
+          if (content.length > 50 * 1024 * 1024) continue;
+
+          const uuid = randomUUID().slice(0, 8);
+          const destName = `${uuid}-${originalName}`;
+          const destPath = path.join(uploadDir, destName);
+          fs.writeFileSync(destPath, content);
+
+          const relPath = `.uploads/${destName}`;
+          uploadedFiles.push({
+            name: originalName,
+            path: relPath,
+            ticlawUrl: `ticlaw://workspace/${agentId}/${relPath}`,
+            size: content.length,
+          });
+
+          logger.info({ agentId, destName, size: content.length }, 'File uploaded to workspace');
+        }
+
+        writeJson(res, 200, { files: uploadedFiles });
         return;
       }
 
@@ -1205,6 +1263,58 @@ export class HttpChannel implements Channel {
         }
 
         writeJson(res, 200, { ok: true });
+        return;
+      }
+
+      // PATCH /api/sessions/:id — update session (title)
+      if (sessionDeleteMatch && req.method === 'PATCH') {
+        const id = decodeURIComponent(sessionDeleteMatch[1]);
+        const body = await readJsonBody(req);
+        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (!agentId || !title) {
+          writeJson(res, 400, { error: 'agent_id and title are required' });
+          return;
+        }
+        const ok = updateSessionTitle(agentId, id, title);
+        writeJson(res, ok ? 200 : 404, ok ? { ok: true, title } : { error: 'session not found' });
+        return;
+      }
+
+      // POST /api/sessions/:id/generate-title — auto-generate title from message
+      const titleGenMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/generate-title$/);
+      if (titleGenMatch && req.method === 'POST') {
+        const id = decodeURIComponent(titleGenMatch[1]);
+        const body = await readJsonBody(req);
+        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const message = typeof body.message === 'string' ? body.message.trim() : '';
+        if (!agentId || !message) {
+          writeJson(res, 400, { error: 'agent_id and message are required' });
+          return;
+        }
+        // Generate a short title from the message
+        let cleaned = message
+          .replace(/\[Attached file:.*?\]/g, '')   // strip file references
+          .replace(/ticlaw:\/\/\S+/g, '')           // strip ticlaw:// URLs
+          .replace(/📎\s*\S+/g, '')                 // strip 📎 file chips
+          .replace(/\n+/g, ' ')                     // flatten newlines
+          .replace(/\s{2,}/g, ' ')                  // collapse whitespace
+          .trim();
+        if (!cleaned) cleaned = 'File upload';
+        // Extract first sentence or meaningful phrase (up to 60 chars)
+        const sentenceEnd = cleaned.search(/[.!?。！？]\s/);
+        if (sentenceEnd > 0 && sentenceEnd < 60) {
+          cleaned = cleaned.slice(0, sentenceEnd + 1);
+        } else if (cleaned.length > 60) {
+          // Break at last word boundary before 60 chars
+          const truncated = cleaned.slice(0, 60);
+          const lastSpace = truncated.lastIndexOf(' ');
+          cleaned = lastSpace > 20 ? truncated.slice(0, lastSpace) + '…' : truncated + '…';
+        }
+        // Capitalize first letter
+        const title = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+        updateSessionTitle(agentId, id, title);
+        writeJson(res, 200, { title });
         return;
       }
 

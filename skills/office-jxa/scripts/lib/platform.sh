@@ -71,6 +71,10 @@ run_python() {
     exit 1
   fi
 
+  # Auto-install required Python modules if missing
+  python3 -c "import docx" 2>/dev/null || pip3 install -q python-docx 2>/dev/null
+  python3 -c "import openpyxl" 2>/dev/null || pip3 install -q openpyxl 2>/dev/null
+
   python3 "$lib_file" "$func" "$@"
 }
 

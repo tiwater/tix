@@ -355,6 +355,20 @@ export function updateSessionStatus(
   }
 }
 
+export function updateSessionTitle(
+  agentId: string,
+  sessionId: string,
+  title: string,
+): boolean {
+  const jsonPath = sessionJsonPath(agentId, sessionId);
+  const session = readJson<SessionRecord>(jsonPath);
+  if (!session) return false;
+  session.title = title;
+  session.updated_at = new Date().toISOString();
+  writeJson(jsonPath, session);
+  return true;
+}
+
 export function deleteSession(sessionId: string): void {
   for (const agentId of listDirs(AGENTS_DIR)) {
     const dir = sessionDir(agentId, sessionId);
