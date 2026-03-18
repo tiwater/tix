@@ -117,6 +117,12 @@ function buildHttpSessionId(agentId: string, sessionId: string): string {
   return `${WEB_JID_PREFIX}${agentId}:${sessionId}`;
 }
 
+function parseHttpSessionId(chatJid: string): [string, string] {
+  // Format: web:agentId:sessionId
+  const parts = chatJid.replace(WEB_JID_PREFIX, '').split(':');
+  return [parts[0] || '', parts.slice(1).join(':') || ''];
+}
+
 function resolveSessionContext(chatJid: string): SessionContext | undefined {
   const resolved = resolveFromChatJid(chatJid);
   if (!resolved) return undefined;
@@ -472,15 +478,18 @@ export class HttpChannel implements Channel {
 
           if (!content) return;
 
+          // Use authenticated agent/session from the WebSocket handshake
+          // This ensures the message is associated with the authenticated session, not the payload
+          const [authedAgentId, authedSessionId] = parseHttpSessionId(chatJid);
           const taskId = payload.task_id || randomUUID();
           const timestamp = new Date().toISOString();
 
           // Ensure session and project
           ensureSession({
-            agent_id,
-            session_id,
+            agent_id: authedAgentId,
+            session_id: authedSessionId,
             channel: 'http',
-            agent_name: agent_id,
+            agent_name: authedAgentId,
           });
 
           const msg: NewMessage = {
@@ -491,8 +500,8 @@ export class HttpChannel implements Channel {
             content,
             timestamp,
             is_from_me: false,
-            agent_id,
-            session_id,
+            agent_id: authedAgentId,
+            session_id: authedSessionId,
             task_id: taskId,
           };
 
@@ -667,6 +676,12 @@ export class HttpChannel implements Channel {
       }
 
       if (pathname === '/api/enroll/token' && req.method === 'POST') {
+        // Admin-only endpoint
+        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        if (!ctx?.isAdmin) {
+          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          return;
+        }
         const parsed = await readJsonBody(req);
         const ttlMinutes = Number(parsed.ttl_minutes);
         const result = createEnrollmentToken({
@@ -722,6 +737,12 @@ export class HttpChannel implements Channel {
       }
 
       if (pathname === '/api/enroll/revoke' && req.method === 'POST') {
+        // Admin-only endpoint
+        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        if (!ctx?.isAdmin) {
+          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          return;
+        }
         const state = setTrustState('revoked', {
           nodeId: NODE_HOSTNAME || undefined,
         });
@@ -730,6 +751,12 @@ export class HttpChannel implements Channel {
       }
 
       if (pathname === '/api/enroll/suspend' && req.method === 'POST') {
+        // Admin-only endpoint
+        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        if (!ctx?.isAdmin) {
+          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          return;
+        }
         const state = setTrustState('suspended', {
           nodeId: NODE_HOSTNAME || undefined,
         });
@@ -1261,6 +1288,12 @@ export class HttpChannel implements Channel {
       // ── Web UI API: Trust Claw ──
 
       if (pathname === '/api/node/trust' && req.method === 'POST') {
+        // Admin-only endpoint - require admin authentication
+        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        if (!ctx?.isAdmin) {
+          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          return;
+        }
         const result = setTrustState('trusted', {
           nodeId: NODE_HOSTNAME || undefined,
         });

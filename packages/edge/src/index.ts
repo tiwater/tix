@@ -34,7 +34,6 @@ import {
   setRouterState,
   storeChatMetadata,
   storeMessage,
-  getRecentMessages,
   resolveFromChatJid,
 } from './core/store.js';
 
@@ -184,7 +183,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
     ? 'discord'
     : chatJid.startsWith('web:')
       ? 'http'
-      : chatJid.startsWith('feishu:')
+      : chatJid.startsWith('feishu:') || chatJid.startsWith('fs:')
         ? 'feishu'
         : 'unknown';
   const session = ensureSession({
@@ -205,30 +204,24 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
   if (messages.length === 0) return true;
 
+  // Transform messages to the format expected by runner.run
+  // is_from_me=true means the message is from the assistant (role: assistant)
+  // is_from_me=false means the message is from the user (role: user)
+  const aiMessages = messages.map((m) => ({
+    role: m.is_from_me ? 'assistant' : 'user',
+    content: m.content,
+  }));
+
   // Update last timestamp BEFORE running to avoid loops on failure
   const newest = messages[messages.length - 1].timestamp;
   lastAgentTimestamp[chatJid] = newest;
   setRouterState(chatJid, newest);
 
-  // Extract raw text from messages for agent thinking
-  const rawText = messages.map((m) => m.content).join('\n');
+  // Extract latest message for processing
   const latestMsg = messages[messages.length - 1];
 
-  const recentMessages = getRecentMessages(chatJid, 10);
-  let contextText = rawText;
-  if (recentMessages.length > messages.length) {
-    const historyMsgs = recentMessages.slice(
-      0,
-      recentMessages.length - messages.length,
-    );
-    const historyText = historyMsgs
-      .map((m) => `${m.sender_name || 'User'}: ${m.content}`)
-      .join('\n');
-    contextText = `[Conversation History]\n${historyText}\n\n[Latest Message]\n${rawText}`;
-  }
-
   logger.info(
-    { chatJid, messageCount: messages.length, rawText: rawText.slice(0, 200) },
+    { chatJid, messageCount: messages.length },
     'processMessages: starting',
   );
 
@@ -448,7 +441,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
           },
         );
 
-        await runner.run([{ role: 'user', content: contextText }], taskId);
+        await runner.run(aiMessages, taskId);
       } finally {
         if (heartbeatTimer) {
           clearInterval(heartbeatTimer);
