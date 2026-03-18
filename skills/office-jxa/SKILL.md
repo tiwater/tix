@@ -1,6 +1,6 @@
 ---
-name: office
-description: Cross-platform Office automation — Word (.docx) and Excel (.xlsx) reading, creation, and review
+name: office-jxa
+description: Cross-platform Office automation via JXA — Word (.docx) and Excel (.xlsx) reading, creation, and review
 version: 3.0.0
 requires: []
 install: []
