@@ -237,6 +237,7 @@ function createAppState() {
 
   // --- SSE Helpers ---
   let lastLoggedCategory = '';
+  let lastLoggedTool = '';
   function addLog(msg: string) {
     sseLog = [...sseLog.slice(-29), `${new Date().toLocaleTimeString()} ${msg}`];
   }
@@ -323,8 +324,12 @@ function createAppState() {
             addLog(`⚡ Skill: ${data.skill}${argStr}`);
             lastLoggedCategory = 'skill';
           } else if (data.category === 'tool' && data.tool) {
-            const targetStr = data.target ? ` → ${data.target}` : '';
-            addLog(`🔧 ${data.tool}${targetStr}`);
+            const toolKey = `${data.tool}|${data.target || ''}`;
+            if (toolKey !== lastLoggedTool) {
+              const targetStr = data.target ? ` → ${data.target}` : '';
+              addLog(`🔧 ${data.tool}${targetStr}`);
+              lastLoggedTool = toolKey;
+            }
             lastLoggedCategory = 'tool';
           } else if (data.category === 'thinking' && lastLoggedCategory !== 'thinking') {
             addLog('💭 Thinking…');
@@ -338,7 +343,7 @@ function createAppState() {
           }
           return;
         }
-        if (data.type === 'progress_end') { progressCategory = ''; lastLoggedCategory = ''; return; }
+        if (data.type === 'progress_end') { progressCategory = ''; lastLoggedCategory = ''; lastLoggedTool = ''; return; }
 
         if (data.type === 'stream_delta' && data.text) {
           const { isDuplicate, isNewStream } = advanceStreamEvent(data);

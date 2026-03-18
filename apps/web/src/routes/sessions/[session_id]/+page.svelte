@@ -468,14 +468,16 @@
           >
             Event Log
           </div>
-          <div class="space-y-0.5">
-            {#each appState.sseLog as entry}
-              <div
-                class="text-[10px] text-muted-foreground font-mono leading-tight truncate"
-              >
-                {entry}
-              </div>
-            {/each}
+          <div class="overflow-auto max-h-[200px]">
+            <div class="space-y-0.5 min-w-max">
+              {#each appState.sseLog as entry}
+                <div
+                  class="text-[10px] text-muted-foreground font-mono leading-tight whitespace-nowrap"
+                >
+                  {entry}
+                </div>
+              {/each}
+            </div>
           </div>
         </div>
       {/if}
