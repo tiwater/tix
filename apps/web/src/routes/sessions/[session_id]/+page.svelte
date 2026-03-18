@@ -20,10 +20,14 @@
     Brain,
     Puzzle,
     Loader,
+    Paperclip,
+    X,
   } from 'lucide-svelte';
 
   let messagesEl = $state<HTMLElement>(null!);
   let inputEl = $state<HTMLTextAreaElement>(null!);
+  let fileInputEl = $state<HTMLInputElement>(null!);
+  let isDragOver = $state(false);
 
 
   let isUserScrolledUp = $state(false);
@@ -242,10 +246,50 @@
 
     <!-- Input Area -->
     <div class="px-5 py-4 bg-background flex flex-col items-center">
-      <div class="w-full max-w-4xl flex items-end">
+      <div class="w-full max-w-4xl flex flex-col">
+        <!-- Pending file chips -->
+        {#if appState.pendingFiles.length > 0}
+          <div class="flex flex-wrap gap-1.5 mb-2 px-2">
+            {#each appState.pendingFiles as pf, i}
+              <div class="inline-flex items-center gap-1.5 text-[11px] bg-muted border border-border rounded-lg px-2.5 py-1 {pf.uploading ? 'opacity-50' : ''}">
+                <Paperclip size={10} class="text-muted-foreground shrink-0" />
+                <span class="text-foreground max-w-[150px] truncate">{pf.name}</span>
+                {#if !pf.uploading}
+                  <button
+                    class="w-4 h-4 flex items-center justify-center rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                    onclick={() => appState.removeFile(i)}
+                  >
+                    <X size={10} />
+                  </button>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+
         <div
-          class="flex-1 flex gap-3 items-end bg-card border border-border rounded-3xl shadow-sm px-2 py-2 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-shadow"
+          class="flex-1 flex gap-3 items-end bg-card border rounded-3xl shadow-sm px-2 py-2 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-shadow {isDragOver ? 'border-primary ring-1 ring-primary bg-primary/5' : 'border-border'}"
+          role="region"
+          ondragover={(e) => { e.preventDefault(); isDragOver = true; }}
+          ondragleave={() => { isDragOver = false; }}
+          ondrop={(e) => { e.preventDefault(); isDragOver = false; if (e.dataTransfer?.files?.length) appState.addFiles(e.dataTransfer.files); }}
         >
+          <!-- Paperclip button -->
+          <button
+            class="w-[38px] h-[38px] rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer shrink-0 mb-1 ml-1"
+            onclick={() => fileInputEl?.click()}
+            title="Attach files"
+          >
+            <Paperclip size={17} />
+          </button>
+          <input
+            type="file"
+            multiple
+            class="hidden"
+            bind:this={fileInputEl}
+            onchange={(e) => { const t = e.currentTarget as HTMLInputElement; if (t.files?.length) { appState.addFiles(t.files); t.value = ''; } }}
+          />
+
           <textarea
             class="flex-1 px-4 py-3 bg-transparent border-none text-foreground text-[14px] resize-none outline-none min-h-[50px] max-h-[200px] leading-relaxed placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
             bind:this={inputEl}
@@ -258,7 +302,7 @@
           <button
             class="w-[42px] h-[42px] rounded-full bg-foreground border-none text-background flex items-center justify-center cursor-pointer shrink-0 transition-all hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed mb-1 mr-1"
             onclick={handleSend}
-            disabled={appState.sending || !appState.inputText.trim()}
+            disabled={appState.sending || (!appState.inputText.trim() && appState.pendingFiles.length === 0)}
             title="Send"
           >
             {#if appState.sending}

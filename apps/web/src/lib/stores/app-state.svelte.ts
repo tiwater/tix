@@ -169,6 +169,52 @@ function createAppState() {
   let newAgentName = $state('');
   let newSessionAgentId = $state('');
 
+  // File uploads
+  interface PendingFile {
+    file: File;
+    name: string;
+    uploading: boolean;
+    ticlawUrl?: string;
+  }
+  let pendingFiles = $state<PendingFile[]>([]);
+
+  function addFiles(files: FileList | File[]) {
+    const arr = Array.from(files);
+    pendingFiles = [...pendingFiles, ...arr.map(f => ({ file: f, name: f.name, uploading: false }))];
+  }
+
+  function removeFile(index: number) {
+    pendingFiles = pendingFiles.filter((_, i) => i !== index);
+  }
+
+  async function uploadPendingFiles(): Promise<string[]> {
+    if (pendingFiles.length === 0) return [];
+    const refs: string[] = [];
+    const toUpload = [...pendingFiles];
+    pendingFiles = toUpload.map(f => ({ ...f, uploading: true }));
+
+    const formData = new FormData();
+    for (const pf of toUpload) {
+      formData.append('files', pf.file, pf.name);
+    }
+
+    try {
+      const res = await fetch(`/api/workspace/upload?agent_id=${encodeURIComponent(agentId)}`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        for (const f of data.files || []) {
+          refs.push(f.ticlawUrl);
+        }
+      }
+    } catch { /* */ }
+
+    pendingFiles = [];
+    return refs;
+  }
+
   let eventSource: EventSource | null = null;
 
   // --- SSE Helpers ---
@@ -521,18 +567,33 @@ function createAppState() {
       }
 
       await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); 
-      if (sessionId === id) {
-        if (nextSessionId && typeof window !== 'undefined') {
+
+      // Check if we're currently viewing this session (use URL as source of truth)
+      const isViewingDeleted = typeof window !== 'undefined' && 
+        window.location.pathname === `/sessions/${id}`;
+
+      if (isViewingDeleted || sessionId === id) {
+        if (nextSessionId) {
           goto(`/sessions/${nextSessionId}`);
         } else {
-          sessionId = '';
-          if (isBrowser) localStorage.removeItem('sessionId');
-          messages = [];
-          resetStreamingState();
-          isThinking = false;
-          progressCategory = '';
-          disconnectSSE();
-          if (typeof window !== 'undefined') {
+          // No sibling session — search across all agents for any session
+          let fallbackSessionId = '';
+          for (const sessions of Object.values(agentSessions)) {
+            if (sessions.length > 0) {
+              fallbackSessionId = sessions[0].session_id;
+              break;
+            }
+          }
+          if (fallbackSessionId) {
+            goto(`/sessions/${fallbackSessionId}`);
+          } else {
+            sessionId = '';
+            if (isBrowser) localStorage.removeItem('sessionId');
+            messages = [];
+            resetStreamingState();
+            isThinking = false;
+            progressCategory = '';
+            disconnectSSE();
             goto('/');
           }
         }
@@ -542,15 +603,25 @@ function createAppState() {
 
   async function send() {
     const content = inputText.trim();
-    if (!content || sending) return;
-    messages = [...messages, { id: `user-${Date.now()}`, role: 'user', text: content, time: new Date().toLocaleTimeString() }];
+    if ((!content && pendingFiles.length === 0) || sending) return;
+
+    // Upload pending files first
+    const fileRefs = await uploadPendingFiles();
+    let fullContent = content;
+    if (fileRefs.length > 0) {
+      const refLines = fileRefs.map(url => `[Attached: ${url}]`).join('\n');
+      fullContent = fullContent ? `${refLines}\n\n${fullContent}` : refLines;
+    }
+    if (!fullContent) return;
+
+    messages = [...messages, { id: `user-${Date.now()}`, role: 'user', text: fullContent, time: new Date().toLocaleTimeString() }];
     inputText = '';
     sending = true;
     isThinking = true;
     progressCategory = '';
 
     try {
-      const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content }) });
+      const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content: fullContent }) });
       if (!res.ok) {
         isThinking = false; progressCategory = '';
         if (res.status === 403) {
@@ -657,12 +728,15 @@ function createAppState() {
     set showAgentInspector(v: boolean) { showAgentInspector = v; },
     get inspectedAgentId() { return inspectedAgentId; },
 
+    get pendingFiles() { return pendingFiles; },
+
     // Methods
     connectSSE, disconnectSSE, addLog,
     fetchMind, fetchMindFiles, fetchSkills, fetchAgents,
     fetchSchedules, fetchNode, trustNode, toggleSkill,
     createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession,
     send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent,
+    addFiles, removeFile,
     formatDate, formatShortDate,
     openAgentInspector(agentId: string) { inspectedAgentId = agentId; showAgentInspector = true; },
   };

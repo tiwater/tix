@@ -610,6 +610,101 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── Workspace file upload ──
+      if (pathname === '/api/workspace/upload' && req.method === 'POST') {
+        const agentId = url.searchParams.get('agent_id');
+        if (!agentId) {
+          writeJson(res, 400, { error: 'agent_id query parameter is required' });
+          return;
+        }
+
+        const contentType = req.headers['content-type'] || '';
+        if (!contentType.includes('multipart/form-data')) {
+          writeJson(res, 400, { error: 'Content-Type must be multipart/form-data' });
+          return;
+        }
+
+        const boundaryMatch = contentType.match(/boundary=(.+?)(?:;|$)/);
+        if (!boundaryMatch) {
+          writeJson(res, 400, { error: 'Missing multipart boundary' });
+          return;
+        }
+
+        const boundary = boundaryMatch[1];
+        const workspace = agentPaths(agentId).workspace;
+        const uploadDir = path.join(workspace, '.uploads');
+        fs.mkdirSync(uploadDir, { recursive: true });
+
+        // Collect entire body (limit to 50MB)
+        const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
+        const chunks: Buffer[] = [];
+        let totalSize = 0;
+
+        try {
+          await new Promise<void>((resolve, reject) => {
+            req.on('data', (chunk: Buffer) => {
+              totalSize += chunk.length;
+              if (totalSize > MAX_UPLOAD_SIZE) {
+                req.destroy();
+                reject(new Error('Upload too large (max 50MB)'));
+                return;
+              }
+              chunks.push(chunk);
+            });
+            req.on('end', resolve);
+            req.on('error', reject);
+          });
+        } catch (e: any) {
+          writeJson(res, 413, { error: e.message || 'Upload failed' });
+          return;
+        }
+
+        const body = Buffer.concat(chunks);
+        const boundaryBuf = Buffer.from('--' + boundary);
+        const uploadedFiles: { name: string; path: string; ticlawUrl: string; size: number }[] = [];
+
+        // Simple multipart parser
+        let searchStart = 0;
+        while (true) {
+          const partStart = body.indexOf(boundaryBuf, searchStart);
+          if (partStart < 0) break;
+
+          const headerEnd = body.indexOf(Buffer.from('\r\n\r\n'), partStart);
+          if (headerEnd < 0) break;
+
+          const nextBoundary = body.indexOf(boundaryBuf, headerEnd + 4);
+          if (nextBoundary < 0) break;
+
+          const headers = body.slice(partStart + boundaryBuf.length, headerEnd).toString('utf-8');
+          // Extract filename from Content-Disposition
+          const filenameMatch = headers.match(/filename="([^"]+)"/);
+          if (filenameMatch) {
+            const originalName = path.basename(filenameMatch[1]); // sanitize
+            // Content ends 2 bytes before next boundary (\r\n)
+            const content = body.slice(headerEnd + 4, nextBoundary - 2);
+            const uuid = randomUUID().slice(0, 8);
+            const destName = `${uuid}-${originalName}`;
+            const destPath = path.join(uploadDir, destName);
+            fs.writeFileSync(destPath, content);
+
+            const relPath = `.uploads/${destName}`;
+            uploadedFiles.push({
+              name: originalName,
+              path: relPath,
+              ticlawUrl: `ticlaw://workspace/${agentId}/${relPath}`,
+              size: content.length,
+            });
+
+            logger.info({ agentId, destName, size: content.length }, 'File uploaded to workspace');
+          }
+
+          searchStart = nextBoundary;
+        }
+
+        writeJson(res, 200, { files: uploadedFiles });
+        return;
+      }
+
       if (pathname === '/api/mind' && req.method === 'GET') {
         // Long-term mind view (root files only): SOUL + MEMORY
         const agentId = url.searchParams.get('agent_id');
