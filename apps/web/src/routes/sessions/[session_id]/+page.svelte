@@ -45,7 +45,40 @@
     Loader,
     Paperclip,
     X,
+    Download,
+    ExternalLink,
   } from 'lucide-svelte';
+
+  // File preview state
+  interface PreviewFile {
+    name: string;
+    url: string;
+    ext: string;
+  }
+  let previewFile = $state<PreviewFile | null>(null);
+
+  function isImageExt(ext: string): boolean {
+    return ['jpg','jpeg','png','gif','svg','webp','bmp','ico'].includes(ext);
+  }
+  function isPdfExt(ext: string): boolean {
+    return ext === 'pdf';
+  }
+
+  /** Intercept clicks on ticlaw file links and open preview */
+  function handleMessageClick(e: MouseEvent) {
+    const target = (e.target as HTMLElement).closest('.ticlaw-file-chip, .ticlaw-file-card');
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const link = target as HTMLAnchorElement;
+    const href = link.getAttribute('href') || '';
+    // Extract filename from the link text or href
+    const text = link.textContent?.trim() || '';
+    // Remove leading emoji from text
+    const name = text.replace(/^[^\w\u4e00-\u9fff]+/, '').trim() || href.split('/').pop() || 'file';
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    previewFile = { name, url: href, ext };
+  }
 
   let messagesEl = $state<HTMLElement>(null!);
   let inputEl = $state<HTMLTextAreaElement>(null!);
@@ -139,10 +172,13 @@
   <!-- Main Chat Area -->
   <div class="flex flex-col flex-1 min-w-0 h-[100dvh]">
     <!-- Messages -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
     <div
       class="flex-1 overflow-y-auto w-full px-5 flex flex-col items-center bg-background"
       bind:this={messagesEl}
       onscroll={handleScroll}
+      onclick={handleMessageClick}
+      role="log"
     >
       <div class="w-full max-w-4xl py-6 flex flex-col gap-6 pb-8">
         {#each appState.messages as msg (msg.id)}
@@ -434,4 +470,89 @@
     </div>
   </div>
 </div>
+
+<!-- File Preview Dialog -->
+{#if previewFile}
+  <div
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+    onclick={() => { previewFile = null; }}
+    role="presentation"
+  >
+    <div
+      class="bg-card border border-border rounded-2xl w-[720px] max-w-[94vw] max-h-[88vh] flex flex-col shadow-2xl"
+      onclick={(e) => e.stopPropagation()}
+      role="dialog"
+      tabindex="-1"
+      onkeydown={(e) => { if (e.key === 'Escape') previewFile = null; }}
+    >
+      <!-- Header -->
+      <div class="flex items-center justify-between px-5 py-3.5 border-b border-border">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-sm font-semibold text-foreground truncate">{previewFile.name}</span>
+          <span class="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded uppercase shrink-0">{previewFile.ext}</span>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <a
+            href={previewFile.url}
+            download={previewFile.name}
+            class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground transition-colors"
+            title="Download"
+          >
+            <Download size={14} />
+          </a>
+          <a
+            href={previewFile.url}
+            target="_blank"
+            rel="noopener"
+            class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground transition-colors"
+            title="Open in new tab"
+          >
+            <ExternalLink size={14} />
+          </a>
+          <button
+            class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground transition-colors cursor-pointer"
+            onclick={() => { previewFile = null; }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      </div>
+
+      <!-- Preview body -->
+      <div class="flex-1 overflow-auto flex items-center justify-center p-6 min-h-[200px]">
+        {#if isImageExt(previewFile.ext)}
+          <img
+            src={previewFile.url}
+            alt={previewFile.name}
+            class="max-w-full max-h-[65vh] object-contain rounded-lg"
+          />
+        {:else if isPdfExt(previewFile.ext)}
+          <iframe
+            src={previewFile.url}
+            title={previewFile.name}
+            class="w-full h-[65vh] rounded-lg border border-border"
+          ></iframe>
+        {:else}
+          <div class="text-center flex flex-col items-center gap-4">
+            <div class="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center text-3xl">
+              {#if ['doc','docx'].includes(previewFile.ext)}📝{:else if ['xls','xlsx','csv'].includes(previewFile.ext)}📊{:else if ['zip','tar','gz','7z','rar'].includes(previewFile.ext)}📦{:else}📄{/if}
+            </div>
+            <div>
+              <p class="text-sm font-medium text-foreground">{previewFile.name}</p>
+              <p class="text-xs text-muted-foreground mt-1">Preview not available for .{previewFile.ext} files</p>
+            </div>
+            <a
+              href={previewFile.url}
+              download={previewFile.name}
+              class="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <Download size={14} />
+              Download
+            </a>
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
 
