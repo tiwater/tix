@@ -708,6 +708,7 @@ function createAppState() {
   }
 
   function selectSession(sess: SessionInfo) {
+    const isSameSession = sessionId === sess.session_id;
     agentId = sess.agent_id;
     if (isBrowser) localStorage.setItem('agentId', agentId);
     sessionId = sess.session_id;
@@ -716,6 +717,8 @@ function createAppState() {
     resetStreamingState();
     isThinking = false;
     progressCategory = '';
+    // Reconnect SSE to reload messages (fixes blank page when clicking active session)
+    connectSSE();
   }
 
   function reconnect() {

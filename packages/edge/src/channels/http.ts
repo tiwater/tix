@@ -1245,8 +1245,27 @@ export class HttpChannel implements Channel {
           writeJson(res, 400, { error: 'agent_id and message are required' });
           return;
         }
-        // Generate a short title from the message (truncate to first ~50 chars as simple fallback)
-        const title = message.length > 50 ? message.slice(0, 47) + '…' : message;
+        // Generate a short title from the message
+        let cleaned = message
+          .replace(/\[Attached file:.*?\]/g, '')   // strip file references
+          .replace(/ticlaw:\/\/\S+/g, '')           // strip ticlaw:// URLs
+          .replace(/📎\s*\S+/g, '')                 // strip 📎 file chips
+          .replace(/\n+/g, ' ')                     // flatten newlines
+          .replace(/\s{2,}/g, ' ')                  // collapse whitespace
+          .trim();
+        if (!cleaned) cleaned = 'File upload';
+        // Extract first sentence or meaningful phrase (up to 60 chars)
+        const sentenceEnd = cleaned.search(/[.!?。！？]\s/);
+        if (sentenceEnd > 0 && sentenceEnd < 60) {
+          cleaned = cleaned.slice(0, sentenceEnd + 1);
+        } else if (cleaned.length > 60) {
+          // Break at last word boundary before 60 chars
+          const truncated = cleaned.slice(0, 60);
+          const lastSpace = truncated.lastIndexOf(' ');
+          cleaned = lastSpace > 20 ? truncated.slice(0, lastSpace) + '…' : truncated + '…';
+        }
+        // Capitalize first letter
+        const title = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
         updateSessionTitle(agentId, id, title);
         writeJson(res, 200, { title });
         return;
