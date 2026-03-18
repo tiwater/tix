@@ -41,7 +41,7 @@
   class="flex items-center gap-3 px-6 py-4 pb-3 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10"
 >
   <Monitor size={18} class="text-primary" />
-  <h2 class="text-base font-semibold">Computer Overview</h2>
+  <h2 class="text-base font-semibold">Node Overview</h2>
   <div class="ml-auto">
     <button
       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground border border-border rounded-md cursor-pointer hover:bg-accent hover:text-foreground transition-colors group"
@@ -58,7 +58,7 @@
       class="flex flex-col items-center justify-center h-[60vh] gap-4 text-muted-foreground"
     >
       <Monitor size={32} class="text-muted/50 mb-2" />
-      <div class="text-sm font-medium">Connecting to Computer…</div>
+      <div class="text-sm font-medium">Connecting to Node…</div>
     </div>
   {:else if appState.nodeInfo}
     <div class="max-w-5xl mx-auto space-y-6">
@@ -123,7 +123,7 @@
                 class="inline-flex items-center gap-2 px-4 py-1.5 text-xs font-semibold bg-emerald-500 hover:bg-emerald-600 text-white rounded-full shadow-sm transition-colors cursor-pointer"
                 onclick={() => appState.trustNode()}
               >
-                <Unlock size={14} /> Trust this Computer
+                <Unlock size={14} /> Trust this Node
               </button>
             {/if}
           </div>
@@ -486,9 +486,9 @@
       class="flex flex-col items-center justify-center h-[60vh] gap-4 text-muted-foreground"
     >
       <Monitor size={48} class="text-muted/50 mb-2" />
-      <h3 class="text-lg font-medium text-foreground">No Computer Target</h3>
+      <h3 class="text-lg font-medium text-foreground">No Node Target</h3>
       <p class="text-sm text-center max-w-[300px]">
-        Computer information could not be retrieved. Ensure backend services are
+        Node information could not be retrieved. Ensure backend services are
         running.
       </p>
       <button

@@ -19,13 +19,13 @@
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Collapsible from '$lib/components/ui/collapsible';
   import * as Sidebar from '$lib/components/ui/sidebar';
-  import AgentInspectorDialog from '$lib/components/agent-inspector-dialog.svelte';
+  import AgentDialog from '$lib/components/agent-dialog.svelte';
 
   let { children } = $props();
 
   function isActive(href: string) {
     const path = $page.url.pathname;
-    if (href === '/computers') return path === '/' || path === '/computers';
+    if (href === '/nodes') return path === '/' || path === '/nodes';
     return path === href;
   }
 
@@ -71,7 +71,7 @@
   <Sidebar.Root>
     <Sidebar.Header class="px-4 pt-4">
       <a
-        href="/computers"
+        href="/nodes"
         class="flex items-center gap-2.5 font-bold text-[15px] text-primary tracking-tight no-underline mb-2"
         >TiClaw DevUI</a
       >
@@ -81,7 +81,7 @@
       <Sidebar.Group class="py-0">
         <Sidebar.GroupContent class="flex flex-col gap-1">
           <Sidebar.Menu>
-            <!-- Computer Switcher -->
+            <!-- Node Switcher -->
             <Sidebar.MenuItem>
               <DropdownMenu.Root>
                 <div class="flex items-center w-full">
@@ -92,7 +92,7 @@
                       props: Record<string, unknown>;
                     })}
                       <a
-                        href="/computers"
+                        href="/nodes"
                         {...props}
                         class="{props.class} flex-1 justify-start"
                       >
@@ -101,7 +101,7 @@
                           <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-sidebar {appState.sseConnected ? 'bg-green-500' : 'bg-muted-foreground/50'}"></span>
                         </div>
                         <span class="truncate"
-                          >{appState.nodeInfo?.hostname || 'Manage Computers'}</span
+                          >{appState.nodeInfo?.hostname || 'Manage Nodes'}</span
                         >
                       </a>
                     {/snippet}
@@ -115,13 +115,13 @@
                     })}
                       <Sidebar.MenuAction {...props} showOnHover={false}>
                         <ChevronsUpDown size={14} class="opacity-50" />
-                        <span class="sr-only">Toggle Computer Menu</span>
+                        <span class="sr-only">Toggle Node Menu</span>
                       </Sidebar.MenuAction>
                     {/snippet}
                   </DropdownMenu.Trigger>
                 </div>
                 <DropdownMenu.Content class="w-[200px]" align="start">
-                  <DropdownMenu.Label>Computers</DropdownMenu.Label>
+                  <DropdownMenu.Label>Nodes</DropdownMenu.Label>
                   {#if appState.nodeInfo}
                     <DropdownMenu.Item
                       class="flex flex-col items-start gap-1 cursor-default opacity-100 hover:bg-transparent focus:bg-transparent"
@@ -139,9 +139,9 @@
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item
                     class="cursor-pointer text-muted-foreground"
-                    onclick={() => (window.location.href = '/computers')}
+                    onclick={() => (window.location.href = '/nodes')}
                   >
-                    <Monitor size={14} class="mr-2" /> Manage Computers...
+                    <Monitor size={14} class="mr-2" /> Manage Nodes...
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
@@ -317,14 +317,14 @@
         class="flex items-center justify-between gap-3 px-5 py-2.5 bg-destructive/10 border-b border-destructive/20 text-sm"
       >
         <span
-          >🔒 This computer is not trusted ({appState.nodeInfo.enrollment
+          >🔒 This node is not trusted ({appState.nodeInfo.enrollment
             .trust_state}). Messaging is disabled.</span
         >
         <button
           class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium bg-primary/10 text-primary border border-primary rounded-md cursor-pointer hover:bg-primary/20"
           onclick={appState.trustNode}
         >
-          <Unlock size={12} /> Trust this Computer
+          <Unlock size={12} /> Trust this Node
         </button>
       </div>
     {/if}
@@ -350,4 +350,4 @@
 {/if}
 
 <!-- Agent Inspector Dialog -->
-<AgentInspectorDialog />
+<AgentDialog />

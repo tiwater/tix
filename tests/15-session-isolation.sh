@@ -37,7 +37,7 @@ SESSION_B="iso_sess_b_$$"
 # ── Test 15.1: Session A gets its own response ──
 echo -e "  Testing session A isolation..."
 result_a=$(send_message \
-  "Your secret code for this conversation is ALPHA-7. Please acknowledge by saying: The code is ALPHA-7." \
+  "Your secret code for this conversation is ALPHA-7. Please acknowlnode by saying: The code is ALPHA-7." \
   "$AGENT" "$SESSION_A")
 response_a=$(get_response_text "$result_a" || echo "")
 
@@ -47,7 +47,7 @@ assert_contains "Session A response contains its code" "$response_a" "ALPHA-7"
 # ── Test 15.2: Session B gets its own response ──
 echo -e "  Testing session B isolation..."
 result_b=$(send_message \
-  "Your secret code for this conversation is BRAVO-9. Please acknowledge by saying: The code is BRAVO-9." \
+  "Your secret code for this conversation is BRAVO-9. Please acknowlnode by saying: The code is BRAVO-9." \
   "$AGENT" "$SESSION_B")
 response_b=$(get_response_text "$result_b" || echo "")
 

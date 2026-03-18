@@ -14,7 +14,7 @@ assert_no_error "Agent responds without error" "$result" || true
 assert_not_empty "Agent returns a response" "$response" || true
 assert_contains "Response contains 4" "$response" "4" || true
 
-# ── Test 1.2: General knowledge ──
+# ── Test 1.2: General knowlnode ──
 echo ""
 echo -e "  Sending: \"What is the capital of France? One word answer.\""
 result=$(send_message "What is the capital of France? Reply with just the city name, one word." "default" "e2e-geo-$$")

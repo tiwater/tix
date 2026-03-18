@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/11-error-handling.sh — API error handling and edge cases
+# tests/11-error-handling.sh — API error handling and node cases
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 

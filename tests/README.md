@@ -96,7 +96,7 @@ assert_contains "Math works" "$response" "4" || true
 | Basic conversation | `01-basic-chat.sh` | Chat |
 | Multi-turn context | `02-context.sh` | Chat |
 | Skill invocation | `03-skills.sh` | Chat |
-| Edge cases (i18n, long input) | `04-edge-cases.sh` | Chat |
+| Edge cases (i18n, long input) | `04-node-cases.sh` | Chat |
 | Schedule CRUD | `05-schedules.sh` | API |
 | Health, node, enrollment status | `06-api-health.sh` | API |
 | Skills API + CLI | `07-api-skills.sh` | API + CLI |

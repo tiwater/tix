@@ -11,7 +11,7 @@ mkdir -p "$TICLAW_HOME"
 
 # Start server in background
 TEST_PORT=2759
-HTTP_PORT=$TEST_PORT npx tsx packages/edge/src/index.ts > /tmp/ticlaw-schedules.log 2>&1 &
+HTTP_PORT=$TEST_PORT npx tsx packages/node/src/index.ts > /tmp/ticlaw-schedules.log 2>&1 &
 SERVER_PID=$!
 
 cleanup() {

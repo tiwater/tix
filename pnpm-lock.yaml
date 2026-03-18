@@ -87,9 +87,9 @@ importers:
 
   cli:
     dependencies:
-      '@ticlaw/edge':
+      '@ticlaw/node':
         specifier: workspace:*
-        version: link:../packages/edge
+        version: link:../packages/node
       commander:
         specifier: ^13.0.0
         version: 13.1.0
@@ -98,7 +98,7 @@ importers:
         specifier: ^7.6.13
         version: 7.6.13
 
-  packages/edge:
+  packages/node:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.71

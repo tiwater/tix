@@ -2,7 +2,9 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
-import { readEnvFile } from './env.js';
+import { readEnvFile, readModelsConfig, type ModelEntry } from './env.js';
+import { logger } from './logger.js';
+export type { ModelEntry };
 
 // Read config values from .env (falls back to process.env).
 // Secrets are NOT read here — they stay on disk and are loaded only
@@ -295,6 +297,29 @@ export const DEFAULT_LLM_MODEL =
 export const LLM_BASE_URL =
   process.env.LLM_BASE_URL || envConfig.LLM_BASE_URL || '';
 
+/**
+ * Model registry — loaded once at startup from config.yaml `models` list.
+ * Fallback order = list order. First entry (or first with default:true) is the default.
+ *
+ * Env-var-only setups (no config.yaml models array) will get a synthetic single-entry
+ * list built from LLM_API_KEY / LLM_BASE_URL / DEFAULT_LLM_MODEL.
+ */
+export const MODELS_REGISTRY: ModelEntry[] = (() => {
+  const fromYaml = readModelsConfig();
+  if (fromYaml.length > 0) return fromYaml;
+
+  // Env-var fallback: build a single synthetic entry
+  const apiKey = ANTHROPIC_API_KEY || LLM_API_KEY;
+  const baseUrl = LLM_BASE_URL;
+  const model = process.env.LLM_MODEL || envConfig.LLM_MODEL || '';
+  if (!apiKey) return [];
+  return [{ id: 'default', api_key: apiKey, base_url: baseUrl, model, default: true }];
+})();
+
+/** The default model entry (marked default:true, or first in list). */
+export const DEFAULT_MODEL: ModelEntry | undefined =
+  MODELS_REGISTRY.find((m) => m.default) ?? MODELS_REGISTRY[0];
+
 // Node identity — derived from hostname or manual override via TC_NODE_NAME
 const rawHostname = os.hostname() || 'ticlaw-local';
 export const NODE_HOSTNAME =
@@ -413,4 +438,50 @@ export function agentPaths(agentId: string) {
     logs: path.join(base, 'logs'),
     brain: base,
   };
+}
+
+/**
+ * Get the ordered list of models for a specific agent.
+ *
+ * 1. Checks `agent-config.json` for `model`: "model_id"
+ * 2. If present, puts that model first, followed by the rest of the registry for fallback.
+ * 3. If absent or invalid, returns the full registry (which puts the default model first).
+ */
+export function getAgentModelConfig(agentId: string): ModelEntry[] {
+  let selectedModelId: string | undefined;
+
+  try {
+    const configPath = path.join(AGENTS_DIR, agentId, 'agent-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (typeof config.model === 'string' && config.model) {
+        selectedModelId = config.model;
+      }
+    }
+  } catch (e: any) {
+    logger.warn({ err: e.message, agentId }, 'Failed to parse agent-config.json for model selection');
+  }
+
+  // If no model explicitly selected or registry empty, return registry as-is
+  if (!selectedModelId || MODELS_REGISTRY.length === 0) {
+    // If we have no registry, build one from env fallback (handled by MODELS_REGISTRY init)
+    return MODELS_REGISTRY;
+  }
+
+  // Find the selected model
+  const selectedIdx = MODELS_REGISTRY.findIndex(m => m.id === selectedModelId);
+  
+  // If the agent requested a model that isn't in config.yaml, fall back to default registry
+  if (selectedIdx === -1) {
+    logger.warn(
+      { agentId, requestedModel: selectedModelId },
+      'Agent requested model ID not found in config.yaml models block. Falling back to default.'
+    );
+    return MODELS_REGISTRY;
+  }
+
+  // Build the list: Selected model FIRST, then the rest in their original order for fallback
+  const list = [...MODELS_REGISTRY];
+  const [selected] = list.splice(selectedIdx, 1);
+  return [selected, ...list];
 }

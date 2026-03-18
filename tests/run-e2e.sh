@@ -48,7 +48,7 @@ echo -e "${GREEN}CLI built${NC}"
 # ── Step 2: Start server (unless --no-server) ──
 if [ "$NO_SERVER" = false ]; then
   echo -e "${BOLD}Starting TiClaw server on port ${TC_PORT}...${NC}"
-  HTTP_PORT="$TC_PORT" npx tsx packages/edge/src/index.ts > /tmp/ticlaw-e2e-server.log 2>&1 &
+  HTTP_PORT="$TC_PORT" npx tsx packages/node/src/index.ts > /tmp/ticlaw-e2e-server.log 2>&1 &
   SERVER_PID=$!
   echo -e "  Server PID: ${SERVER_PID}"
 

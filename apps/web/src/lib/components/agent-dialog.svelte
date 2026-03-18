@@ -67,7 +67,7 @@
 </script>
 
 <Dialog.Root bind:open={appState.showAgentInspector}>
-  <Dialog.Content class="max-w-2xl w-[680px] h-[520px] flex flex-col p-0 gap-0">
+  <Dialog.Content class="max-w-4xl w-[880px] h-[520px] flex flex-col p-0 gap-0">
     <Dialog.Header class="px-6 pt-5 pb-0 shrink-0">
       <Dialog.Title class="flex items-center gap-2.5 text-base">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -229,6 +229,36 @@
                   <span class="text-xs font-medium text-foreground">{agentInfo.session_count}</span>
                 </div>
               {/if}
+            </div>
+          </div>
+
+          <!-- Language Model -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Language Model</h4>
+              {#if !agentInfo?.model}
+                <span class="text-[10px] bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded font-medium">System Default</span>
+              {:else}
+                <span class="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">Custom</span>
+              {/if}
+            </div>
+            <div class="bg-muted/30 rounded-xl border border-border/50 divide-y divide-border/30">
+              <div class="p-4 flex items-center justify-between">
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs text-muted-foreground">Selected Model</span>
+                  <span class="text-[10px] text-muted-foreground/70">The language model powering this agent's capabilities.</span>
+                </div>
+                <select
+                  class="bg-background text-sm font-medium rounded-lg px-3 py-2 border border-border focus:ring-1 focus:ring-primary outline-none min-w-[240px]"
+                  value={agentInfo?.model || ''}
+                  onchange={(e) => appState.updateAgentModel(agentId, e.currentTarget.value)}
+                >
+                  <option value="">Auto (System Default)</option>
+                  {#each appState.models as m}
+                    <option value={m.id}>{m.model || m.id}</option>
+                  {/each}
+                </select>
+              </div>
             </div>
           </div>
 

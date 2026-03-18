@@ -17,7 +17,7 @@ print_scenario_header "Scenario 16: Gateway Node Authentication"
 BASE="http://localhost:${TC_PORT:-2755}"
 GATEWAY_PORT="${GATEWAY_PORT:-}"
 
-# ── Test 16.1: Gateway nodes endpoint responds (edge node exposes relay) ──
+# ── Test 16.1: Gateway nodes endpoint responds (node node exposes relay) ──
 echo -e "  Testing /api/gateway/nodes relay..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 nodes_resp=$(tc_curl -sf "${BASE}/api/gateway/nodes" 2>/dev/null) || nodes_resp=""

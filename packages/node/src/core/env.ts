@@ -4,6 +4,16 @@ import path from 'path';
 import yaml from 'yaml';
 import { logger } from './logger.js';
 
+export interface ModelEntry {
+  /** Unique identifier for this model config. */
+  id: string;
+  api_key: string;
+  base_url: string;
+  model: string;
+  /** If true, this model is used when no agent-level model is specified. First in list wins if none marked default. */
+  default?: boolean;
+}
+
 const TICLAW_CONFIG_PATH = path.join(
   process.env.HOME || os.homedir(),
   '.ticlaw',
@@ -40,6 +50,9 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   LLM_API_KEY: ['llm', 'api_key'],
   LLM_MODEL: ['llm', 'model'],
   LLM_BASE_URL: ['llm', 'base_url'],
+  LLM_FALLBACK_API_KEY: ['llm', 'fallback', 'api_key'],
+  LLM_FALLBACK_MODEL: ['llm', 'fallback', 'model'],
+  LLM_FALLBACK_BASE_URL: ['llm', 'fallback', 'base_url'],
   SUPABASE_URL: ['supabase', 'url'],
   SUPABASE_SERVICE_KEY: ['supabase', 'service_key'],
   SUPABASE_SYNC_ENABLED: ['supabase', 'sync_enabled'],
@@ -175,6 +188,63 @@ export function readEnvFile(keys: string[]): Record<string, string> {
 
 /** Path to the YAML config file */
 export { TICLAW_CONFIG_PATH };
+
+/**
+ * Read the models registry from config.yaml.
+ *
+ * Supports two formats:
+ *  1. New: `models: [{ id, api_key, base_url, model, default? }, ...]`
+ *  2. Legacy: `llm: { api_key, base_url, model }` — treated as a single entry with id "default"
+ *
+ * Returns entries in list order. Fallback order = list order.
+ */
+export function readModelsConfig(): ModelEntry[] {
+  let doc: any;
+  try {
+    const content = fs.readFileSync(TICLAW_CONFIG_PATH, 'utf-8');
+    doc = yaml.parse(content);
+  } catch {
+    return [];
+  }
+  if (!doc || typeof doc !== 'object') return [];
+
+  // New format: models array
+  if (Array.isArray(doc.models) && doc.models.length > 0) {
+    const entries: ModelEntry[] = [];
+    for (const m of doc.models) {
+      if (!m || typeof m !== 'object') continue;
+      entries.push({
+        id: String(m.id || 'unnamed'),
+        api_key: String(m.api_key || ''),
+        base_url: String(m.base_url || ''),
+        model: String(m.model || ''),
+        default: !!m.default,
+      });
+    }
+    // If none explicitly marked default, mark first entry
+    if (entries.length > 0 && !entries.some((e) => e.default)) {
+      entries[0].default = true;
+    }
+    return entries;
+  }
+
+  // Legacy format: llm.* single entry
+  const llm = doc.llm;
+  if (llm && typeof llm === 'object') {
+    return [
+      {
+        id: 'default',
+        api_key: String(llm.api_key || ''),
+        base_url: String(llm.base_url || ''),
+        model: String(llm.model || ''),
+        default: true,
+      },
+    ];
+  }
+
+  return [];
+}
+
 
 /** Channels that can be enabled via config. */
 const CONFIGURABLE_CHANNELS = [

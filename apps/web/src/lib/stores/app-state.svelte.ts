@@ -72,8 +72,17 @@ export interface SkillInfo {
 
 export interface AgentInfo {
   agent_id: string;
+  name?: string;
   session_count: number;
   last_active: string;
+  model?: string;
+}
+
+export interface ModelInfo {
+  id: string;
+  model: string;
+  base_url?: string;
+  default?: boolean;
 }
 
 export interface SessionInfo {
@@ -156,6 +165,7 @@ function createAppState() {
   let agentSessions = $state<Record<string, SessionInfo[]>>({});
   let expandedAgents = $state<Set<string>>(new Set());
   let schedules = $state<ScheduleInfo[]>([]);
+  let models = $state<ModelInfo[]>([]);
   let skillsLoading = $state(false);
   let agentsLoading = $state(false);
   let schedulesLoading = $state(false);
@@ -406,6 +416,24 @@ function createAppState() {
     agentsLoading = false;
   }
 
+  async function fetchModels() {
+    try { const res = await fetch('/api/models'); if (res.ok) { const data = await res.json(); models = data.models || []; } } catch { /* */ }
+  }
+
+  async function updateAgentModel(agent_id: string, model: string | undefined) {
+    try {
+      const payload = { model: model || '' };
+      const res = await fetch(`/api/agents/${encodeURIComponent(agent_id)}/model`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        await fetchAgents();
+      }
+    } catch { /* */ }
+  }
+
   function toggleAgentExpanded(agentId: string) {
     const next = new Set(expandedAgents);
     if (next.has(agentId)) next.delete(agentId);
@@ -640,6 +668,7 @@ function createAppState() {
     get agentSessions() { return agentSessions; },
     get expandedAgents() { return expandedAgents; },
     get schedules() { return schedules; },
+    get models() { return models; },
     get skillsLoading() { return skillsLoading; },
     get agentsLoading() { return agentsLoading; },
     get schedulesLoading() { return schedulesLoading; },
@@ -660,9 +689,9 @@ function createAppState() {
     // Methods
     connectSSE, disconnectSSE, addLog,
     fetchMind, fetchMindFiles, fetchSkills, fetchAgents,
-    fetchSchedules, fetchNode, trustNode, toggleSkill,
+    fetchSchedules, fetchNode, trustNode, toggleSkill, fetchModels,
     createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession,
-    send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent,
+    send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent, updateAgentModel,
     formatDate, formatShortDate,
     openAgentInspector(agentId: string) { inspectedAgentId = agentId; showAgentInspector = true; },
   };

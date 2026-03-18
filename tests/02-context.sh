@@ -10,11 +10,11 @@ SESSION_B="e2e-context-B-$$"
 
 # ── Test 2.1: Set a fact in session A ──
 echo -e "  Sending to session A: \"My name is TestBot42. Remember it.\""
-result=$(send_message "My name is TestBot42. Please remember this exact name. Just acknowledge with one sentence." "default" "$SESSION_A")
+result=$(send_message "My name is TestBot42. Please remember this exact name. Just acknowlnode with one sentence." "default" "$SESSION_A")
 response=$(get_response_text "$result")
 
 assert_no_error "Session A: first message accepted" "$result" || true
-assert_not_empty "Session A: agent acknowledges" "$response" || true
+assert_not_empty "Session A: agent acknowlnodes" "$response" || true
 
 # Brief pause to allow the server to fully commit the prior turn's state
 # and release the session lock before the next message.

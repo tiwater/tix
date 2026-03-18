@@ -1,5 +1,5 @@
 /**
- * TiClaw Gateway — WebSocket relay that accepts inbound edge node connections.
+ * TiClaw Gateway — WebSocket relay that accepts inbound node node connections.
  *
  * Standalone package — no ticlaw core dependencies.
  * Ticos/Supen can `import { attachHub } from '@ticlaw/gateway'` to embed.

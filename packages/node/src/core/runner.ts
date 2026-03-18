@@ -15,6 +15,7 @@ import {
   CHILD_ENV_ALLOWLIST,
   LLM_API_KEY,
   LLM_BASE_URL,
+  getAgentModelConfig,
   SKILLS_CONFIG,
   agentPaths,
   TICLAW_HOME,
@@ -327,12 +328,14 @@ function buildQueryOptions(
   agentId: string,
   sessionId: string,
   taskId: string,
+  overrides?: { apiKey?: string; baseUrl?: string; model?: string },
 ) {
   const cliPath = getClaudeCliPath();
 
   // Resolve API key: prefer dedicated ANTHROPIC_API_KEY, fall back to LLM_API_KEY
-  const effectiveApiKey = ANTHROPIC_API_KEY || LLM_API_KEY || '';
-  const effectiveBaseUrl = LLM_BASE_URL || '';
+  const effectiveApiKey = overrides?.apiKey ?? (ANTHROPIC_API_KEY || LLM_API_KEY || '');
+  const effectiveBaseUrl = overrides?.baseUrl ?? (LLM_BASE_URL || '');
+  const effectiveModel = overrides?.model ?? DEFAULT_LLM_MODEL;
 
   if (!effectiveApiKey) {
     logger.warn('No API key configured (ANTHROPIC_API_KEY or LLM_API_KEY)');
@@ -355,7 +358,7 @@ function buildQueryOptions(
       },
     },
     permissionMode: 'acceptEdits' as const,
-    model: DEFAULT_LLM_MODEL,
+    model: effectiveModel,
     settingSources: [] as any[],
     includePartialMessages: true,
     pathToClaudeCodeExecutable: cliPath,
@@ -696,15 +699,7 @@ export class AgentRunner {
           warmSessions.delete(key);
         }
 
-        const opts = buildQueryOptions(
-          systemPrompt,
-          paths.workspace,
-          this.state.agent_id,
-          this.state.session_id,
-          this.state.task_id!,
-        );
-
-        // Dynamically compile the agent's plugin containing all enabled skills
+        // Compile the agent's plugin containing all enabled skills (shared across primary/fallback)
         const pluginPath = path.join(paths.base, 'sdk_plugin');
         const pluginSkillsPath = path.join(pluginPath, 'skills');
         fs.mkdirSync(pluginSkillsPath, { recursive: true });
@@ -716,6 +711,7 @@ export class AgentRunner {
           description: 'TiClaw dynamically compiled skills bundle for native SDK discovery.'
         }, null, 2));
 
+        let compiledPlugins: any[] = [];
         try {
           // Read skills from the global registry
           const registry = new SkillsRegistry(SKILLS_CONFIG);
@@ -769,10 +765,8 @@ export class AgentRunner {
               }
             }
           }
-          
-          opts.plugins = [
-            { type: 'local', path: pluginPath }
-          ];
+
+          compiledPlugins = [{ type: 'local', path: pluginPath }];
         } catch (err: any) {
           logger.error({ err: err.message }, 'Failed to compile skills plugin for agent');
         }
@@ -794,13 +788,71 @@ export class AgentRunner {
           );
         }
 
-        const agentQuery = query({
-          prompt: promptContent,
-          options: {
-            ...opts,
-            ...(savedClaudeSessionId ? { resume: savedClaudeSessionId } : {}),
-          },
-        });
+        const agentModels = getAgentModelConfig(this.state.agent_id);
+        
+        const spawnQuery = (modelOverride: { apiKey?: string; baseUrl?: string; model?: string }) => {
+          const spawnOpts = buildQueryOptions(
+            systemPrompt,
+            paths.workspace,
+            this.state.agent_id,
+            this.state.session_id,
+            this.state.task_id!,
+            modelOverride,
+          );
+          spawnOpts.plugins = compiledPlugins;
+          return query({
+            prompt: promptContent,
+            options: {
+              ...spawnOpts,
+              ...(savedClaudeSessionId ? { resume: savedClaudeSessionId } : {}),
+            },
+          });
+        };
+
+        // Helper: is this error a provider-level failure worth retrying?
+        const isProviderError = (err: any): boolean => {
+          const msg = String(err?.message || err || '').toLowerCase();
+          return (
+            msg.includes('econnrefused') ||
+            msg.includes('enotfound') ||
+            msg.includes('etimedout') ||
+            msg.includes('network') ||
+            msg.includes('401') ||
+            msg.includes('403') ||
+            msg.includes('region') ||
+            msg.includes('not available') ||
+            msg.includes('fetch')
+          );
+        };
+
+        // Try models in order. Stop on success or non-provider error.
+        let agentQueryObj: any;
+        for (let i = 0; i < agentModels.length; i++) {
+          const m = agentModels[i];
+          try {
+             agentQueryObj = spawnQuery({
+               apiKey: m.api_key || undefined,
+               baseUrl: m.base_url || undefined,
+               model: m.model || undefined
+             });
+             // Success - break out of the fallback loop
+             break;
+          } catch (err: any) {
+             const isLast = i === agentModels.length - 1;
+             if (!isLast && isProviderError(err)) {
+               logger.warn(
+                 { err: err.message, failedModelId: m.id, nextModelId: agentModels[i+1]?.id },
+                 'AgentRunner: Provider failed — retrying with next fallback model',
+               );
+               continue;
+             } else {
+               // Ether it's a non-provider logic error, or we've exhausted all models
+               throw err;
+             }
+          }
+        }
+
+        const agentQuery = agentQueryObj;
 
         const newWarm: WarmSession = {
           query: agentQuery as Query,

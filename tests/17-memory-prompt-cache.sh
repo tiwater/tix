@@ -41,7 +41,7 @@ EXPECTED_PATH="$TICLAW_HOME/agents/$MEM_AGENT/.claude_sessions/${SESS_ENCODED}.i
 
 # Send a first message to trigger Claude session ID creation
 result1=$(send_message \
-  "Acknowledge with: SESSION-ONE-READY" \
+  "Acknowlnode with: SESSION-ONE-READY" \
   "$MEM_AGENT" "$SESS1")
 response1=$(get_response_text "$result1" || echo "")
 assert_not_empty "Session 1 responded" "$response1"
@@ -59,7 +59,7 @@ fi
 # ── Test 17.2: Two sessions don't cross-contaminate memory contexts ──
 echo -e "  Testing session-level conversation isolation..."
 result2=$(send_message \
-  "Acknowledge with: SESSION-TWO-READY" \
+  "Acknowlnode with: SESSION-TWO-READY" \
   "$MEM_AGENT" "$SESS2")
 response2=$(get_response_text "$result2" || echo "")
 

@@ -40,6 +40,7 @@ import {
   HTTP_PORT,
   SKILLS_CONFIG,
   agentPaths,
+  MODELS_REGISTRY,
 } from '../core/config.js';
 
 function inferMimeType(filePath: string): string {
@@ -1041,6 +1042,14 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── Web UI API: System Models ──
+
+      if (pathname === '/api/models' && req.method === 'GET') {
+        const publicModels = MODELS_REGISTRY.map(({ api_key, ...rest }) => rest);
+        writeJson(res, 200, { models: publicModels });
+        return;
+      }
+
       // ── Web UI API: Agents ──
 
       if (pathname === '/api/agents' && req.method === 'GET') {
@@ -1051,12 +1060,23 @@ export class HttpChannel implements Channel {
           const agentSessions = allSessions.filter(
             (s) => s.agent_id === a.agent_id,
           );
+          let model: string | undefined;
+          try {
+            const configPath = agentPaths(a.agent_id).config;
+            if (fs.existsSync(configPath)) {
+              const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+              model = config.model;
+            }
+          } catch {
+             /* ignore */
+          }
           return {
             agent_id: a.agent_id,
             name: a.name,
             session_count: agentSessions.length,
             created_at: a.created_at,
             updated_at: a.updated_at,
+            model,
           };
         });
         writeJson(res, 200, { agents: agentList });
@@ -1082,6 +1102,33 @@ export class HttpChannel implements Channel {
           .replace(/-+/g, '-');
         const agent = ensureAgent({ agent_id: agentId, name });
         writeJson(res, 201, { agent });
+        return;
+      }
+
+      const agentModelMatch = pathname.match(/^\/api\/agents\/([^/]+)\/model$/);
+      if (agentModelMatch && req.method === 'POST') {
+        const agentId = decodeURIComponent(agentModelMatch[1]);
+        const body = await readJsonBody(req);
+        const modelId = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined;
+        
+        try {
+          const configPath = agentPaths(agentId).config;
+          let config: any = {};
+          if (fs.existsSync(configPath)) {
+            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          }
+          if (modelId) {
+            config.model = modelId;
+          } else {
+            delete config.model;
+          }
+          // Ensure directory exists
+          fs.mkdirSync(path.dirname(configPath), { recursive: true });
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          writeJson(res, 200, { ok: true, model: modelId });
+        } catch (err: any) {
+          writeProtocolError(res, 500, 'internal_error', 'config_update_failed', err.message);
+        }
         return;
       }
 
