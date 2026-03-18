@@ -246,12 +246,12 @@
                                 >
                                   <span
                                     class={[
-                                      "whitespace-nowrap overflow-hidden text-ellipsis text-[12px] transition-colors min-w-0",
-                                      $page.url.pathname === `/sessions/${sess.session_id}` 
-                                        ? "text-foreground font-medium" 
+                                      "whitespace-nowrap overflow-hidden text-ellipsis text-[12px] transition-colors min-w-0 block w-[160px]",
+                                      $page.url.pathname === `/sessions/${sess.session_id}`
+                                        ? "text-foreground font-medium"
                                         : "text-muted-foreground group-hover/session-link:text-foreground/80"
                                     ].join(' ')}
-                                    >{sess.title || sess.session_id.slice(0, 8)}</span
+                                    >{sess.title || 'New Session'}</span
                                   >
                                 </a>
                               {/snippet}
