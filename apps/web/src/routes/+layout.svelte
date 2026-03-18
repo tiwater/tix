@@ -251,7 +251,7 @@
                                         ? "text-foreground font-medium" 
                                         : "text-muted-foreground group-hover/session-link:text-foreground/80"
                                     ].join(' ')}
-                                    >{sess.session_id}</span
+                                    >{sess.title || sess.session_id.slice(0, 8)}</span
                                   >
                                 </a>
                               {/snippet}

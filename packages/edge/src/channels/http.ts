@@ -68,6 +68,7 @@ import {
   deleteSchedule,
   deleteSession,
   deleteSessionForAgent,
+  updateSessionTitle,
   resolveFromChatJid,
 } from '../core/store.js';
 import { SkillsRegistry } from '../skills/registry.js';
@@ -610,7 +611,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Workspace file upload ──
+      // ── Workspace file upload (JSON with base64-encoded files) ──
       if (pathname === '/api/workspace/upload' && req.method === 'POST') {
         const agentId = url.searchParams.get('agent_id');
         if (!agentId) {
@@ -618,87 +619,49 @@ export class HttpChannel implements Channel {
           return;
         }
 
-        const contentType = req.headers['content-type'] || '';
-        if (!contentType.includes('multipart/form-data')) {
-          writeJson(res, 400, { error: 'Content-Type must be multipart/form-data' });
+        // Body is already parsed by the gateway relay as JSON
+        // Format: { files: [{ name: string, data: string (base64) }] }
+        const reqBody = (req as any)._body || await new Promise<any>((resolve) => {
+          let raw = '';
+          req.on('data', (chunk: Buffer) => { raw += chunk; });
+          req.on('end', () => {
+            try { resolve(JSON.parse(raw)); } catch { resolve(null); }
+          });
+        });
+
+        if (!reqBody?.files || !Array.isArray(reqBody.files)) {
+          writeJson(res, 400, { error: 'Request body must contain files array with { name, data } objects' });
           return;
         }
 
-        const boundaryMatch = contentType.match(/boundary=(.+?)(?:;|$)/);
-        if (!boundaryMatch) {
-          writeJson(res, 400, { error: 'Missing multipart boundary' });
-          return;
-        }
-
-        const boundary = boundaryMatch[1];
         const workspace = agentPaths(agentId).workspace;
         const uploadDir = path.join(workspace, '.uploads');
         fs.mkdirSync(uploadDir, { recursive: true });
 
-        // Collect entire body (limit to 50MB)
-        const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
-        const chunks: Buffer[] = [];
-        let totalSize = 0;
-
-        try {
-          await new Promise<void>((resolve, reject) => {
-            req.on('data', (chunk: Buffer) => {
-              totalSize += chunk.length;
-              if (totalSize > MAX_UPLOAD_SIZE) {
-                req.destroy();
-                reject(new Error('Upload too large (max 50MB)'));
-                return;
-              }
-              chunks.push(chunk);
-            });
-            req.on('end', resolve);
-            req.on('error', reject);
-          });
-        } catch (e: any) {
-          writeJson(res, 413, { error: e.message || 'Upload failed' });
-          return;
-        }
-
-        const body = Buffer.concat(chunks);
-        const boundaryBuf = Buffer.from('--' + boundary);
         const uploadedFiles: { name: string; path: string; ticlawUrl: string; size: number }[] = [];
 
-        // Simple multipart parser
-        let searchStart = 0;
-        while (true) {
-          const partStart = body.indexOf(boundaryBuf, searchStart);
-          if (partStart < 0) break;
+        for (const file of reqBody.files) {
+          if (!file.name || !file.data) continue;
+          const originalName = path.basename(file.name); // sanitize
+          const content = Buffer.from(file.data, 'base64');
 
-          const headerEnd = body.indexOf(Buffer.from('\r\n\r\n'), partStart);
-          if (headerEnd < 0) break;
+          // 50MB per-file limit
+          if (content.length > 50 * 1024 * 1024) continue;
 
-          const nextBoundary = body.indexOf(boundaryBuf, headerEnd + 4);
-          if (nextBoundary < 0) break;
+          const uuid = randomUUID().slice(0, 8);
+          const destName = `${uuid}-${originalName}`;
+          const destPath = path.join(uploadDir, destName);
+          fs.writeFileSync(destPath, content);
 
-          const headers = body.slice(partStart + boundaryBuf.length, headerEnd).toString('utf-8');
-          // Extract filename from Content-Disposition
-          const filenameMatch = headers.match(/filename="([^"]+)"/);
-          if (filenameMatch) {
-            const originalName = path.basename(filenameMatch[1]); // sanitize
-            // Content ends 2 bytes before next boundary (\r\n)
-            const content = body.slice(headerEnd + 4, nextBoundary - 2);
-            const uuid = randomUUID().slice(0, 8);
-            const destName = `${uuid}-${originalName}`;
-            const destPath = path.join(uploadDir, destName);
-            fs.writeFileSync(destPath, content);
+          const relPath = `.uploads/${destName}`;
+          uploadedFiles.push({
+            name: originalName,
+            path: relPath,
+            ticlawUrl: `ticlaw://workspace/${agentId}/${relPath}`,
+            size: content.length,
+          });
 
-            const relPath = `.uploads/${destName}`;
-            uploadedFiles.push({
-              name: originalName,
-              path: relPath,
-              ticlawUrl: `ticlaw://workspace/${agentId}/${relPath}`,
-              size: content.length,
-            });
-
-            logger.info({ agentId, destName, size: content.length }, 'File uploaded to workspace');
-          }
-
-          searchStart = nextBoundary;
+          logger.info({ agentId, destName, size: content.length }, 'File uploaded to workspace');
         }
 
         writeJson(res, 200, { files: uploadedFiles });
@@ -1253,6 +1216,39 @@ export class HttpChannel implements Channel {
         }
 
         writeJson(res, 200, { ok: true });
+        return;
+      }
+
+      // PATCH /api/sessions/:id — update session (title)
+      if (sessionDeleteMatch && req.method === 'PATCH') {
+        const id = decodeURIComponent(sessionDeleteMatch[1]);
+        const body = await readJsonBody(req);
+        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (!agentId || !title) {
+          writeJson(res, 400, { error: 'agent_id and title are required' });
+          return;
+        }
+        const ok = updateSessionTitle(agentId, id, title);
+        writeJson(res, ok ? 200 : 404, ok ? { ok: true, title } : { error: 'session not found' });
+        return;
+      }
+
+      // POST /api/sessions/:id/generate-title — auto-generate title from message
+      const titleGenMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/generate-title$/);
+      if (titleGenMatch && req.method === 'POST') {
+        const id = decodeURIComponent(titleGenMatch[1]);
+        const body = await readJsonBody(req);
+        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const message = typeof body.message === 'string' ? body.message.trim() : '';
+        if (!agentId || !message) {
+          writeJson(res, 400, { error: 'agent_id and message are required' });
+          return;
+        }
+        // Generate a short title from the message (truncate to first ~50 chars as simple fallback)
+        const title = message.length > 50 ? message.slice(0, 47) + '…' : message;
+        updateSessionTitle(agentId, id, title);
+        writeJson(res, 200, { title });
         return;
       }
 

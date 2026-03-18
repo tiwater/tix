@@ -80,6 +80,7 @@ export interface SessionInfo {
   session_id: string;
   agent_id: string;
   channel: string;
+  title?: string;
   status: string;
   created_at: string;
   updated_at: string;
@@ -187,32 +188,49 @@ function createAppState() {
     pendingFiles = pendingFiles.filter((_, i) => i !== index);
   }
 
-  async function uploadPendingFiles(): Promise<string[]> {
-    if (pendingFiles.length === 0) return [];
+  async function uploadPendingFiles(): Promise<{ refs: string[]; names: string[] }> {
+    if (pendingFiles.length === 0) return { refs: [], names: [] };
     const refs: string[] = [];
+    const names: string[] = [];
     const toUpload = [...pendingFiles];
     pendingFiles = toUpload.map(f => ({ ...f, uploading: true }));
 
-    const formData = new FormData();
+    // Convert files to base64 for JSON transport (works through gateway relay)
+    const filesPayload: { name: string; data: string }[] = [];
     for (const pf of toUpload) {
-      formData.append('files', pf.file, pf.name);
+      names.push(pf.name);
+      const buf = await pf.file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      const base64 = btoa(binary);
+      filesPayload.push({ name: pf.name, data: base64 });
     }
 
     try {
       const res = await fetch(`/api/workspace/upload?agent_id=${encodeURIComponent(agentId)}`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: filesPayload }),
       });
       if (res.ok) {
         const data = await res.json();
         for (const f of data.files || []) {
           refs.push(f.ticlawUrl);
         }
+      } else {
+        const errText = await res.text().catch(() => '');
+        messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ File upload failed (${res.status}): ${errText}`, time: '' }];
       }
-    } catch { /* */ }
+    } catch (e: any) {
+      messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ File upload error: ${e.message || 'Network error'}`, time: '' }];
+    }
 
     pendingFiles = [];
-    return refs;
+    return { refs, names };
   }
 
   let eventSource: EventSource | null = null;
@@ -463,6 +481,37 @@ function createAppState() {
     return agentSessions[agentId] || [];
   }
 
+  function findSession(sid: string): SessionInfo | undefined {
+    for (const sessions of Object.values(agentSessions)) {
+      const found = sessions.find(s => s.session_id === sid);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  async function generateSessionTitle(aid: string, sid: string, message: string) {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/generate-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: aid, message }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title) {
+          // Update local state so sidebar reflects the new title immediately
+          const updated = { ...agentSessions };
+          if (updated[aid]) {
+            updated[aid] = updated[aid].map(s =>
+              s.session_id === sid ? { ...s, title: data.title } : s
+            );
+            agentSessions = updated;
+          }
+        }
+      }
+    } catch { /* fire-and-forget */ }
+  }
+
   async function fetchSchedules() {
     schedulesLoading = true;
     try { const res = await fetch('/api/schedules'); if (res.ok) { const data = await res.json(); schedules = data.schedules || []; } } catch { /* */ }
@@ -606,19 +655,34 @@ function createAppState() {
     if ((!content && pendingFiles.length === 0) || sending) return;
 
     // Upload pending files first
-    const fileRefs = await uploadPendingFiles();
+    const { refs, names } = await uploadPendingFiles();
+
+    // Build the content sent to the agent (includes ticlaw:// paths)
     let fullContent = content;
-    if (fileRefs.length > 0) {
-      const refLines = fileRefs.map(url => `[Attached: ${url}]`).join('\n');
+    if (refs.length > 0) {
+      const refLines = refs.map((url, i) => `[Attached file: ${names[i] || 'file'} → ${url}]`).join('\n');
       fullContent = fullContent ? `${refLines}\n\n${fullContent}` : refLines;
     }
     if (!fullContent) return;
 
-    messages = [...messages, { id: `user-${Date.now()}`, role: 'user', text: fullContent, time: new Date().toLocaleTimeString() }];
+    // Build the user-visible message (friendly file names)
+    let displayContent = content;
+    if (names.length > 0) {
+      const fileChips = names.map(n => `📎 ${n}`).join('  ');
+      displayContent = displayContent ? `${fileChips}\n${displayContent}` : fileChips;
+    }
+
+    messages = [...messages, { id: `user-${Date.now()}`, role: 'user', text: displayContent, time: new Date().toLocaleTimeString() }];
     inputText = '';
     sending = true;
     isThinking = true;
     progressCategory = '';
+
+    // Auto-generate title for untitled sessions (fire-and-forget)
+    const currentSession = findSession(sessionId);
+    if (currentSession && !currentSession.title) {
+      generateSessionTitle(agentId, sessionId, content || names.join(', '));
+    }
 
     try {
       const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content: fullContent }) });
