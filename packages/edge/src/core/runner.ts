@@ -165,6 +165,14 @@ function getPromptMtimeKey(baseDir: string): string {
   } catch {
     key += 'memory:0;';
   }
+  // Check agent-specific skills.json for skill isolation (issue #64)
+  try {
+    const agentSkillsPath = path.join(baseDir, 'skills.json');
+    const stat = fs.statSync(agentSkillsPath);
+    key += `agent-skills:${stat.mtimeMs};`;
+  } catch {
+    key += 'agent-skills:0;';
+  }
   try {
     const stat = fs.statSync(SKILLS_CONFIG.statePath);
     key += `skills:${stat.mtimeMs}`;
