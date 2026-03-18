@@ -557,14 +557,14 @@ export class HttpChannel implements Channel {
       }
 
       // ── Workspace file access ──
-      const workspaceMatch = pathname.match(/^\/api\/workspace\/(.+)$/);
+      const workspaceMatch = pathname.match(/^\/api\/workspace\/(.*)$/);
       if (workspaceMatch && req.method === 'GET') {
         const agentId = url.searchParams.get('agent_id');
         if (!agentId) {
           writeJson(res, 400, { error: 'agent_id query parameter is required' });
           return;
         }
-        const relPath = decodeURIComponent(workspaceMatch[1]);
+        const relPath = decodeURIComponent(workspaceMatch[1] || '.') || '.';
         // Prevent path traversal
         const normalized = path.normalize(relPath);
         if (normalized.startsWith('..') || path.isAbsolute(normalized)) {

@@ -54,7 +54,8 @@
     workspaceLoading = true;
     workspacePath = relPath;
     try {
-      const res = await fetch(`/api/workspace/${encodeURIComponent(relPath)}?agent_id=${encodeURIComponent(agentId)}`);
+      const urlPath = relPath === '.' ? '' : encodeURIComponent(relPath);
+      const res = await fetch(`/api/workspace/${urlPath}?agent_id=${encodeURIComponent(agentId)}`);
       if (res.ok) {
         const data = await res.json();
         workspaceEntries = (data.entries || []).sort((a: WorkspaceEntry, b: WorkspaceEntry) => {
