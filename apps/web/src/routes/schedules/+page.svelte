@@ -12,7 +12,7 @@
     PackageSearch,
     ShieldCheck,
   } from 'lucide-svelte';
-  import NewAutomationDialog from './NewAutomationDialog.svelte';
+  import NewAutomationDialog from './new-automation-dialog.svelte';
 
   interface AutomationTemplate {
     title: string;
