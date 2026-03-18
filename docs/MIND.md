@@ -1,30 +1,30 @@
-# TiClaw & OpenClaw Alignment Design
+# Agent Mind Architecture (MIND.md)
 
-This document outlines how TiClaw's memory and persona architecture aligns with the [OpenClaw Templates Specification](https://docs.openclaw.ai/reference), and identifies gaps for future development.
+TiClaw agents possess a continuous memory and persona framework inspired by the OpenClaw standard. The agent's "mind" is defined by four distinct Markdown files that live inside the agent's dedicated workspace (`~/.ticlaw/agents/<agent_id>/`).
 
-## Current Alignment
+The agent is fully aware of these files and actively uses its file-editing capabilities to update them as it learns new information.
 
-TiClaw implements an almost 1:1 mapping of the OpenClaw standard due to its utilization of the Claude Agent SDK and local file system permissions.
+## The Core Files
 
-1. **`SOUL.md`**: Implemented. The TiClaw agent loads this as its highest priority set of immutable rules.
-2. **`IDENTITY.md` and `USER.md`**: Implemented. The agent is explicitly instructed to mutate these files actively when its persona or the user's preferences change.
-3. **`MEMORY.md`**: Implemented. The agent actively preserves long-term facts by editing this file during sessions.
-4. **Session Startup (`AGENTS.md`)**: Implemented. TiClaw natively mimics the OpenClaw `AGENTS.md` spec by automatically prepending recent `memory/YYYY-MM-DD.md` logs to the system prompt. It also automatically handles saving to daily logs upon task completion.
+### 1. `SOUL.md` (The DNA)
+**Purpose:** Core system instructions, hard boundary rules, and immutable ethical directives.
+**Maintained by:** Usually you (the operator).
+**Behavior:** This file acts as the ultimate guardrail for the agent. It defines things like "Private things stay private," "When in doubt, ask before acting externally," and any specific rules the agent must never break. The agent rarely updates this file itself.
+
+### 2. `IDENTITY.md` (The Persona)
+**Purpose:** Who the agent is: its adopted name, background story, creature type, tone of voice, and signature emoji.
+**Maintained by:** The Agent.
+**Behavior:** The agent uses this file to construct its sense of self during conversations. If you instruct the agent to adopt a new name or a specific personality ("from now on, you are a snarky senior developer named Adam"), the agent will automatically update this file.
+
+### 3. `USER.md` (The Human Counterpart)
+**Purpose:** Who *you* are: your name, your timezone, your project context, and your behavioral preferences.
+**Maintained by:** The Agent.
+**Behavior:** Over time, as the agent learns your preferences (e.g., "I prefer concise JSON responses," or "my working directory is always `/src/app`"), it will document these facts here so it remembers them across all future sessions.
+
+### 4. `MEMORY.md` (Long-Term Knowledge)
+**Purpose:** Curated long-term facts, environmental knowledge, rules, and system details.
+**Maintained by:** The Agent.
+**Behavior:** While TiClaw captures everything in daily raw journals (`memory/YYYY-MM-DD.md`), `MEMORY.md` acts as the consolidated, high-signal knowledge base. The agent actively graduates important facts from the daily journal into this long-term memory file.
 
 ---
-
-## Technical Gaps & Future Work
-
-While the core functionality is aligned, the following three implementation gaps remain to achieve full feature parity with the OpenClaw standard:
-
-### 1. Weak Initial Defaults for Mind Files
-Currently, `packages/node/src/core/runner.ts` initializes new agents with blank files (e.g., `# SOUL.md\n\nInitialized.`). 
-**Design Goal**: We should inject robust default templates holding standard safety boundaries (e.g., *"Private things stay private. When in doubt, ask before acting externally"*) during the initial `fs.writeFileSync()` creation sequence.
-
-### 2. Lack of Automatic "First Run" Bootstrapping
-OpenClaw designates a `BOOTSTRAP.md` workflow designed to interview the user on their first session.
-**Design Goal**: TiClaw could implement an automated onboarding flow. If `IDENTITY.md` only contains the default boilerplate, the frontend or backend could trigger a specialized "Bootstrap" instruction telling the agent to interview the user before accepting normal commands.
-
-### 3. Automated Memory Maintenance (Heartbeats)
-OpenClaw relies on a "Heartbeat" cron pattern to routinely read, compress, and consolidate `memory/*.md` daily logs into `MEMORY.md`. Currently, TiClaw only consolidates memories actively during an engaged user session.
-**Design Goal**: We should leverage the existing TiClaw `mcp-scheduler` to dispatch an automatic background event (e.g., daily at 2:00 AM) that commands the agent to read yesterday's logs and extract the salient points into long-term `MEMORY.md`. 
+By allowing the agent to mutate its own `IDENTITY.md`, `USER.md`, and `MEMORY.md`, TiClaw agents natively achieve true continuity and an evolving relationship with their operators across sessions. 

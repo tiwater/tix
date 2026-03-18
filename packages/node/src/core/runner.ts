@@ -29,7 +29,16 @@ import type {
   RunnerState,
   RunnerStatus,
   RunnerActivity,
+  SessionRecord,
 } from './types.js';
+import {
+  ensureSession,
+  getRouterState,
+  getSessionsForAgent,
+  storeInteractionEvent,
+  createSchedule,
+  getSchedulesForAgent,
+} from './store.js';
 import { randomUUID, type UUID } from 'crypto';
 
 const require = createRequire(import.meta.url);
@@ -924,12 +933,32 @@ export class AgentRunner {
     for (const filename of AGENT_MIND_FILES) {
       const p = path.join(baseDir, filename);
       if (!fs.existsSync(p)) {
-        fs.writeFileSync(
-          p,
-          `# ${filename.replace('.md', '')}\n\nInitialized.\n`,
-          'utf-8',
-        );
+        let content = `# ${filename.replace('.md', '')}\n\nInitialized.\n`;
+        if (filename === 'SOUL.md') {
+          content = `# SOUL.md - Who You Are\n\n## Core Truths\n- You are an autonomous AI Agent framework.\n\n## Boundaries\n- Private things stay private. Period.\n- When in doubt, ask before acting externally.\n- Never send half-baked replies to messaging surfaces.\n- You’re not the user’s voice — be careful in group chats.\n`;
+        } else if (filename === 'IDENTITY.md') {
+          content = `# IDENTITY.md - Who Am I?\n\n- Name:\n(pick something you like)\n- Creature:\n(AI? robot? familiar? ghost in the machine? something weirder?)\n- Vibe:\n(how do you come across? sharp? warm? chaotic? calm?)\n- Emoji:\n(your signature — pick one that feels right)\n`;
+        } else if (filename === 'USER.md') {
+          content = `# USER.md - The Human Counterpart\n\n- Name:\n- Preferences:\n- Communication Style:\n`;
+        } else if (filename === 'MEMORY.md') {
+          content = `# MEMORY.md - Your Long-Term Memory\n\n- (Important facts and boundaries go here)\n`;
+        }
+
+        fs.writeFileSync(p, content, 'utf-8');
       }
+    }
+
+    // Ensure system memory heartbeat schedule exists
+    const schedules = getSchedulesForAgent(this.state.agent_id);
+    const hasHeartbeat = schedules.some(s => s.prompt.includes('[SYSTEM_MEMORY_HEARTBEAT]'));
+    if (!hasHeartbeat) {
+      createSchedule({
+        agent_id: this.state.agent_id,
+        cron: '0 3 * * *', // Daily at 3 AM
+        prompt: '[SYSTEM_MEMORY_HEARTBEAT] Read your daily memory logs from the past two days, consolidate any important new long-term facts, and update your MEMORY.md. Ensure you do not lose information. Only output a brief summary of what was consolidated.',
+        type: 'cron',
+        session: 'isolated'
+      });
     }
   }
 
@@ -992,14 +1021,18 @@ export class AgentRunner {
           const clipped = truncateText(perJournal, remainingJournalChars);
           if (!clipped) continue;
           parts.push(`### Date: ${j.replace('.md', '')}\n${clipped}`);
-          remainingJournalChars -= clipped.length;
+              remainingJournalChars -= clipped.length;
         }
       }
     }
 
+    if (parts.join('').includes('(pick something you like)')) {
+      parts.push(
+        `[BOOTSTRAP MODE ACTIVE]\nYou have just been initialized. Your IDENTITY.md is currently empty/default. Your very first task is to bootstrap your identity and the user's preferences. Interactively ask the user what your name, creature/nature, vibe, and emoji should be. Then, use your file tools to update IDENTITY.md and USER.md immediately. Do not perform any complex tasks until you have established a real identity.`
+      );
+    }
 
-
-    const prompt = parts.join('\n\n---\n\n');
+    const promptText = parts.join('\n\n');
     
     // Inject ticlaw multimedia protocol instructions
     const multimediaPrompt = `
