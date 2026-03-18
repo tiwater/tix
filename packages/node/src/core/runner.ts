@@ -954,8 +954,15 @@ export class AgentRunner {
 
     const parts: string[] = [
       `You are ${ASSISTANT_NAME}. Work strictly within your assigned workspace: ${workspaceDir}`,
-      `Do not create, modify, or interact with files outside of this workspace directory unless specifically requested by the user.`,
-      `Your core persona and memory are defined in the following Markdown files.`,
+      `Do not create, modify, or interact with files outside of this workspace directory unless specifically requested by the user, WITH ONE EXCEPTION:`,
+      `Your core persona, identity, and memory are permanently stored in Markdown files located in your mind directory: ${baseDir}`,
+      `Here is the purpose of each file:
+- SOUL.md: Your core system instructions and immutable traits.
+- IDENTITY.md: Who you are, your name, persona, and background.
+- USER.md: Information about the user, their preferences, and their name.
+- MEMORY.md: Long-term facts, rules, environmental knowledge, and learned concepts.`,
+      `Whenever you learn new, persistent information, you MUST proactively use your file editing tools to update the corresponding files in ${baseDir} to ensure this knowledge is preserved across sessions. Avoid saving transient or session-specific details here.`,
+      `Currently, your mind files contain the following definitions:`
     ];
 
     for (const filename of AGENT_MIND_FILES) {
