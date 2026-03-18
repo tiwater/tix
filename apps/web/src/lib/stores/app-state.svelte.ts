@@ -708,7 +708,7 @@ function createAppState() {
   }
 
   function selectSession(sess: SessionInfo) {
-    const isSameSession = sessionId === sess.session_id;
+    if (sessionId === sess.session_id) return; // already active — do nothing
     agentId = sess.agent_id;
     if (isBrowser) localStorage.setItem('agentId', agentId);
     sessionId = sess.session_id;
