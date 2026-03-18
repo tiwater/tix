@@ -1190,6 +1190,22 @@ export class HttpChannel implements Channel {
           );
           return;
         }
+
+        // Validate cron expression before creating schedule
+        try {
+          const { CronExpressionParser } = await import('cron-parser');
+          CronExpressionParser.parse(cron, { tz: 'Asia/Shanghai' });
+        } catch (e) {
+          writeProtocolError(
+            res,
+            400,
+            'validation_error',
+            'invalid_cron',
+            `Invalid cron expression: ${cron}`,
+          );
+          return;
+        }
+
         const schedule = createSchedule({
           agent_id: agentId,
           prompt,
