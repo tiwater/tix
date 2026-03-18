@@ -14,10 +14,12 @@
     ChevronsUpDown,
     Plus,
     Archive,
+    Info,
   } from 'lucide-svelte';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Collapsible from '$lib/components/ui/collapsible';
   import * as Sidebar from '$lib/components/ui/sidebar';
+  import AgentInspectorDialog from '$lib/components/agent-inspector-dialog.svelte';
 
   let { children } = $props();
 
@@ -192,6 +194,16 @@
                       {/if}
                     </Collapsible.Trigger>
                     <button
+                      title="Inspect {agent.agent_id}"
+                      class="w-5 h-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground opacity-0 group-hover/agent:opacity-100 transition-all cursor-pointer"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        appState.openAgentInspector(agent.agent_id);
+                      }}
+                    >
+                      <Info size={12} />
+                    </button>
+                    <button
                       title="New session for {agent.agent_id}"
                       class="w-5 h-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground opacity-0 group-hover/agent:opacity-100 transition-all cursor-pointer mr-1"
                       onclick={(e) => {
@@ -337,4 +349,5 @@
   </div>
 {/if}
 
-
+<!-- Agent Inspector Dialog -->
+<AgentInspectorDialog />

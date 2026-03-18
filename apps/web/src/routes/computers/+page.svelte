@@ -453,8 +453,9 @@
         {:else}
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {#each appState.agents as agent}
-              <div
-                class="bg-muted/30 border border-border/50 rounded-xl p-4 flex flex-col gap-2 group hover:border-primary/30 transition-colors"
+              <button
+                class="bg-muted/30 border border-border/50 rounded-xl p-4 flex flex-col gap-2 group hover:border-primary/30 transition-colors cursor-pointer text-left w-full"
+                onclick={() => appState.openAgentInspector(agent.agent_id)}
               >
                 <div class="flex items-center gap-2">
                   <Bot size={16} class="text-primary/70" />
@@ -474,7 +475,7 @@
                     >
                   {/if}
                 </div>
-              </div>
+              </button>
             {/each}
           </div>
         {/if}

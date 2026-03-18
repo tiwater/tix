@@ -6,6 +6,7 @@
   import { resolveProtocolUrls } from '$lib/ticlaw-protocol';
   import { page } from '$app/stores';
 
+
   function renderMarkdown(text: string): string {
     const html = DOMPurify.sanitize(marked.parse(text) as string, {
       ALLOWED_URI_REGEXP:
@@ -15,24 +16,15 @@
   }
   import {
     Send,
-    PanelRightOpen,
-    PanelRightClose,
-    FileText,
-    Brain,
-    CircleUser,
-    BookOpen,
     RefreshCw,
-    ChevronDown,
-    ChevronRight,
+    Brain,
     Puzzle,
-    ToggleLeft,
-    ToggleRight,
     Loader,
   } from 'lucide-svelte';
 
   let messagesEl = $state<HTMLElement>(null!);
   let inputEl = $state<HTMLTextAreaElement>(null!);
-  let expandedFiles = $state<Record<string, boolean>>({});
+
 
   let isUserScrolledUp = $state(false);
   let isProgrammaticScroll = false;
@@ -71,16 +63,7 @@
     if (wasScrolledUp) scrollToBottom('smooth');
   }
 
-  function toggleFile(name: string) {
-    expandedFiles = { ...expandedFiles, [name]: !expandedFiles[name] };
-  }
 
-  function fileIcon(name: string) {
-    if (name === 'SOUL.md') return 'soul';
-    if (name === 'MEMORY.md') return 'memory';
-    if (name === 'USER.md') return 'user';
-    return 'identity';
-  }
 
   // Watch messages for auto-scroll
   $effect(() => {
@@ -289,7 +272,7 @@
     </div>
   </div>
 
-  <!-- Right Settings Pane -->
+  <!-- Right Session Inspection Pane -->
   <div
     class="w-[300px] border-l border-border bg-card flex flex-col shrink-0 overflow-hidden h-[100dvh]"
   >
@@ -299,133 +282,46 @@
     >
       <span
         class="text-xs font-semibold text-foreground uppercase tracking-wider"
-        >Agent Mind</span
+        >Session</span
       >
-      <button
-        class="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        onclick={() => appState.fetchMindFiles()}
-        title="Refresh mind files"
-      >
-        <RefreshCw size={13} />
-      </button>
     </div>
 
-    <!-- Mind Files -->
     <div class="flex-1 overflow-y-auto">
-      {#if Object.keys(appState.mindFiles).length === 0}
-        <div class="px-4 py-8 text-center text-xs text-muted-foreground">
-          No mind files found.<br />
-          <span class="text-[10px]"
-            >Send a message to initialize the agent's mind.</span
-          >
+      <!-- Session Info -->
+      <div class="px-4 py-3">
+        <div
+          class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5"
+        >
+          Details
         </div>
-      {:else}
-        {#each Object.entries(appState.mindFiles) as [name, file]}
-          <div class="border-b border-border/50">
-            <!-- File header (clickable to expand/collapse) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="text-muted-foreground">Session ID</span>
+            <span class="text-foreground font-mono text-[10px] truncate max-w-[160px]"
+              >{appState.sessionId}</span
+            >
+          </div>
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="text-muted-foreground">Agent</span>
             <button
-              class="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-muted/50 transition-colors bg-transparent border-none cursor-pointer"
-              onclick={() => toggleFile(name)}
+              class="text-primary font-mono text-[10px] hover:underline cursor-pointer bg-transparent border-none p-0 truncate max-w-[160px]"
+              onclick={() => { appState.openAgentInspector(appState.agentId); }}
+              title="Inspect agent {appState.agentId}"
             >
-              <span class="text-muted-foreground">
-                {#if expandedFiles[name]}<ChevronDown
-                    size={12}
-                  />{:else}<ChevronRight size={12} />{/if}
-              </span>
-              <span class="text-muted-foreground">
-                {#if fileIcon(name) === 'soul'}<Brain size={14} />
-                {:else if fileIcon(name) === 'memory'}<BookOpen size={14} />
-                {:else if fileIcon(name) === 'user'}<CircleUser size={14} />
-                {:else}<FileText size={14} />
-                {/if}
-              </span>
-              <span class="text-xs font-medium text-foreground flex-1"
-                >{name}</span
-              >
-              {#if file.updatedRecently}
-                <span
-                  class="text-[9px] bg-green-500/20 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full font-medium"
-                  >updated</span
-                >
-              {/if}
+              {appState.agentId}
             </button>
-
-            <!-- File content (expanded) -->
-            {#if expandedFiles[name]}
-              <div class="px-4 pb-3">
-                <pre
-                  class="text-[11px] leading-relaxed text-muted-foreground bg-muted/50 rounded-md p-2.5 overflow-x-auto max-h-[300px] overflow-y-auto whitespace-pre-wrap break-words m-0 font-mono">{file.content ||
-                    '(empty)'}</pre>
-              </div>
-            {/if}
           </div>
-        {/each}
-      {/if}
-
-      <!-- Skills / Permissions -->
-      <div class="px-4 py-3 border-t border-border">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center gap-1.5">
-            <Puzzle size={11} class="text-muted-foreground" />
-            <span
-              class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider"
-              >Skills</span
-            >
-          </div>
-          <button
-            class="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            onclick={() => appState.fetchSkills()}
-            title="Refresh skills"
-          >
-            <RefreshCw size={11} />
-          </button>
         </div>
-        {#if appState.skills.length === 0}
-          <div class="text-[11px] text-muted-foreground">
-            No skills available
-          </div>
-        {:else}
-          <div class="space-y-1">
-            {#each appState.skills as skill}
-              <button
-                class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left hover:bg-muted/50 transition-colors bg-transparent border-none cursor-pointer group"
-                onclick={() => appState.toggleSkill(skill.name, skill.enabled)}
-                title="{skill.enabled ? 'Disable' : 'Enable'} {skill.name}"
-              >
-                <span
-                  class={skill.enabled
-                    ? 'text-green-500'
-                    : 'text-muted-foreground/50'}
-                >
-                  {#if skill.enabled}<ToggleRight size={16} />{:else}<ToggleLeft
-                      size={16}
-                    />{/if}
-                </span>
-                <span
-                  class="text-[11px] flex-1 {skill.enabled
-                    ? 'text-foreground'
-                    : 'text-muted-foreground'}">{skill.name}</span
-                >
-                {#if skill.permissionLevel >= 3}
-                  <span
-                    class="text-[9px] bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1 py-0.5 rounded font-medium"
-                    >L{skill.permissionLevel}</span
-                  >
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
       </div>
 
-      <!-- Connection Info -->
+      <!-- Connection -->
       <div class="px-4 py-3 border-t border-border">
         <div
-          class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2"
+          class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5"
         >
           Connection
         </div>
-        <div class="space-y-1.5">
+        <div class="space-y-2">
           <div class="flex items-center justify-between text-[11px]">
             <span class="text-muted-foreground">SSE Status</span>
             <span class="flex items-center gap-1.5">
@@ -439,22 +335,18 @@
               >
             </span>
           </div>
-          <div class="flex items-center justify-between text-[11px]">
-            <span class="text-muted-foreground">Agent</span>
-            <span class="text-foreground font-mono text-[10px]"
-              >{appState.agentId}</span
+          {#if !appState.sseConnected}
+            <button
+              class="w-full text-[11px] text-primary hover:text-primary/80 bg-primary/5 hover:bg-primary/10 border border-primary/20 rounded-md py-1.5 cursor-pointer transition-colors"
+              onclick={() => appState.connectSSE()}
             >
-          </div>
-          <div class="flex items-center justify-between text-[11px]">
-            <span class="text-muted-foreground">Session</span>
-            <span class="text-foreground font-mono text-[10px]"
-              >{appState.sessionId}</span
-            >
-          </div>
+              Reconnect
+            </button>
+          {/if}
         </div>
       </div>
 
-      <!-- SSE Log -->
+      <!-- SSE Event Log -->
       {#if appState.sseLog.length > 0}
         <div class="px-4 py-3 border-t border-border">
           <div
@@ -476,3 +368,4 @@
     </div>
   </div>
 </div>
+

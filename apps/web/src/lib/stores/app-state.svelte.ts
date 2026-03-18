@@ -164,6 +164,8 @@ function createAppState() {
   let showNewAgent = $state(false);
   let showNewSession = $state(false);
   let showNewAutomation = $state(false);
+  let showAgentInspector = $state(false);
+  let inspectedAgentId = $state('');
   let newAgentName = $state('');
   let newSessionAgentId = $state('');
 
@@ -631,6 +633,9 @@ function createAppState() {
     set newAgentName(v: string) { newAgentName = v; },
     get newSessionAgentId() { return newSessionAgentId; },
     set newSessionAgentId(v: string) { newSessionAgentId = v; },
+    get showAgentInspector() { return showAgentInspector; },
+    set showAgentInspector(v: boolean) { showAgentInspector = v; },
+    get inspectedAgentId() { return inspectedAgentId; },
 
     // Methods
     connectSSE, disconnectSSE, addLog,
@@ -639,6 +644,7 @@ function createAppState() {
     createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession,
     send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent,
     formatDate, formatShortDate,
+    openAgentInspector(agentId: string) { inspectedAgentId = agentId; showAgentInspector = true; },
   };
 }
 
