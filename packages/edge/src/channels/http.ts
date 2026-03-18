@@ -677,7 +677,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/token' && req.method === 'POST') {
         // Admin-only endpoint
-        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {
           writeJson(res, 403, { ok: false, error: 'admin_required' });
           return;
