@@ -67,7 +67,7 @@
 </script>
 
 <Dialog.Root bind:open={appState.showAgentInspector}>
-  <Dialog.Content class="max-w-4xl w-[880px] h-[520px] flex flex-col p-0 gap-0">
+  <Dialog.Content class="max-w-[880px] sm:max-w-[880px] w-[95vw] sm:w-[880px] h-[520px] flex flex-col p-0 gap-0">
     <Dialog.Header class="px-6 pt-5 pb-0 shrink-0">
       <Dialog.Title class="flex items-center gap-2.5 text-base">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
