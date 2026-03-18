@@ -50,6 +50,7 @@
     await appState.fetchNode();
     appState.fetchMind();
     appState.fetchMindFiles();
+    appState.fetchModels();
     await appState.fetchAgents();
   });
 
@@ -246,7 +247,7 @@
                                 >
                                   <span
                                     class={[
-                                      "whitespace-nowrap overflow-hidden text-ellipsis text-[12px] transition-colors min-w-0 block w-[160px]",
+                                      "whitespace-normal break-words text-[12px] transition-colors min-w-0 flex w-[160px]",
                                       $page.url.pathname === `/sessions/${sess.session_id}`
                                         ? "text-foreground font-medium"
                                         : "text-muted-foreground group-hover/session-link:text-foreground/80"

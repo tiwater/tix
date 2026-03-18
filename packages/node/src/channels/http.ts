@@ -31,6 +31,7 @@ import { randomUUID, timingSafeEqual } from 'crypto';
 import { URL } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 
+import Anthropic from '@anthropic-ai/sdk';
 import {
   ACP_ENABLED,
   AGENTS_DIR,
@@ -41,6 +42,7 @@ import {
   SKILLS_CONFIG,
   agentPaths,
   MODELS_REGISTRY,
+  getAgentModelConfig,
 } from '../core/config.js';
 
 function inferMimeType(filePath: string): string {
@@ -373,6 +375,64 @@ function protocolErrorFromUnknown(err: unknown): {
     code: 'internal_error',
     message,
   };
+}
+
+function generateSessionTitleBackground(agentId: string, sessionId: string, message: string) {
+  (async () => {
+    try {
+      const models = getAgentModelConfig(agentId);
+      const modelConfig = models.length > 0 ? models[0] : null;
+      if (!modelConfig || !modelConfig.api_key) {
+         // Fallback if no LLM configured: use simple truncation
+         const fallback = message.slice(0, 30) + (message.length > 30 ? '…' : '');
+         updateSessionTitle(agentId, sessionId, fallback);
+         return;
+      }
+
+      const client = new Anthropic({
+        apiKey: modelConfig.api_key,
+        baseURL: modelConfig.base_url || undefined,
+      });
+
+      const prompt = `You are an AI tasked with generating a concise, 3-5 word title for a chat session.
+Read the user's message and summarize the core topic.
+Rules:
+- Output ONLY the title text.
+- No quotes, no preamble, no markdown.
+- Capitalize the title appropriately.
+
+User's message:
+${message}`;
+
+      const response = await client.messages.create({
+        model: modelConfig.model || 'claude-3-5-sonnet-latest',
+        max_tokens: 20,
+        temperature: 0.2,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      if (response.content[0]?.type === 'text') {
+        let title = response.content[0].text.trim();
+        if (title.startsWith('"') && title.endsWith('"')) {
+          title = title.slice(1, -1).trim();
+        }
+        if (title.length > 60) title = title.slice(0, 60) + '…';
+        updateSessionTitle(agentId, sessionId, title);
+        logger.debug({ agentId, sessionId, title }, 'Generated LLM session title');
+
+        // Broadcast a generic session update event
+        broadcastToChat(buildHttpSessionId(agentId, sessionId), {
+          type: 'session_updated',
+          session: {
+            session_id: sessionId,
+            title
+          }
+        });
+      }
+    } catch (err: any) {
+      logger.warn({ err: err.message, agentId, sessionId }, 'Failed to generate LLM session title');
+    }
+  })();
 }
 
 export class HttpChannel implements Channel {
@@ -708,6 +768,43 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── Agent Memory (Core + Roll) ──
+
+      const memoryMatch = pathname.match(/^\/api\/agents\/([^/]+)\/memory$/);
+      if (memoryMatch && req.method === 'GET') {
+        const agentId = decodeURIComponent(memoryMatch[1]);
+        const baseDir = agentPaths(agentId).base;
+
+        let coreMemory = null;
+        const memoryPath = path.join(baseDir, 'MEMORY.md');
+        if (fs.existsSync(memoryPath)) {
+          try {
+            const stat = fs.statSync(memoryPath);
+            coreMemory = { content: fs.readFileSync(memoryPath, 'utf-8'), mtimeMs: stat.mtimeMs };
+          } catch { /* skip */ }
+        }
+
+        const roll: { date: string; content: string; mtimeMs: number }[] = [];
+        const memoryDir = path.join(baseDir, 'memory');
+        if (fs.existsSync(memoryDir)) {
+          try {
+            const files = fs.readdirSync(memoryDir).filter(f => f.endsWith('.md')).sort().reverse();
+            for (const file of files) {
+              const filePath = path.join(memoryDir, file);
+              const stat = fs.statSync(filePath);
+              roll.push({
+                date: file.replace('.md', ''),
+                content: fs.readFileSync(filePath, 'utf-8'),
+                mtimeMs: stat.mtimeMs
+              });
+            }
+          } catch { /* skip */ }
+        }
+
+        writeJson(res, 200, { core_memory: coreMemory, roll });
+        return;
+      }
+
       if (pathname === '/agents' && req.method === 'GET') {
         writeJson(res, 200, {
           name: 'TiClaw',
@@ -960,12 +1057,16 @@ export class HttpChannel implements Channel {
           this.opts.onGroupRegistered(chatJid, project);
         }
 
-        ensureSession({
+        const session = ensureSession({
           agent_id: agentId,
           session_id: sessionId,
           channel: 'http',
           agent_name: agentId,
         });
+
+        if (!session.title || content.trim().length > 12) {
+          generateSessionTitleBackground(agentId, sessionId, content);
+        }
 
         this.opts.onChatMetadata(chatJid, timestamp, undefined, 'http', false);
 
@@ -1281,42 +1382,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // POST /api/sessions/:id/generate-title — auto-generate title from message
-      const titleGenMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/generate-title$/);
-      if (titleGenMatch && req.method === 'POST') {
-        const id = decodeURIComponent(titleGenMatch[1]);
-        const body = await readJsonBody(req);
-        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
-        const message = typeof body.message === 'string' ? body.message.trim() : '';
-        if (!agentId || !message) {
-          writeJson(res, 400, { error: 'agent_id and message are required' });
-          return;
-        }
-        // Generate a short title from the message
-        let cleaned = message
-          .replace(/\[Attached file:.*?\]/g, '')   // strip file references
-          .replace(/ticlaw:\/\/\S+/g, '')           // strip ticlaw:// URLs
-          .replace(/📎\s*\S+/g, '')                 // strip 📎 file chips
-          .replace(/\n+/g, ' ')                     // flatten newlines
-          .replace(/\s{2,}/g, ' ')                  // collapse whitespace
-          .trim();
-        if (!cleaned) cleaned = 'File upload';
-        // Extract first sentence or meaningful phrase (up to 60 chars)
-        const sentenceEnd = cleaned.search(/[.!?。！？]\s/);
-        if (sentenceEnd > 0 && sentenceEnd < 60) {
-          cleaned = cleaned.slice(0, sentenceEnd + 1);
-        } else if (cleaned.length > 60) {
-          // Break at last word boundary before 60 chars
-          const truncated = cleaned.slice(0, 60);
-          const lastSpace = truncated.lastIndexOf(' ');
-          cleaned = lastSpace > 20 ? truncated.slice(0, lastSpace) + '…' : truncated + '…';
-        }
-        // Capitalize first letter
-        const title = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-        updateSessionTitle(agentId, id, title);
-        writeJson(res, 200, { title });
-        return;
-      }
+
 
       // ── Web UI API: Schedules ──
 

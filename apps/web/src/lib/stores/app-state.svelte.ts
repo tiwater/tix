@@ -393,6 +393,22 @@ function createAppState() {
           return;
         }
 
+        if (data.type === 'session_updated' && data.session && data.session.session_id) {
+          const updated = { ...agentSessions };
+          let found = false;
+          for (const aid in updated) {
+            updated[aid] = updated[aid].map(s => {
+              if (s.session_id === data.session.session_id) {
+                found = true;
+                return { ...s, ...data.session };
+              }
+              return s;
+            });
+          }
+          if (found) agentSessions = updated;
+          return;
+        }
+
         // message: the authoritative final response or standalone file
         if (data.type === 'message' && data.text) {
           if (isThinking) { isThinking = false; progressCategory = ''; }
@@ -514,35 +530,12 @@ function createAppState() {
     return agentSessions[agentId] || [];
   }
 
-  function findSession(sid: string): SessionInfo | undefined {
+  function findSession(id: string) {
     for (const sessions of Object.values(agentSessions)) {
-      const found = sessions.find(s => s.session_id === sid);
+      const found = sessions.find((s) => s.session_id === id);
       if (found) return found;
     }
     return undefined;
-  }
-
-  async function generateSessionTitle(aid: string, sid: string, message: string) {
-    try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/generate-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_id: aid, message }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.title) {
-          // Update local state so sidebar reflects the new title immediately
-          const updated = { ...agentSessions };
-          if (updated[aid]) {
-            updated[aid] = updated[aid].map(s =>
-              s.session_id === sid ? { ...s, title: data.title } : s
-            );
-            agentSessions = updated;
-          }
-        }
-      }
-    } catch { /* fire-and-forget */ }
   }
 
   async function fetchSchedules() {
@@ -710,16 +703,6 @@ function createAppState() {
     sending = true;
     isThinking = true;
     progressCategory = '';
-
-    // Dynamically update title as conversation topics change
-    // Avoid overriding with very short replies like "ok" or "yes"
-    const currentSession = findSession(sessionId);
-    if (currentSession) {
-      const newTopic = content || names.join(', ');
-      if (!currentSession.title || newTopic.trim().length > 12) {
-        generateSessionTitle(agentId, sessionId, newTopic);
-      }
-    }
 
     try {
       const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content: fullContent }) });

@@ -32,6 +32,29 @@
   let localMindFiles = $state<Record<string, MindFile>>({});
   let mindLoading = $state(false);
 
+  interface MemoryRollFile {
+    date: string;
+    content: string;
+    mtimeMs: number;
+  }
+  interface AgentMemoryData {
+    core_memory: { content: string; mtimeMs: number } | null;
+    roll: MemoryRollFile[];
+  }
+  let agentMemoryData = $state<AgentMemoryData | null>(null);
+  let agentMemoryLoading = $state(false);
+
+  async function fetchAgentMemory(aid: string) {
+    agentMemoryLoading = true;
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(aid)}/memory`);
+      if (res.ok) {
+        agentMemoryData = await res.json();
+      }
+    } catch { /* */ }
+    agentMemoryLoading = false;
+  }
+
   // Workspace tab state
   interface WorkspaceEntry {
     name: string;
@@ -130,6 +153,7 @@
   $effect(() => {
     if (appState.showAgentInspector && agentId) {
       fetchMindFilesForAgent(agentId);
+      fetchAgentMemory(agentId);
       fetchWorkspace('.');
     }
   });
@@ -156,12 +180,18 @@
 
     <Tabs.Root bind:value={activeTab} class="flex-1 flex flex-col min-h-0 mt-4">
       <div class="px-6 pb-2 shrink-0">
-        <Tabs.List class="grid w-full grid-cols-4 max-w-[500px]">
+        <Tabs.List class="grid w-full grid-cols-5 max-w-[600px]">
           <Tabs.Trigger
             value="mind"
             class="text-[13px] font-medium gap-1.5"
           >
             <Brain size={14} /> Mind
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="memory"
+            class="text-[13px] font-medium gap-1.5"
+          >
+            <BookOpen size={14} /> Memory
           </Tabs.Trigger>
           <Tabs.Trigger
             value="skills"
@@ -208,7 +238,7 @@
             {/if}
           </div>
         {:else}
-          {#each Object.entries(localMindFiles) as [name, file]}
+          {#each Object.entries(localMindFiles).filter(([name]) => name !== 'MEMORY.md') as [name, file]}
             <div class="border-b border-border/30">
               <button
                 class="w-full flex items-center gap-2.5 px-6 py-3 text-left hover:bg-muted/40 transition-colors bg-transparent border-none cursor-pointer"
@@ -237,6 +267,69 @@
               {/if}
             </div>
           {/each}
+        {/if}
+      </Tabs.Content>
+
+      <!-- Memory Tab -->
+      <Tabs.Content value="memory" class="flex-1 overflow-y-auto p-0 m-0 mt-0">
+        <div class="px-6 py-1">
+          <div class="flex items-center justify-between py-2">
+            <span class="text-[11px] text-muted-foreground">Long-term core memory and daily memory roll.</span>
+            <button
+              class="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              onclick={() => fetchAgentMemory(agentId)}
+              title="Refresh memory"
+            >
+              <RefreshCw size={12} class={agentMemoryLoading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+        
+        {#if agentMemoryLoading && !agentMemoryData}
+          <div class="px-6 py-8 text-center text-xs text-muted-foreground">Loading memory…</div>
+        {:else if agentMemoryData}
+          <div class="px-4 pb-4 space-y-4 pt-2">
+            <!-- Core Memory -->
+            <div class="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm">
+               <div class="bg-muted/30 px-4 py-2 border-b border-border/50 flex items-center gap-2">
+                 <BookOpen size={14} class="text-primary" />
+                 <span class="text-xs font-semibold">Core Memory (MEMORY.md)</span>
+                 {#if agentMemoryData.core_memory}
+                    <span class="ml-auto text-[9px] text-muted-foreground">{new Date(agentMemoryData.core_memory.mtimeMs).toLocaleString()}</span>
+                 {/if}
+               </div>
+               <div class="p-4">
+                 {#if agentMemoryData.core_memory}
+                   <pre class="text-[11px] leading-relaxed text-muted-foreground bg-muted/50 rounded-lg p-3 overflow-x-auto max-h-[250px] overflow-y-auto whitespace-pre-wrap break-words m-0 font-mono border border-border/30">{agentMemoryData.core_memory.content || '(empty)'}</pre>
+                 {:else}
+                   <p class="text-xs text-muted-foreground italic">No core memory initialized.</p>
+                 {/if}
+               </div>
+            </div>
+
+            <!-- Memory Roll -->
+            {#if agentMemoryData.roll && agentMemoryData.roll.length > 0}
+              <div class="space-y-3">
+                <h4 class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2">Memory Roll</h4>
+                {#each agentMemoryData.roll as rollDef}
+                  <div class="border border-border/50 bg-card rounded-xl overflow-hidden shadow-sm">
+                    <button class="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-muted/40 transition-colors bg-transparent border-none cursor-pointer" onclick={() => toggleFile(`roll_${rollDef.date}`)}>
+                      <span class="text-muted-foreground">
+                        {#if expandedFiles[`roll_${rollDef.date}`]}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                      </span>
+                      <FileText size={15} class="text-muted-foreground" />
+                      <span class="text-sm font-medium text-foreground flex-1">{rollDef.date}</span>
+                    </button>
+                    {#if expandedFiles[`roll_${rollDef.date}`]}
+                      <div class="px-4 pb-4 pt-1 border-t border-border/20">
+                        <pre class="text-[11px] leading-relaxed text-muted-foreground bg-muted/30 rounded-lg p-3 overflow-x-auto max-h-[300px] overflow-y-auto whitespace-pre-wrap break-words m-0 font-mono border border-border/30">{rollDef.content || '(empty)'}</pre>
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
         {/if}
       </Tabs.Content>
 
