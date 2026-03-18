@@ -134,6 +134,18 @@
     }
   });
 
+  // Listen for file preview events from workspace browser
+  onMount(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.name && detail?.url) {
+        previewFile = { name: detail.name, url: detail.url, ext: detail.ext || '' };
+      }
+    };
+    window.addEventListener('ticlaw:preview-file', handler);
+    return () => window.removeEventListener('ticlaw:preview-file', handler);
+  });
+
   // Reactively switch sessions if navigating between different dynamic routes
   $effect(() => {
     const sid = $page.params.session_id;
