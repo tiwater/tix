@@ -1256,8 +1256,13 @@ export class HttpChannel implements Channel {
       // ── Web UI API: Tasks ──
 
       if (pathname === '/api/tasks' && req.method === 'GET') {
-        const tasks = listActiveTasks();
-        writeJson(res, 200, { tasks });
+        try {
+          const tasks = listActiveTasks();
+          writeJson(res, 200, { tasks });
+        } catch (err: any) {
+          logger.error({ err: err.message }, 'Failed to list active tasks');
+          writeJson(res, 500, { error: 'Failed to list tasks', tasks: [] });
+        }
         return;
       }
 
