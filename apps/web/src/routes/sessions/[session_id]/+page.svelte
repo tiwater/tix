@@ -468,8 +468,8 @@
           >
             Event Log
           </div>
-          <div class="overflow-auto max-h-[200px]">
-            <div class="space-y-0.5 min-w-max">
+          <div class="overflow-x-auto overflow-y-auto max-h-[200px] w-full pb-2">
+            <div class="space-y-0.5 w-max">
               {#each appState.sseLog as entry}
                 <div
                   class="text-[10px] text-muted-foreground font-mono leading-tight whitespace-nowrap"
@@ -488,7 +488,7 @@
 <!-- File Preview Dialog -->
 {#if previewFile}
   <div
-    class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] pointer-events-auto"
     onclick={() => { previewFile = null; }}
     role="presentation"
   >
