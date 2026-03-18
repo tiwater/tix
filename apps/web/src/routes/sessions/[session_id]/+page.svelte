@@ -14,6 +14,29 @@
     });
     return resolveProtocolUrls(html);
   }
+
+  function renderUserMessage(text: string): string {
+    // Parse [Attached file: name → ticlaw://url] into styled cards
+    const parts = text.split(/(\[Attached file: .+? → ticlaw:\/\/.+?\])/);
+    let html = '';
+    for (const part of parts) {
+      const match = part.match(/^\[Attached file: (.+?) → (ticlaw:\/\/.+?)\]$/);
+      if (match) {
+        const [, name, ticlawUrl] = match;
+        const httpUrl = ticlawUrl.replace(/^ticlaw:\/\/workspace\/([^/]+)\/(.+)$/, '/api/workspace/$2?agent_id=$1');
+        const ext = name.split('.').pop()?.toLowerCase() || '';
+        const icon = ['jpg','jpeg','png','gif','svg','webp'].includes(ext) ? '🖼️' : ['pdf'].includes(ext) ? '📄' : ['doc','docx'].includes(ext) ? '📝' : ['xls','xlsx','csv'].includes(ext) ? '📊' : '📎';
+        html += `<a href="${httpUrl}" target="_blank" rel="noopener" class="ticlaw-file-chip">${icon} ${DOMPurify.sanitize(name)}</a>`;
+      } else if (part.trim()) {
+        // Handle 📎 prefixed lines (from displayContent)
+        const cleaned = part.replace(/^📎 .+$/gm, '').trim();
+        if (cleaned) {
+          html += `<span>${DOMPurify.sanitize(cleaned)}</span>`;
+        }
+      }
+    }
+    return html || DOMPurify.sanitize(text);
+  }
   import {
     Send,
     RefreshCw,
@@ -149,9 +172,8 @@
                     ? 'markdown-body'
                     : ''}"
                 >
-                  {#if msg.role === 'user' || msg.showRaw}
-                    <pre
-                      class="whitespace-pre-wrap font-sans text-[14px] m-0">{msg.text}</pre>
+                  {#if msg.role === 'user'}
+                    {@html renderUserMessage(msg.text)}
                   {:else}
                     {@html renderMarkdown(msg.text)}
                   {/if}
