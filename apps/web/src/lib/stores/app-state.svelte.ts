@@ -711,10 +711,14 @@ function createAppState() {
     isThinking = true;
     progressCategory = '';
 
-    // Auto-generate title for untitled sessions (fire-and-forget)
+    // Dynamically update title as conversation topics change
+    // Avoid overriding with very short replies like "ok" or "yes"
     const currentSession = findSession(sessionId);
-    if (currentSession && !currentSession.title) {
-      generateSessionTitle(agentId, sessionId, content || names.join(', '));
+    if (currentSession) {
+      const newTopic = content || names.join(', ');
+      if (!currentSession.title || newTopic.trim().length > 12) {
+        generateSessionTitle(agentId, sessionId, newTopic);
+      }
     }
 
     try {
