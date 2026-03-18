@@ -172,8 +172,9 @@ function createAppState() {
   let eventSource: EventSource | null = null;
 
   // --- SSE Helpers ---
+  let lastLoggedCategory = '';
   function addLog(msg: string) {
-    sseLog = [...sseLog.slice(-8), `${new Date().toLocaleTimeString()} ${msg}`];
+    sseLog = [...sseLog.slice(-29), `${new Date().toLocaleTimeString()} ${msg}`];
   }
 
   function advanceStreamEvent(data: { stream_id?: string; seq?: number }): { isDuplicate: boolean; isNewStream: boolean } {
@@ -251,9 +252,29 @@ function createAppState() {
           progressArgs = data.args || data.target;
           progressElapsed = data.elapsed_s || 0;
           if (!streamingMessageId) isThinking = true;
+
+          // Log meaningful progress events (deduplicate consecutive thinking)
+          if (data.category === 'skill' && data.skill) {
+            const argStr = data.args ? ` → ${data.args}` : '';
+            addLog(`⚡ Skill: ${data.skill}${argStr}`);
+            lastLoggedCategory = 'skill';
+          } else if (data.category === 'tool' && data.tool) {
+            const targetStr = data.target ? ` → ${data.target}` : '';
+            addLog(`🔧 ${data.tool}${targetStr}`);
+            lastLoggedCategory = 'tool';
+          } else if (data.category === 'thinking' && lastLoggedCategory !== 'thinking') {
+            addLog('💭 Thinking…');
+            lastLoggedCategory = 'thinking';
+          } else if (data.category === 'error') {
+            addLog('⚠️ Recovering from error…');
+            lastLoggedCategory = 'error';
+          } else if (data.category === 'formatting' && lastLoggedCategory !== 'formatting') {
+            addLog('📝 Formatting response…');
+            lastLoggedCategory = 'formatting';
+          }
           return;
         }
-        if (data.type === 'progress_end') { progressCategory = ''; return; }
+        if (data.type === 'progress_end') { progressCategory = ''; lastLoggedCategory = ''; return; }
 
         if (data.type === 'stream_delta' && data.text) {
           const { isDuplicate, isNewStream } = advanceStreamEvent(data);
@@ -279,11 +300,10 @@ function createAppState() {
         if (data.type === 'runner_state') {
           if (data.status === 'idle' || data.activity?.phase === 'done' || data.status === 'error') {
             if (isThinking) { isThinking = false; progressCategory = ''; }
-            addLog(`Task ${data.status === 'error' ? 'failed' : 'completed'}`);
+            addLog(data.status === 'error' ? '❌ Task failed' : '✅ Task completed');
+            lastLoggedCategory = '';
           } else if (data.activity?.action === 'speaking' && data.activity?.target) {
             if (isThinking) { isThinking = false; progressCategory = ''; }
-          } else if (data.status === 'busy' && data.activity?.action && data.activity.action !== 'thinking') {
-            addLog(`Action: ${data.activity.action.replace('executing_', '')}`);
           }
           return;
         }
