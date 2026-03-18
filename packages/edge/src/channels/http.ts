@@ -738,7 +738,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/revoke' && req.method === 'POST') {
         // Admin-only endpoint
-        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {
           writeJson(res, 403, { ok: false, error: 'admin_required' });
           return;
@@ -752,7 +752,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/suspend' && req.method === 'POST') {
         // Admin-only endpoint
-        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {
           writeJson(res, 403, { ok: false, error: 'admin_required' });
           return;
@@ -1289,7 +1289,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/node/trust' && req.method === 'POST') {
         // Admin-only endpoint - require admin authentication
-        const ctx = resolveHttpAdminContext(req, isLoopbackAddress(remoteAddress));
+        const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {
           writeJson(res, 403, { ok: false, error: 'admin_required' });
           return;
