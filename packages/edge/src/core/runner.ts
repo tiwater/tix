@@ -288,8 +288,11 @@ function getClaudeSessionPath(agentId: string, sessionId: string): string {
 function loadClaudeSessionId(agentId: string, sessionId: string): string | null {
   try {
     const p = getClaudeSessionPath(agentId, sessionId);
+    logger.debug({ path: p, exists: fs.existsSync(p) }, 'Loading Claude session ID');
     if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8').trim() || null;
-  } catch {}
+  } catch (err: any) {
+    logger.warn({ err: err.message }, 'Failed to load Claude session ID');
+  }
   return null;
 }
 
@@ -302,6 +305,7 @@ function saveClaudeSessionId(
     const p = getClaudeSessionPath(agentId, sessionId);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, claudeSessionId, 'utf-8');
+    logger.info({ path: p, claudeSessionId }, 'Saved Claude session ID');
   } catch (err: any) {
     logger.warn({ err: err.message }, 'Failed to save Claude session ID');
   }
@@ -529,12 +533,33 @@ export class AgentRunner {
     // Key is agentId + sessionId to preserve cross-session isolation
     const key = buildSessionKey(this.state.agent_id, this.state.session_id);
 
-    // Latest user message — used for both warm streamInput and cold prompt
-    const lastUser = messages.filter((m) => m.role === 'user').pop();
+    // Filter user messages and find the latest one
+    const userMessages = messages.filter((m) => m.role === 'user');
+    const lastUser = userMessages.pop();
     if (!lastUser) {
       logger.warn({ key }, 'Run called with no user messages — skipping');
       this.state.status = 'idle';
       return;
+    }
+
+    // Build conversation context from all messages (including assistant turns)
+    // This ensures full context is preserved across calls
+    let promptContent: string;
+    if (messages.length > 1) {
+      // Convert all messages to conversation format
+      const conversationHistory = messages
+        .map((m) => {
+          const role = m.role === 'assistant' ? 'Assistant' : 'User';
+          return `${role}: ${m.content}`;
+        })
+        .join('\n\n');
+
+      // If there are previous messages (not just the last user message),
+      // include them as conversation history
+      promptContent = `[Conversation History]\n${conversationHistory}\n\n[End of History]`;
+    } else {
+      // Single message - no history needed
+      promptContent = lastUser.content;
     }
 
     try {
@@ -760,7 +785,7 @@ export class AgentRunner {
         }
 
         const agentQuery = query({
-          prompt: lastUser.content,
+          prompt: promptContent,
           options: {
             ...opts,
             ...(savedClaudeSessionId ? { resume: savedClaudeSessionId } : {}),
