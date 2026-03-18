@@ -153,9 +153,9 @@ function createAppState() {
   // Tab data
   let skills = $state<SkillInfo[]>([]);
   let agents = $state<AgentInfo[]>([]);
-  let sessions = $state<SessionInfo[]>([]);
+  let agentSessions = $state<Record<string, SessionInfo[]>>({});
+  let expandedAgents = $state<Set<string>>(new Set());
   let schedules = $state<ScheduleInfo[]>([]);
-  let selectedAgentId = $state<string | null>(isBrowser ? (localStorage.getItem('selectedAgentId') || null) : null);
   let skillsLoading = $state(false);
   let agentsLoading = $state(false);
   let schedulesLoading = $state(false);
@@ -163,6 +163,7 @@ function createAppState() {
   // Modals
   let showNewAgent = $state(false);
   let showNewSession = $state(false);
+  let showNewAutomation = $state(false);
   let newAgentName = $state('');
   let newSessionAgentId = $state('');
 
@@ -198,7 +199,9 @@ function createAppState() {
   // --- SSE Connection ---
   function connectSSE() {
     if (eventSource) { eventSource.close(); eventSource = null; }
-    const url = `/runs/web-run/stream?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}`;
+    // Ensure we don't accidentally pass a full JID as the session_id
+    const rawSessionId = sessionId.startsWith('web:') ? sessionId.split(':').pop() || sessionId : sessionId;
+    const url = `/runs/web-run/stream?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(rawSessionId)}`;
     eventSource = new EventSource(url);
 
     eventSource.onopen = () => {
@@ -238,7 +241,7 @@ function createAppState() {
     eventSource.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
-        if (data.type === 'connected') { addLog(`Stream ready: ${data.chat_jid}`); return; }
+        if (data.type === 'connected') { addLog(`Session connected`); return; }
         if (data.type === 'progress') {
           progressCategory = data.category || '';
           progressSkill = data.skill;
@@ -271,8 +274,15 @@ function createAppState() {
           return;
         }
 
-        if (data.type === 'runner_state' && data.activity?.action === 'speaking' && data.activity?.target) {
-          if (isThinking) { isThinking = false; progressCategory = ''; }
+        if (data.type === 'runner_state') {
+          if (data.status === 'idle' || data.activity?.phase === 'done' || data.status === 'error') {
+            if (isThinking) { isThinking = false; progressCategory = ''; }
+            addLog(`Task ${data.status === 'error' ? 'failed' : 'completed'}`);
+          } else if (data.activity?.action === 'speaking' && data.activity?.target) {
+            if (isThinking) { isThinking = false; progressCategory = ''; }
+          } else if (data.status === 'busy' && data.activity?.action && data.activity.action !== 'thinking') {
+            addLog(`Action: ${data.activity.action.replace('executing_', '')}`);
+          }
           return;
         }
 
@@ -353,14 +363,36 @@ function createAppState() {
 
   async function fetchAgents() {
     agentsLoading = true;
-    try { const res = await fetch('/api/agents'); if (res.ok) { const data = await res.json(); agents = data.agents || []; } } catch { /* */ }
+    try {
+      const res = await fetch('/api/agents');
+      if (res.ok) {
+        const data = await res.json();
+        agents = data.agents || [];
+        // Fetch all sessions and group by agent
+        const sessRes = await fetch('/api/sessions');
+        if (sessRes.ok) {
+          const sessData = await sessRes.json();
+          const allSessions: SessionInfo[] = sessData.sessions || [];
+          const grouped: Record<string, SessionInfo[]> = {};
+          for (const agent of agents) {
+            grouped[agent.agent_id] = allSessions.filter(s => s.agent_id === agent.agent_id);
+          }
+          agentSessions = grouped;
+        }
+      }
+    } catch { /* */ }
     agentsLoading = false;
   }
 
-  async function fetchSessionsForAgent(agId: string) {
-    selectedAgentId = agId;
-    if (isBrowser) localStorage.setItem('selectedAgentId', agId);
-    try { const res = await fetch(`/api/sessions?agent_id=${encodeURIComponent(agId)}`); if (res.ok) { const data = await res.json(); sessions = data.sessions || []; } } catch { /* */ }
+  function toggleAgentExpanded(agentId: string) {
+    const next = new Set(expandedAgents);
+    if (next.has(agentId)) next.delete(agentId);
+    else next.add(agentId);
+    expandedAgents = next;
+  }
+
+  function sessionsForAgent(agentId: string): SessionInfo[] {
+    return agentSessions[agentId] || [];
   }
 
   async function fetchSchedules() {
@@ -393,10 +425,27 @@ function createAppState() {
     try { const res = await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newAgentName.trim() }) }); if (res.ok) { newAgentName = ''; showNewAgent = false; await fetchAgents(); } } catch { /* */ }
   }
 
-  async function createSession() {
-    const aid = newSessionAgentId || selectedAgentId;
+  async function createSession(agentIdOverride?: string) {
+    const aid = agentIdOverride || newSessionAgentId;
     if (!aid) return;
-    try { const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: aid }) }); if (res.ok) { showNewSession = false; newSessionAgentId = ''; await fetchSessionsForAgent(aid); } } catch { /* */ }
+    try { 
+      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: aid }) }); 
+      if (res.ok) { 
+        const data = await res.json();
+        showNewSession = false; 
+        newSessionAgentId = ''; 
+        // Insert into agentSessions
+        const newSess = data.session as SessionInfo;
+        agentSessions = { ...agentSessions, [aid]: [...(agentSessions[aid] || []), newSess] };
+        // Auto-expand the agent folder
+        if (!expandedAgents.has(aid)) {
+          expandedAgents = new Set([...expandedAgents, aid]);
+        }
+        if (typeof window !== "undefined") {
+          goto(`/sessions/${data.session.session_id}`);
+        }
+      } 
+    } catch { /* */ }
   }
 
   async function toggleSchedule(id: string, currentStatus: string) {
@@ -408,15 +457,47 @@ function createAppState() {
     try { await fetch(`/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }); await fetchSchedules(); } catch { /* */ }
   }
 
-  async function deleteSession(id: string) {
-    try { 
-      const idx = sessions.findIndex(s => s.session_id === id);
-      let nextSessionId = '';
-      if (idx !== -1 && sessions.length > 1) {
-        const nextIdx = idx < sessions.length - 1 ? idx + 1 : idx - 1;
-        nextSessionId = sessions[nextIdx].session_id;
+  async function createSchedule(agentIdVal: string, prompt: string, cron: string) {
+    if (!agentIdVal || !prompt || !cron) return;
+    try {
+      const res = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: agentIdVal, prompt, cron }),
+      });
+      if (res.ok) {
+        showNewAutomation = false;
+        await fetchSchedules();
       }
-      sessions = sessions.filter(s => s.session_id !== id);
+    } catch { /* */ }
+  }
+
+  async function deleteSession(id: string) {
+    try {
+      // Find which agent this session belongs to
+      let ownerAgentId = '';
+      let ownerSessions: SessionInfo[] = [];
+      for (const [aid, sessions] of Object.entries(agentSessions)) {
+        const idx = sessions.findIndex(s => s.session_id === id);
+        if (idx !== -1) {
+          ownerAgentId = aid;
+          ownerSessions = sessions;
+          break;
+        }
+      }
+
+      // Find next session to navigate to
+      let nextSessionId = '';
+      if (ownerAgentId) {
+        const idx = ownerSessions.findIndex(s => s.session_id === id);
+        if (idx !== -1 && ownerSessions.length > 1) {
+          const nextIdx = idx < ownerSessions.length - 1 ? idx + 1 : idx - 1;
+          nextSessionId = ownerSessions[nextIdx].session_id;
+        }
+        // Remove from agentSessions
+        agentSessions = { ...agentSessions, [ownerAgentId]: ownerSessions.filter(s => s.session_id !== id) };
+      }
+
       await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); 
       if (sessionId === id) {
         if (nextSessionId && typeof window !== 'undefined') {
@@ -534,9 +615,9 @@ function createAppState() {
     get progressElapsed() { return progressElapsed; },
     get skills() { return skills; },
     get agents() { return agents; },
-    get sessions() { return sessions; },
+    get agentSessions() { return agentSessions; },
+    get expandedAgents() { return expandedAgents; },
     get schedules() { return schedules; },
-    get selectedAgentId() { return selectedAgentId; },
     get skillsLoading() { return skillsLoading; },
     get agentsLoading() { return agentsLoading; },
     get schedulesLoading() { return schedulesLoading; },
@@ -544,6 +625,8 @@ function createAppState() {
     set showNewAgent(v: boolean) { showNewAgent = v; },
     get showNewSession() { return showNewSession; },
     set showNewSession(v: boolean) { showNewSession = v; },
+    get showNewAutomation() { return showNewAutomation; },
+    set showNewAutomation(v: boolean) { showNewAutomation = v; },
     get newAgentName() { return newAgentName; },
     set newAgentName(v: string) { newAgentName = v; },
     get newSessionAgentId() { return newSessionAgentId; },
@@ -551,10 +634,10 @@ function createAppState() {
 
     // Methods
     connectSSE, disconnectSSE, addLog,
-    fetchMind, fetchMindFiles, fetchSkills, fetchAgents, fetchSessionsForAgent,
+    fetchMind, fetchMindFiles, fetchSkills, fetchAgents,
     fetchSchedules, fetchNode, trustNode, toggleSkill,
-    createAgent, createSession, toggleSchedule, removeSchedule, deleteSession,
-    send, selectSession, reconnect,
+    createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession,
+    send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent,
     formatDate, formatShortDate,
   };
 }

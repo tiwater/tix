@@ -1338,7 +1338,7 @@ export class HttpChannel implements Channel {
       text,
       embeds: options?.embeds,
     });
-    logger.info(
+    logger.debug(
       {
         agent_id: session?.agent_id,
         session_id: session?.session_id,

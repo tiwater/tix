@@ -176,8 +176,10 @@ function getPromptMtimeKey(baseDir: string): string {
 
 function truncateText(text: string, maxChars: number): string {
   if (maxChars <= 0) return '';
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, maxChars).trimEnd()}\n...[truncated]`;
+  // Convert to array of characters to correctly count multi-byte emojis and avoid severing surrogate pairs
+  const chars = Array.from(text);
+  if (chars.length <= maxChars) return text;
+  return `${chars.slice(0, maxChars).join('').trimEnd()}\n...[truncated]`;
 }
 
 // ══════════════════════════════════════════════════════════════

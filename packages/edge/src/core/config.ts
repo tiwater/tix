@@ -86,10 +86,31 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return value === 'true' || value === '1' || value === 'yes';
 }
 
+function findMonorepoRoot(startDir: string): string | null {
+  let current = path.resolve(startDir);
+  while (current !== path.parse(current).root) {
+    if (fs.existsSync(path.join(current, 'pnpm-workspace.yaml'))) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+  return null;
+}
+
+// Resolve current file's directory dynamically (compatible with ESM or CJS compiled output)
+const currentFileDir = typeof __dirname !== 'undefined' 
+  ? __dirname 
+  : new URL('.', import.meta.url).pathname;
+
+const monorepoRoot = findMonorepoRoot(currentFileDir);
+
 export function expandHomePath(inputPath: string): string {
   if (inputPath === '~') return HOME_DIR;
   if (inputPath.startsWith('~/')) {
     return path.join(HOME_DIR, inputPath.slice(2));
+  }
+  if (inputPath.startsWith('@/') && monorepoRoot) {
+    return path.join(monorepoRoot, inputPath.slice(2));
   }
   return path.resolve(inputPath);
 }
@@ -177,8 +198,9 @@ export interface SkillsRuntimeConfig {
 }
 
 const defaultSkillDirectories = [
-  path.join(TICLAW_HOME, 'skills'),
-  path.join(process.cwd(), 'skills'),
+  '~/.ticlaw/skills',
+  '@/skills',
+  './skills'
 ];
 
 export const SKILLS_CONFIG: SkillsRuntimeConfig = {

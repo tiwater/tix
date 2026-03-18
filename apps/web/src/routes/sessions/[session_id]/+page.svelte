@@ -27,7 +27,7 @@
     Puzzle,
     ToggleLeft,
     ToggleRight,
-    LoaderCircle,
+    Loader,
   } from 'lucide-svelte';
 
   let messagesEl = $state<HTMLElement>(null!);
@@ -96,9 +96,13 @@
     const sid = $page.params.session_id;
     if (sid && appState.sessionId !== sid) {
       appState.sessionId = sid;
-      const sess = appState.sessions.find((s) => s.session_id === sid);
-      if (sess) {
-        appState.agentId = sess.agent_id;
+      // Find the agent that owns this session
+      for (const agent of appState.agents) {
+        const sess = appState.sessionsForAgent(agent.agent_id).find(s => s.session_id === sid);
+        if (sess) {
+          appState.agentId = sess.agent_id;
+          break;
+        }
       }
       appState.reconnect();
       appState.fetchMindFiles();
@@ -216,21 +220,24 @@
                   <Brain size={15} class="text-primary shrink-0" />
                   <span>Thinking... ({appState.progressElapsed}s)</span>
                 {:else if appState.progressCategory === 'formatting'}
-                  <LoaderCircle
+                  <Loader
                     size={15}
                     class="text-muted-foreground shrink-0 animate-spin"
                   />
                   <span>Formatting result... ({appState.progressElapsed}s)</span
                   >
                 {:else if appState.progressCategory === 'error'}
-                  <LoaderCircle size={15} class="text-destructive shrink-0" />
+                  <Loader
+                    size={15}
+                    class="text-destructive shrink-0 animate-spin"
+                  />
                   <span
                     >Recovering from error... ({appState.progressElapsed}s)</span
                   >
                 {:else if appState.progressCategory === 'processing' || appState.progressCategory}
-                  <LoaderCircle
+                  <Loader
                     size={15}
-                    class="text-muted-foreground shrink-0 spin"
+                    class="text-muted-foreground shrink-0 animate-spin"
                   />
                   <span>Processing... ({appState.progressElapsed}s)</span>
                 {:else}
@@ -272,7 +279,7 @@
             title="Send"
           >
             {#if appState.sending}
-              <LoaderCircle size={18} class="spin" />
+              <Loader size={18} class="animate-spin" />
             {:else}
               <Send size={18} class="mr-0.5 mt-0.5" />
             {/if}
