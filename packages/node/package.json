@@ -1,5 +1,5 @@
 {
-  "name": "@ticlaw/edge",
+  "name": "@ticlaw/node",
   "version": "1.3.0",
   "description": "TiClaw Edge — machine-side agent runtime. Runs multiple agents on a host machine and connects outbound to a TiClaw Gateway.",
   "type": "module",

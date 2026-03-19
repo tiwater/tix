@@ -15,7 +15,7 @@
     "commander": "^13.0.0"
   },
   "peerDependencies": {
-    "@ticlaw/edge": "workspace:*"
+    "@ticlaw/node": "workspace:*"
   },
   "engines": {
     "node": ">=20"

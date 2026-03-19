@@ -5,12 +5,12 @@
   "description": "TiClaw — Local-first AI Agent Node + Gateway",
   "type": "module",
   "scripts": {
-    "build":       "pnpm --filter @ticlaw/gateway run build && pnpm --filter @ticlaw/edge run build",
-    "dev":         "pnpm --filter @ticlaw/gateway run build && concurrently -n gateway,node -c cyan,green \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/edge run dev\"",
-    "dev:node":    "pnpm --filter @ticlaw/edge run dev",
+    "build":       "pnpm --filter @ticlaw/gateway run build && pnpm --filter @ticlaw/node run build",
+    "dev":         "pnpm --filter @ticlaw/gateway run build && concurrently -n gateway,node -c cyan,green \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/node run dev\"",
+    "dev:node":    "pnpm --filter @ticlaw/node run dev",
     "dev:gateway": "pnpm --filter @ticlaw/gateway run dev",
-    "dev:web":     "concurrently -n gateway,node,web -c cyan,green,blue \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/edge run dev\" \"pnpm --filter web run dev\"",
-    "test":        "pnpm --filter @ticlaw/edge run test",
+    "dev:web":     "concurrently -n gateway,node,web -c cyan,green,blue \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/node run dev\" \"pnpm --filter web run dev\"",
+    "test":        "pnpm --filter @ticlaw/node run test",
     "test:e2e":    "bash tests/run-e2e.sh"
   },
   "devDependencies": {
