@@ -1,26 +1,53 @@
 /**
- * HTTP SSE channel for TiClaw.
+ * HTTP SSE channel for TiClaw — REST API v1
  *
- * Routes:
- *   POST /runs                — send a message to an agent
- *   GET  /runs/:id/stream     — SSE stream for a session
- *   GET  /agents              — agent info
- *   GET  /api/mind            — mind state
- *   GET  /api/agents          — list agents
- *   POST /api/agents          — create agent
- *   GET  /api/sessions        — list sessions
- *   POST /api/sessions        — create session
- *   GET  /api/schedules       — list schedules
- *   POST /api/schedules       — create schedule
- *   DEL  /api/schedules/:id   — delete schedule
- *   POST /api/schedules/:id/toggle — toggle schedule
- *   GET  /api/skills          — list skills
- *   POST /api/skills/:name/*  — enable/disable skills
- *   GET  /api/tasks           — list active tasks
- *   GET  /api/node            — node status
- *   POST /api/node/trust      — trust node
- *   GET  /api/enroll/*        — enrollment endpoints
- *   GET  /health              — health check
+ * Node:
+ *   GET  /api/v1/node                                      — node status
+ *   POST /api/v1/node/trust                                — trust node
+ *
+ * Agents:
+ *   GET    /api/v1/agents                                  — list agents
+ *   POST   /api/v1/agents                                  — create agent
+ *   GET    /api/v1/agents/:agent_id                        — get agent config
+ *   PATCH  /api/v1/agents/:agent_id                        — update agent settings
+ *   DELETE /api/v1/agents/:agent_id                        — delete agent
+ *   GET    /api/v1/agents/:agent_id/mind                   — core mind files
+ *   GET    /api/v1/agents/:agent_id/artifacts              — artifact index
+ *   GET    /api/v1/agents/:agent_id/memory                 — memory roll
+ *   POST   /api/v1/agents/:agent_id/workspace/upload       — upload files
+ *   GET    /api/v1/agents/:agent_id/workspace/*            — read workspace file
+ *
+ * Sessions (nested under agent):
+ *   GET    /api/v1/agents/:agent_id/sessions               — list sessions
+ *   POST   /api/v1/agents/:agent_id/sessions               — create session
+ *   GET    /api/v1/agents/:agent_id/sessions/:session_id   — get session
+ *   PATCH  /api/v1/agents/:agent_id/sessions/:session_id   — update session (title)
+ *   DELETE /api/v1/agents/:agent_id/sessions/:session_id   — delete session
+ *   GET    /api/v1/agents/:agent_id/sessions/:session_id/messages — chat history
+ *   POST   /api/v1/agents/:agent_id/sessions/:session_id/messages — send message
+ *   GET    /api/v1/agents/:agent_id/sessions/:session_id/stream   — SSE stream
+ *
+ * Skills:
+ *   GET    /api/v1/skills                                  — list
+ *   GET    /api/v1/skills/:name                            — skill details
+ *   POST   /api/v1/skills/:name/enable                     — enable skill
+ *   POST   /api/v1/skills/:name/disable                    — disable skill
+ *
+ * Schedules:
+ *   GET    /api/v1/schedules                               — list
+ *   POST   /api/v1/schedules                               — create
+ *   DELETE /api/v1/schedules/:id                           — delete
+ *   POST   /api/v1/schedules/:id/toggle                    — toggle active/paused
+ *   POST   /api/v1/schedules/refresh                       — force check
+ *
+ * System:
+ *   GET    /api/v1/models                                  — list LLM models
+ *   GET    /api/v1/tasks                                   — active tasks
+ *   GET    /api/v1/enroll/*                                — enrollment
+ *   GET    /health                                         — health check
+ *
+ * Legacy (still served for backwards compat — redirect or alias):
+ *   POST /runs, GET /runs/:id/stream, GET /agents
  */
 
 import fs from 'fs';
@@ -43,6 +70,7 @@ import {
   agentPaths,
   MODELS_REGISTRY,
   getAgentModelConfig,
+  ALLOWED_ORIGINS,
 } from '../core/config.js';
 
 function inferMimeType(filePath: string): string {
@@ -143,6 +171,37 @@ function addClient(
   sseClients.get(chatJid)!.add(res);
 }
 
+// Global artifact watcher
+function startArtifactWatcher() {
+  try {
+    fs.watch(AGENTS_DIR, { recursive: true }, (eventType, filename) => {
+      if (!filename) return;
+      const parts = filename.split(path.sep);
+      const agentId = parts[0];
+      const relPath = parts.slice(1).join('/');
+      
+      if (!agentId || !relPath) return;
+      
+      for (const chatJid of sseClients.keys()) {
+        if (chatJid.includes(agentId) || chatJid.startsWith('web:')) {
+          broadcastToChat(chatJid, {
+            type: 'artifact_updated',
+            agent_id: agentId,
+            file: relPath,
+            event: eventType
+          });
+        }
+      }
+    });
+  } catch (err) {
+      if (typeof logger !== 'undefined') logger.warn({ err }, 'Failed to start recursive artifact watcher (possibly OS limitation)');
+  }
+}
+
+if (fs.existsSync(AGENTS_DIR)) {
+  startArtifactWatcher();
+}
+
 function removeClient(
   chatJid: string,
   res: http.ServerResponse | WebSocket,
@@ -169,9 +228,25 @@ export function broadcastToChat(chatJid: string, event: object): void {
   }
 }
 
-function setCorsHeaders(res: http.ServerResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+function setCorsHeaders(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS && origin) {
+    try {
+      const regex = new RegExp(ALLOWED_ORIGINS);
+      if (regex.test(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      }
+    } catch {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
   res.setHeader(
     'Access-Control-Allow-Headers',
     'Authorization, Content-Type, X-API-Key',
@@ -235,10 +310,19 @@ function isLoopbackAddress(remote: string | undefined): boolean {
 }
 
 function requiresAdminApiAccess(pathname: string, method: string): boolean {
+  // Legacy run endpoint
   if (pathname === '/runs' && method === 'POST') return true;
-  if (!pathname.startsWith('/api/')) return false;
-  if (method === 'OPTIONS') return false;
-  return true;
+  // All new v1 api endpoints require admin access
+  if (pathname.startsWith('/api/v1/')) {
+    if (method === 'OPTIONS') return false;
+    return true;
+  }
+  // Legacy /api/ paths still require admin access
+  if (pathname.startsWith('/api/')) {
+    if (method === 'OPTIONS') return false;
+    return true;
+  }
+  return false;
 }
 
 type HttpAdminContext = {
@@ -591,13 +675,13 @@ export class HttpChannel implements Channel {
     const method = req.method || 'GET';
 
     if (method === 'OPTIONS') {
-      setCorsHeaders(res);
+      setCorsHeaders(req, res);
       res.writeHead(204);
       res.end();
       return;
     }
 
-    setCorsHeaders(res);
+    setCorsHeaders(req, res);
 
     try {
       if (await maybeHandleAcpRequest(req, res, url)) {
@@ -618,14 +702,19 @@ export class HttpChannel implements Channel {
       }
 
       // ── Workspace file access ──
-      const workspaceMatch = pathname.match(/^\/api\/workspace\/(.*)$/);
+      const workspaceMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/workspace\/(.*)$/)
+        ?? pathname.match(/^\/api\/workspace\/(.*)$/);
       if (workspaceMatch && req.method === 'GET') {
-        const agentId = url.searchParams.get('agent_id');
+        // /api/v1/agents/:agent_id/workspace/<relpath> — agent_id is captured group 1 (v1) or falls back to query param (legacy)
+        const agentId = workspaceMatch[2] !== undefined
+          ? decodeURIComponent(workspaceMatch[1])
+          : (url.searchParams.get('agent_id') ?? '');
+        const relRaw = workspaceMatch[2] !== undefined ? workspaceMatch[2] : workspaceMatch[1];
         if (!agentId) {
-          writeJson(res, 400, { error: 'agent_id query parameter is required' });
+          writeJson(res, 400, { error: 'agent_id required' });
           return;
         }
-        const relPath = decodeURIComponent(workspaceMatch[1] || '.') || '.';
+        const relPath = decodeURIComponent(relRaw || '.') || '.';
         // Prevent path traversal
         const normalized = path.normalize(relPath);
         if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
@@ -673,10 +762,12 @@ export class HttpChannel implements Channel {
       }
 
       // ── Workspace file upload (JSON with base64-encoded files) ──
-      if (pathname === '/api/workspace/upload' && req.method === 'POST') {
-        const agentId = url.searchParams.get('agent_id');
+      const uploadV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/workspace\/upload$/);
+      const uploadAgentId = uploadV1Match ? decodeURIComponent(uploadV1Match[1]) : url.searchParams.get('agent_id');
+      if ((uploadV1Match || pathname === '/api/workspace/upload') && req.method === 'POST') {
+        const agentId = uploadAgentId || '';
         if (!agentId) {
-          writeJson(res, 400, { error: 'agent_id query parameter is required' });
+          writeJson(res, 400, { error: 'agent_id required' });
           return;
         }
 
@@ -729,6 +820,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // Legacy /api/mind — also served at /api/v1/agents/:id/mind (handled below)
       if (pathname === '/api/mind' && req.method === 'GET') {
         // Long-term mind view (root files only): SOUL + MEMORY
         const agentId = url.searchParams.get('agent_id');
@@ -745,8 +837,9 @@ export class HttpChannel implements Channel {
 
       // ── Root Mind Files (SOUL, MEMORY, IDENTITY, USER) ──
 
-      if (pathname === '/api/mind/files' && req.method === 'GET') {
-        const agentId = url.searchParams.get('agent_id');
+      const mindFilesMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/mind$/);
+      if ((mindFilesMatch && req.method === 'GET') || (pathname === '/api/mind/files' && req.method === 'GET')) {
+        const agentId = mindFilesMatch ? decodeURIComponent(mindFilesMatch[1]) : url.searchParams.get('agent_id');
         const baseDir = agentId ? agentPaths(agentId).base : AGENTS_DIR;
         const MIND_FILES = ['SOUL.md', 'MEMORY.md', 'IDENTITY.md', 'USER.md'];
         const files: Record<string, { content: string; mtimeMs: number }> = {};
@@ -768,9 +861,59 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── API: AgentSpace Resource Indexing ──
+      
+      const artifactsMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/artifacts$/);
+      if ((artifactsMatch || pathname === '/api/mind/artifacts') && req.method === 'GET') {
+        const agentId = artifactsMatch ? decodeURIComponent(artifactsMatch[1]) : url.searchParams.get('agent_id');
+        if (!agentId) {
+          writeJson(res, 400, { error: 'agent_id required' });
+          return;
+        }
+
+        const baseDir = agentPaths(agentId).base;
+        const artifacts: Record<string, any> = {};
+
+        const walkSync = (dir: string, filelist: string[] = []) => {
+          if (!fs.existsSync(dir)) return filelist;
+          const items = fs.readdirSync(dir);
+          for (const item of items) {
+            const filepath = path.join(dir, item);
+            try {
+              if (fs.statSync(filepath).isDirectory()) {
+                // exclude huge directories or internal stores
+                if (item !== '.git' && item !== 'node_modules') {
+                  walkSync(filepath, filelist);
+                }
+              } else {
+                filelist.push(filepath);
+              }
+            } catch { /* ignore stat failures */ }
+          }
+          return filelist;
+        };
+
+        const allFiles = walkSync(baseDir);
+        for (const fullPath of allFiles) {
+          const relPath = path.relative(baseDir, fullPath);
+          try {
+            const stat = fs.statSync(fullPath);
+            artifacts[relPath] = {
+              mime_type: inferMimeType(fullPath),
+              size: stat.size,
+              mtimeMs: stat.mtimeMs,
+            };
+          } catch {
+             // skip
+          }
+        }
+        writeJson(res, 200, { artifacts });
+        return;
+      }
+
       // ── Agent Memory (Core + Roll) ──
 
-      const memoryMatch = pathname.match(/^\/api\/agents\/([^/]+)\/memory$/);
+      const memoryMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/memory$/) ?? pathname.match(/^\/api\/agents\/([^/]+)\/memory$/);
       if (memoryMatch && req.method === 'GET') {
         const agentId = decodeURIComponent(memoryMatch[1]);
         const baseDir = agentPaths(agentId).base;
@@ -928,15 +1071,16 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── SSE Stream ──
+      // ── SSE Stream ── (v1: /api/v1/agents/:agent_id/sessions/:session_id/stream)
 
+      const sseV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)\/stream$/);
       if (
-        pathname.startsWith('/runs/') &&
-        pathname.endsWith('/stream') &&
+        (sseV1Match ||
+         (pathname.startsWith('/runs/') && pathname.endsWith('/stream'))) &&
         req.method === 'GET'
       ) {
-        const agentId = url.searchParams.get('agent_id');
-        const sessionId = url.searchParams.get('session_id');
+        const agentId = sseV1Match ? decodeURIComponent(sseV1Match[1]) : url.searchParams.get('agent_id');
+        const sessionId = sseV1Match ? decodeURIComponent(sseV1Match[2]) : url.searchParams.get('session_id');
 
         if (!agentId || !sessionId) {
           writeProtocolError(
@@ -981,9 +1125,10 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── POST /runs — send a message ──
+      // ── POST message (v1: /api/v1/agents/:agent_id/sessions/:session_id/messages | legacy: /runs) ──
 
-      if (pathname === '/runs' && req.method === 'POST') {
+      const postMsgV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)\/messages$/);
+      if ((postMsgV1Match || pathname === '/runs') && req.method === 'POST') {
         const parsed = await readJsonBody(req);
         const {
           agent_id: rawAgentId,
@@ -993,6 +1138,11 @@ export class HttpChannel implements Channel {
           sender_name,
           content,
         } = parsed;
+        // v1: override agent_id and session_id from path params
+        if (postMsgV1Match) {
+          (parsed as any).agent_id = decodeURIComponent(postMsgV1Match[1]);
+          (parsed as any).session_id = decodeURIComponent(postMsgV1Match[2]);
+        }
 
         if (!content || typeof content !== 'string') {
           writeProtocolError(
@@ -1099,7 +1249,7 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Skills ──
 
-      if (pathname === '/api/skills' && req.method === 'GET') {
+      if ((pathname === '/api/v1/skills' || pathname === '/api/skills') && req.method === 'GET') {
         const registry = new SkillsRegistry(SKILLS_CONFIG);
         const skills = registry.listAvailable();
         writeJson(res, 200, {
@@ -1130,13 +1280,16 @@ export class HttpChannel implements Channel {
       }
 
       if (
-        pathname.startsWith('/api/skills/') &&
+        (pathname.startsWith('/api/v1/skills/') || pathname.startsWith('/api/skills/')) &&
         (pathname.endsWith('/enable') || pathname.endsWith('/disable')) &&
         method === 'POST'
       ) {
         const parts = pathname.split('/');
-        const skillName = parts[3];
-        const action = parts[4] as 'enable' | 'disable';
+        // v1 path: /api/v1/skills/:name/enable → parts[4]=name, parts[5]=action
+        // old path: /api/skills/:name/enable   → parts[3]=name, parts[4]=action
+        const isV1 = pathname.startsWith('/api/v1/');
+        const skillName = isV1 ? parts[4] : parts[3];
+        const action = (isV1 ? parts[5] : parts[4]) as 'enable' | 'disable';
         const registry = new SkillsRegistry(SKILLS_CONFIG);
         const ctx = adminContext || {
           actor: 'web-ui',
@@ -1169,9 +1322,10 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Messages ──
 
-      if (pathname === '/api/messages' && req.method === 'GET') {
-        const agentId = url.searchParams.get('agent_id');
-        const sessionId = url.searchParams.get('session_id');
+      const msgHistV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)\/messages$/);
+      if ((msgHistV1Match || pathname === '/api/messages') && req.method === 'GET') {
+        const agentId = msgHistV1Match ? decodeURIComponent(msgHistV1Match[1]) : url.searchParams.get('agent_id');
+        const sessionId = msgHistV1Match ? decodeURIComponent(msgHistV1Match[2]) : url.searchParams.get('session_id');
         const limit = parseInt(url.searchParams.get('limit') || '50', 10);
         if (!agentId || !sessionId) {
           writeProtocolError(
@@ -1203,7 +1357,7 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: System Models ──
 
-      if (pathname === '/api/models' && req.method === 'GET') {
+      if ((pathname === '/api/v1/models' || pathname === '/api/models') && req.method === 'GET') {
         const publicModels = MODELS_REGISTRY.map(({ api_key, ...rest }) => rest);
         writeJson(res, 200, { models: publicModels });
         return;
@@ -1211,7 +1365,7 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Agents ──
 
-      if (pathname === '/api/agents' && req.method === 'GET') {
+      if ((pathname === '/api/v1/agents' || pathname === '/api/agents' || pathname === '/agents') && req.method === 'GET') {
         const allAgents = getAllAgents();
         const allSessions = getAllSessions();
         // Enrich with session counts
@@ -1242,7 +1396,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      if (pathname === '/api/agents' && req.method === 'POST') {
+      if ((pathname === '/api/v1/agents' || pathname === '/api/agents') && req.method === 'POST') {
         const body = await readJsonBody(req);
         const name = typeof body.name === 'string' ? body.name.trim() : '';
         if (!name) {
@@ -1264,7 +1418,69 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      const agentModelMatch = pathname.match(/^\/api\/agents\/([^/]+)\/model$/);
+      // GET /api/v1/agents/:id — get agent config + session count
+      const agentGetMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)$/);
+      if (agentGetMatch && req.method === 'GET') {
+        const agentId = decodeURIComponent(agentGetMatch[1]);
+        const allSessions = getAllSessions();
+        const agentSessions = allSessions.filter((s) => s.agent_id === agentId);
+        let config: any = {};
+        try {
+          const configPath = agentPaths(agentId).config;
+          if (fs.existsSync(configPath)) {
+            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          }
+        } catch { /* ignore */ }
+        writeJson(res, 200, {
+          agent_id: agentId,
+          session_count: agentSessions.length,
+          config,
+        });
+        return;
+      }
+
+      // PATCH /api/v1/agents/:id — update agent configuration
+      const agentPatchMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)$/);
+      if (agentPatchMatch && req.method === 'PATCH') {
+        const agentId = decodeURIComponent(agentPatchMatch[1]);
+        const body = await readJsonBody(req);
+        try {
+          const configPath = agentPaths(agentId).config;
+          let config: any = {};
+          if (fs.existsSync(configPath)) {
+            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          }
+          // Merge in allowed top-level config fields
+          const allowed = ['model', 'name', 'llm_base_url', 'system_prompt'];
+          for (const key of allowed) {
+            if (body[key] !== undefined) config[key] = body[key];
+          }
+          fs.mkdirSync(path.dirname(configPath), { recursive: true });
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          writeJson(res, 200, { ok: true, config });
+        } catch (err: any) {
+          writeProtocolError(res, 500, 'internal_error', 'config_update_failed', err.message);
+        }
+        return;
+      }
+
+      // DELETE /api/v1/agents/:id — delete agent
+      if (agentGetMatch && req.method === 'DELETE') {
+        const agentId = decodeURIComponent(agentGetMatch[1]);
+        const agentDir = agentPaths(agentId).base;
+        try {
+          if (fs.existsSync(agentDir)) {
+            fs.rmSync(agentDir, { recursive: true, force: true });
+          }
+          writeJson(res, 200, { ok: true });
+        } catch (err: any) {
+          writeProtocolError(res, 500, 'internal_error', 'delete_failed', err.message);
+        }
+        return;
+      }
+
+      // Legacy: POST /api/agents/:id/model
+      const agentModelMatch = pathname.match(/^\/api\/agents\/([^/]+)\/model$/) ?? pathname.match(/^\/api\/v1\/agents\/([^/]+)\/model$/);
       if (agentModelMatch && req.method === 'POST') {
         const agentId = decodeURIComponent(agentModelMatch[1]);
         const body = await readJsonBody(req);
@@ -1293,8 +1509,10 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Sessions ──
 
-      if (pathname === '/api/sessions' && req.method === 'GET') {
-        const agentId = url.searchParams.get('agent_id');
+      // GET /api/v1/agents/:agent_id/sessions
+      const sessionsV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions$/);
+      if ((sessionsV1Match || pathname === '/api/sessions') && req.method === 'GET') {
+        const agentId = sessionsV1Match ? decodeURIComponent(sessionsV1Match[1]) : url.searchParams.get('agent_id');
         const sessions = agentId
           ? getSessionsForAgent(agentId)
           : getAllSessions();
@@ -1302,10 +1520,11 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      if (pathname === '/api/sessions' && req.method === 'POST') {
+      if ((sessionsV1Match || pathname === '/api/sessions') && req.method === 'POST') {
         const body = await readJsonBody(req);
-        const agentId =
-          typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const agentId = sessionsV1Match
+          ? decodeURIComponent(sessionsV1Match[1])
+          : (typeof body.agent_id === 'string' ? body.agent_id.trim() : '');
         if (!agentId) {
           writeProtocolError(
             res,
@@ -1330,10 +1549,12 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      const sessionDeleteMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
+      // /api/v1/agents/:agent_id/sessions/:session_id  or  legacy /api/sessions/:id
+      const sessionV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)$/);
+      const sessionDeleteMatch = sessionV1Match ?? pathname.match(/^\/api\/sessions\/([^/]+)$/);
       if (sessionDeleteMatch && req.method === 'DELETE') {
-        const id = decodeURIComponent(sessionDeleteMatch[1]);
-        const agentIdRaw = url.searchParams.get('agent_id');
+        const id = sessionV1Match ? decodeURIComponent(sessionV1Match[2]) : decodeURIComponent(sessionDeleteMatch[1]);
+        const agentIdRaw = sessionV1Match ? decodeURIComponent(sessionV1Match[1]) : url.searchParams.get('agent_id');
         const agentId =
           typeof agentIdRaw === 'string' && agentIdRaw.trim()
             ? agentIdRaw.trim()
@@ -1367,11 +1588,13 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // PATCH /api/sessions/:id — update session (title)
+      // PATCH /api/v1/agents/:agent_id/sessions/:session_id — update session (title)
       if (sessionDeleteMatch && req.method === 'PATCH') {
-        const id = decodeURIComponent(sessionDeleteMatch[1]);
+        const id = sessionV1Match ? decodeURIComponent(sessionV1Match[2]) : decodeURIComponent(sessionDeleteMatch[1]);
         const body = await readJsonBody(req);
-        const agentId = typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
+        const agentId = sessionV1Match
+          ? decodeURIComponent(sessionV1Match[1])
+          : (typeof body.agent_id === 'string' ? body.agent_id.trim() : '');
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         if (!agentId || !title) {
           writeJson(res, 400, { error: 'agent_id and title are required' });
@@ -1386,7 +1609,7 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Schedules ──
 
-      if (pathname === '/api/schedules' && req.method === 'GET') {
+      if ((pathname === '/api/v1/schedules' || pathname === '/api/schedules') && req.method === 'GET') {
         const agentId = url.searchParams.get('agent_id');
         const schedules = agentId
           ? getSchedulesForAgent(agentId)
@@ -1395,7 +1618,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      if (pathname === '/api/schedules' && req.method === 'POST') {
+      if ((pathname === '/api/v1/schedules' || pathname === '/api/schedules') && req.method === 'POST') {
         const body = await readJsonBody(req);
         const agentId =
           typeof body.agent_id === 'string' ? body.agent_id.trim() : '';
@@ -1439,15 +1662,13 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      if (pathname === '/api/schedules/refresh' && req.method === 'POST') {
+      if ((pathname === '/api/v1/schedules/refresh' || pathname === '/api/schedules/refresh') && req.method === 'POST') {
         forceSchedulerCheck();
         writeJson(res, 200, { success: true });
         return;
       }
 
-      const scheduleToggleMatch = pathname.match(
-        /^\/api\/schedules\/([^/]+)\/toggle$/,
-      );
+      const scheduleToggleMatch = pathname.match(/^\/api\/v1\/schedules\/([^/]+)\/toggle$/) ?? pathname.match(/^\/api\/schedules\/([^/]+)\/toggle$/);
       if (scheduleToggleMatch && req.method === 'POST') {
         const id = decodeURIComponent(scheduleToggleMatch[1]);
         const body = await readJsonBody(req);
@@ -1468,7 +1689,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      const scheduleDeleteMatch = pathname.match(/^\/api\/schedules\/([^/]+)$/);
+      const scheduleDeleteMatch = pathname.match(/^\/api\/v1\/schedules\/([^/]+)$/) ?? pathname.match(/^\/api\/schedules\/([^/]+)$/);
       if (scheduleDeleteMatch && req.method === 'DELETE') {
         const id = decodeURIComponent(scheduleDeleteMatch[1]);
         deleteSchedule(id);
@@ -1478,7 +1699,7 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Tasks ──
 
-      if (pathname === '/api/tasks' && req.method === 'GET') {
+      if ((pathname === '/api/v1/tasks' || pathname === '/api/tasks') && req.method === 'GET') {
         try {
           const tasks = listActiveTasks();
           writeJson(res, 200, { tasks });
@@ -1491,7 +1712,7 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Node ──
 
-      if (pathname === '/api/node' && req.method === 'GET') {
+      if ((pathname === '/api/v1/node' || pathname === '/api/node') && req.method === 'GET') {
         const enrollment = readEnrollmentState(NODE_HOSTNAME || undefined);
         const stats = getExecutorStats();
         
@@ -1531,7 +1752,7 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Trust Claw ──
 
-      if (pathname === '/api/node/trust' && req.method === 'POST') {
+      if ((pathname === '/api/v1/node/trust' || pathname === '/api/node/trust') && req.method === 'POST') {
         // Admin-only endpoint - require admin authentication
         const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {

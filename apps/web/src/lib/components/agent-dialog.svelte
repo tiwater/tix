@@ -47,7 +47,7 @@
   async function fetchAgentMemory(aid: string) {
     agentMemoryLoading = true;
     try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(aid)}/memory`);
+      const res = await fetch(`/api/v1/agents/${encodeURIComponent(aid)}/memory`);
       if (res.ok) {
         agentMemoryData = await res.json();
       }
@@ -78,7 +78,7 @@
     workspacePath = relPath;
     try {
       const urlPath = relPath === '.' ? '' : encodeURIComponent(relPath);
-      const res = await fetch(`/api/workspace/${urlPath}?agent_id=${encodeURIComponent(agentId)}`);
+      const res = await fetch(`/api/v1/agents/${encodeURIComponent(agentId)}/workspace/${urlPath}`);
       if (res.ok) {
         const data = await res.json();
         workspaceEntries = (data.entries || []).sort((a: WorkspaceEntry, b: WorkspaceEntry) => {
@@ -134,7 +134,7 @@
   async function fetchMindFilesForAgent(aid: string) {
     mindLoading = true;
     try {
-      const res = await fetch(`/api/mind/files?agent_id=${encodeURIComponent(aid)}`);
+      const res = await fetch(`/api/v1/agents/${encodeURIComponent(aid)}/mind`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.files) {

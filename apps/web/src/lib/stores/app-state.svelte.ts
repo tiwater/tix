@@ -279,7 +279,7 @@ function createAppState() {
     if (eventSource) { eventSource.close(); eventSource = null; }
     // Ensure we don't accidentally pass a full JID as the session_id
     const rawSessionId = sessionId.startsWith('web:') ? sessionId.split(':').pop() || sessionId : sessionId;
-    const url = `/runs/web-run/stream?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(rawSessionId)}`;
+    const url = `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(rawSessionId)}/stream`;
     eventSource = new EventSource(url);
 
     eventSource.onopen = () => {
@@ -290,7 +290,7 @@ function createAppState() {
 
     async function fetchMessageHistory() {
       try {
-        const res = await fetch(`/api/messages?agent_id=${encodeURIComponent(agentId)}&session_id=${encodeURIComponent(sessionId)}&limit=50`);
+        const res = await fetch(`/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages?limit=50`);
         if (!res.ok) return;
         const data = await res.json();
         if (data.messages?.length > 0) {
@@ -474,42 +474,47 @@ function createAppState() {
 
   async function fetchSkills() {
     skillsLoading = true;
-    try { const res = await fetch('/api/skills'); if (res.ok) { const data = await res.json(); skills = data.skills || []; } } catch { /* */ }
+    try { const res = await fetch('/api/v1/skills'); if (res.ok) { const data = await res.json(); skills = data.skills || []; } } catch { /* */ }
     skillsLoading = false;
   }
 
   async function fetchAgents() {
     agentsLoading = true;
     try {
-      const res = await fetch('/api/agents');
+      const res = await fetch('/api/v1/agents');
       if (res.ok) {
         const data = await res.json();
         agents = data.agents || [];
-        // Fetch all sessions and group by agent
-        const sessRes = await fetch('/api/sessions');
-        if (sessRes.ok) {
-          const sessData = await sessRes.json();
-          const allSessions: SessionInfo[] = sessData.sessions || [];
-          const grouped: Record<string, SessionInfo[]> = {};
-          for (const agent of agents) {
-            grouped[agent.agent_id] = allSessions.filter(s => s.agent_id === agent.agent_id);
+        // Fetch sessions per-agent using the nested route
+        const grouped: Record<string, SessionInfo[]> = {};
+        for (const agent of agents) {
+          try {
+            const sessRes = await fetch(`/api/v1/agents/${encodeURIComponent(agent.agent_id)}/sessions`);
+            if (sessRes.ok) {
+              const sessData = await sessRes.json();
+              grouped[agent.agent_id] = sessData.sessions || [];
+            } else {
+              grouped[agent.agent_id] = [];
+            }
+          } catch {
+            grouped[agent.agent_id] = [];
           }
-          agentSessions = grouped;
         }
+        agentSessions = grouped;
       }
     } catch { /* */ }
     agentsLoading = false;
   }
 
   async function fetchModels() {
-    try { const res = await fetch('/api/models'); if (res.ok) { const data = await res.json(); models = data.models || []; } } catch { /* */ }
+    try { const res = await fetch('/api/v1/models'); if (res.ok) { const data = await res.json(); models = data.models || []; } } catch { /* */ }
   }
 
   async function updateAgentModel(agent_id: string, model: string | undefined) {
     try {
-      const payload = { model: model || '' };
-      const res = await fetch(`/api/agents/${encodeURIComponent(agent_id)}/model`, {
-        method: 'POST',
+      const payload = { model: model || undefined };
+      const res = await fetch(`/api/v1/agents/${encodeURIComponent(agent_id)}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -540,24 +545,24 @@ function createAppState() {
 
   async function fetchSchedules() {
     schedulesLoading = true;
-    try { const res = await fetch('/api/schedules'); if (res.ok) { const data = await res.json(); schedules = data.schedules || []; } } catch { /* */ }
+    try { const res = await fetch('/api/v1/schedules'); if (res.ok) { const data = await res.json(); schedules = data.schedules || []; } } catch { /* */ }
     schedulesLoading = false;
   }
 
   async function fetchNode() {
     nodeLoading = true;
-    try { const res = await fetch('/api/node'); if (res.ok) { nodeInfo = await res.json(); } } catch { /* */ }
+    try { const res = await fetch('/api/v1/node'); if (res.ok) { nodeInfo = await res.json(); } } catch { /* */ }
     nodeLoading = false;
   }
 
   async function trustNode() {
-    try { const res = await fetch('/api/node/trust', { method: 'POST' }); if (res.ok) { await fetchNode(); addLog('Node trusted ✓'); } } catch { /* */ }
+    try { const res = await fetch('/api/v1/node/trust', { method: 'POST' }); if (res.ok) { await fetchNode(); addLog('Node trusted ✓'); } } catch { /* */ }
   }
 
   async function toggleSkill(name: string, enabled: boolean) {
     const action = enabled ? 'disable' : 'enable';
     try {
-      const res = await fetch(`/api/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
+      const res = await fetch(`/api/v1/skills/${encodeURIComponent(name)}/${action}`, { method: 'POST' });
       if (!res.ok) { const err = await res.json().catch(() => ({ detail: 'Unknown error' })); addLog(`⚠️ Skill ${action} failed: ${err.detail || err.message || 'Unknown error'}`); }
       await fetchSkills();
     } catch (e: any) { addLog(`⚠️ Skill ${action} failed: ${e.message}`); }
@@ -565,14 +570,14 @@ function createAppState() {
 
   async function createAgent() {
     if (!newAgentName.trim()) return;
-    try { const res = await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newAgentName.trim() }) }); if (res.ok) { newAgentName = ''; showNewAgent = false; await fetchAgents(); } } catch { /* */ }
+    try { const res = await fetch('/api/v1/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newAgentName.trim() }) }); if (res.ok) { newAgentName = ''; showNewAgent = false; await fetchAgents(); } } catch { /* */ }
   }
 
   async function createSession(agentIdOverride?: string) {
     const aid = agentIdOverride || newSessionAgentId;
     if (!aid) return;
     try { 
-      const res = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: aid }) }); 
+      const res = await fetch(`/api/v1/agents/${encodeURIComponent(aid)}/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }); 
       if (res.ok) { 
         const data = await res.json();
         showNewSession = false; 
@@ -593,17 +598,17 @@ function createAppState() {
 
   async function toggleSchedule(id: string, currentStatus: string) {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
-    try { await fetch(`/api/schedules/${encodeURIComponent(id)}/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); await fetchSchedules(); } catch { /* */ }
+    try { await fetch(`/api/v1/schedules/${encodeURIComponent(id)}/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); await fetchSchedules(); } catch { /* */ }
   }
 
   async function removeSchedule(id: string) {
-    try { await fetch(`/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }); await fetchSchedules(); } catch { /* */ }
+    try { await fetch(`/api/v1/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }); await fetchSchedules(); } catch { /* */ }
   }
 
   async function createSchedule(agentIdVal: string, prompt: string, cron: string) {
     if (!agentIdVal || !prompt || !cron) return;
     try {
-      const res = await fetch('/api/schedules', {
+      const res = await fetch('/api/v1/schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent_id: agentIdVal, prompt, cron }),
@@ -641,7 +646,12 @@ function createAppState() {
         agentSessions = { ...agentSessions, [ownerAgentId]: ownerSessions.filter(s => s.session_id !== id) };
       }
 
-      await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }); 
+      // Use nested v1 route: DELETE /api/v1/agents/:agent_id/sessions/:session_id
+      if (ownerAgentId) {
+        await fetch(`/api/v1/agents/${encodeURIComponent(ownerAgentId)}/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      } else {
+        await fetch(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      } 
 
       // Check if we're currently viewing this session (use URL as source of truth)
       const isViewingDeleted = typeof window !== 'undefined' && 
@@ -705,7 +715,11 @@ function createAppState() {
     progressCategory = '';
 
     try {
-      const res = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: agentId, session_id: sessionId, sender: 'web-user', content: fullContent }) });
+      const res = await fetch(`/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender: 'web-user', content: fullContent })
+      });
       if (!res.ok) {
         isThinking = false; progressCategory = '';
         if (res.status === 403) {

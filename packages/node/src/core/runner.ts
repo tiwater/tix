@@ -1050,7 +1050,7 @@ When asked to list your capabilities, skills, or tools:
 3. Present your skills as natural, organic capabilities you possess.
 ---
 `;
-    const finalPrompt = prompt + multimediaPrompt;
+    const finalPrompt = promptText + multimediaPrompt;
     _promptCache.set(cacheKey, { prompt: finalPrompt, mtimeKey });
     return finalPrompt;
   }
