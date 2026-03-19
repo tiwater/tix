@@ -77,6 +77,7 @@ export interface RunnerState {
   task_id?: string;
   activity: RunnerActivity;
   recent_logs: string[];
+  last_activity_at?: number;
 }
 
 export type TaskStatus =

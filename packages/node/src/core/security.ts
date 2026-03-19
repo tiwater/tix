@@ -97,13 +97,14 @@ export function assertSafePathSegment(
   if (value === '.' || value === '..') {
     throw new Error(`Invalid ${label}: "${value}" is not allowed.`);
   }
-  if (
-    value.includes('/') ||
-    value.includes('\\') ||
-    value.includes('\0') ||
-    value.length > MAX_PATH_SEGMENT_LENGTH
-  ) {
-    throw new Error(`Invalid ${label}: "${value}" is not a safe segment.`);
+  
+  // Stricter check: only alphanumeric, underscore, hyphen, colon, at, dot, and percent allowed
+  if (!/^[a-zA-Z0-9_:.@%-]+$/.test(value)) {
+    throw new Error(`Invalid ${label}: "${value}" contains restricted characters.`);
+  }
+
+  if (value.length > MAX_PATH_SEGMENT_LENGTH) {
+    throw new Error(`Invalid ${label}: value is too long.`);
   }
   return value;
 }

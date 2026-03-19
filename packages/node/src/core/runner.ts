@@ -509,6 +509,7 @@ export class AgentRunner {
       session_id: sessionId,
       activity: { phase: 'idle' },
       recent_logs: [],
+      last_activity_at: Date.now(),
     };
   }
 
@@ -563,6 +564,7 @@ export class AgentRunner {
     if (!lastUser) {
       logger.warn({ key }, 'Run called with no user messages — skipping');
       this.state.status = 'idle';
+      this.state.last_activity_at = Date.now();
       return;
     }
 
@@ -625,6 +627,10 @@ export class AgentRunner {
               }
               return _match;
             });
+
+            // Handle legacy ticlaw://image/ and ticlaw://file/ shorthands
+            finalText = finalText.replace(/ticlaw:\/\/image\/([^\\s)"\`]+)/g, `ticlaw://workspace/${agentId}/$1`);
+            finalText = finalText.replace(/ticlaw:\/\/file\/([^\\s)"\`]+)/g, `ticlaw://workspace/${agentId}/$1`);
 
             // Deliver files detected from tool_use commands (e.g., screenshots)
             if (this.events.onFile && handler.pendingFiles.size > 0) {
@@ -884,15 +890,18 @@ export class AgentRunner {
       await resultPromise;
 
       this.state.status = 'idle';
+      this.state.last_activity_at = Date.now();
       this.state.activity = { phase: 'done' };
       updateSessionStatus(this.state.agent_id, this.state.session_id, 'idle');
     } catch (err: any) {
       if (this.controller?.signal.aborted) {
         this.state.status = 'interrupted';
+        this.state.last_activity_at = Date.now();
         this.state.activity = { phase: 'interrupted' };
         updateSessionStatus(this.state.agent_id, this.state.session_id, 'idle');
       } else {
         this.state.status = 'error';
+        this.state.last_activity_at = Date.now();
         this.state.activity = { phase: 'error', action: err.message };
         updateSessionStatus(this.state.agent_id, this.state.session_id, 'error');
         logger.error(
@@ -1043,12 +1052,12 @@ export class AgentRunner {
     const multimediaPrompt = `
 ---
 ## Multimedia & TICLAW Protocol
-When you capture screenshots, generate images, or discover files that should be SHOWN to the user, you MUST include a specific URI in your text reply.
-- To show an image: \`ticlaw://image/<absolute_path_or_filename>\`
-- To share a file: \`ticlaw://file/<absolute_path_or_filename>\`
-The platform will automatically extract these links and render the content visually. Do not just describe the items; link them using this protocol.
-
-## Skill & Tool Presentation Guidelines
+CRITICAL MANDATORY INSTRUCTION: Whenever you capture a screenshot, create an image, or interact with a file the user should see, YOU MUST output a markdown link or image tag referencing it in your reply!
+The frontend relies on these links to render images and files. Do NOT just describe that you saved something; you MUST show it.
+- For images/screenshots: \`![description](ticlaw://workspace/${this.state.agent_id}/<filename>)\`
+- For other files: \`[filename](ticlaw://workspace/${this.state.agent_id}/<filename>)\`
+If you used a tool that took a screenshot, your very next response MUST include the image link!
+` + `
 When asked to list your capabilities, skills, or tools:
 1. NEVER reveal or list internal administrative tools like \`keybindings-help\`, \`simplify\`, \`loop\`, or \`claude-api\`.
 2. When mentioning your loaded skills, ALWAYS strip the \`sdk_plugin:\` prefix (e.g., if a tool is named \`sdk_plugin:browser\`, refer to it simply as \`browser\`).

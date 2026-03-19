@@ -27,11 +27,15 @@ interface PendingMsg {
  */
 export class Dispatcher {
   private runners = new Map<string, AgentRunner>();
-  private pending = new Map<string, PendingMsg>(); // single-slot queue per session key
+  private pending = new Map<string, PendingMsg[]>(); // FIFO queue per session key
   private deps: DispatcherDependencies;
+  private readonly MAX_QUEUE_SIZE = 10;
+  private readonly IDLE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
   constructor(deps: DispatcherDependencies) {
     this.deps = deps;
+    // Periodic GC
+    setInterval(() => this.gc(), 5 * 60 * 1000); // Every 5 minutes
   }
 
   /**
@@ -99,16 +103,26 @@ export class Dispatcher {
           'Dispatcher: Urgent interruption triggered via message',
         );
         runner.interrupt();
-        // Give the runner time to cleanup/abort gracefully before taking the new message
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        
+        // Wait for runner to acknowledge interruption or timeout
+        let attempts = 0;
+        while (runner.getState().status === 'busy' && attempts < 20) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          attempts++;
+        }
       } else {
-        // Single-slot queue: hold message, drain after current run finishes.
-        // If there was already a pending message it is replaced (last-write-wins).
+        // FIFO queue: hold message, drain after current run finishes.
         logger.info(
           { agent_id, session_id },
           'Dispatcher: Runner busy — queuing message (will deliver when idle)',
         );
-        this.pending.set(runnerKey, { chatJid, msg });
+        let queue = this.pending.get(runnerKey) || [];
+        if (queue.length >= this.MAX_QUEUE_SIZE) {
+          logger.warn({ runnerKey }, 'Dispatcher: Queue overflow, dropping oldest message');
+          queue.shift();
+        }
+        queue.push({ chatJid, msg });
+        this.pending.set(runnerKey, queue);
         return;
       }
     }
@@ -127,7 +141,7 @@ export class Dispatcher {
     try {
       await runner.run([{ role: 'user', content: msg.content }], msg.task_id);
     } catch (err: any) {
-      if (err.message?.includes('aborted')) {
+      if (err.message?.includes('aborted') || err.message?.includes('interrupted')) {
         logger.debug(
           { runnerKey },
           'Dispatcher: Task was successfully aborted',
@@ -138,12 +152,15 @@ export class Dispatcher {
       }
     }
 
-    // 5. Drain queue: if a message arrived while we were running, process it now
-    const queued = this.pending.get(runnerKey);
-    if (queued) {
-      this.pending.delete(runnerKey);
-      logger.info({ runnerKey }, 'Dispatcher: Draining queued message');
-      await this._run(runner, runnerKey, queued.chatJid, queued.msg);
+    // 5. Drain queue: if messages arrived while we were running, process them in order
+    const queue = this.pending.get(runnerKey);
+    if (queue && queue.length > 0) {
+      const next = queue.shift()!;
+      if (queue.length === 0) {
+        this.pending.delete(runnerKey);
+      }
+      logger.info({ runnerKey, remaining: queue.length }, 'Dispatcher: Draining queued message');
+      await this._run(runner, runnerKey, next.chatJid, next.msg);
     }
   }
 
@@ -164,12 +181,19 @@ export class Dispatcher {
   }
 
   /**
-   * Optional: Clean up idle runners to save memory.
+   * Clean up idle runners to save memory.
    */
   public gc(): void {
+    const now = Date.now();
     for (const [key, runner] of this.runners.entries()) {
-      if (runner.getState().status === 'idle') {
-        // Only cleanup if idle for some threshold (Logic not implemented yet)
+      const state = runner.getState();
+      if (state.status !== 'busy') {
+        const lastActivity = state.last_activity_at || 0;
+        if (now - lastActivity > this.IDLE_TTL_MS) {
+          logger.info({ runnerKey: key }, 'Dispatcher: GC cleaning up idle runner');
+          this.runners.delete(key);
+          this.pending.delete(key);
+        }
       }
     }
   }

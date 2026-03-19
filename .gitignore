@@ -31,3 +31,6 @@ agents-sdk-docs
 
 # SvelteKit
 .svelte-kit/
+
+# Python
+__pycache__/
