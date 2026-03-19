@@ -2,7 +2,7 @@
  * TiClaw Gateway — WebSocket relay that accepts inbound node node connections.
  *
  * Standalone package — no ticlaw core dependencies.
- * Ticos/Supen can `import { attachHub } from '@ticlaw/gateway'` to embed.
+ * Ticos/Supen can `import { attachGateway } from '@ticlaw/gateway'` to embed.
  */
 
 import http from 'node:http';
@@ -27,12 +27,15 @@ export interface RelayResult {
   encoding?: 'base64';
 }
 
-export interface HubOptions {
+export interface GatewayOptions {
   /** Optional logger (defaults to console). */
   logger?: Pick<Console, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
   /** Use noServer mode and manually handle upgrades. */
   handleUpgrade?: boolean;
 }
+
+/** @deprecated Use GatewayOptions */
+export type HubOptions = GatewayOptions;
 
 // ── State ──
 
@@ -52,9 +55,11 @@ function parseCsvSet(value?: string): Set<string> {
   );
 }
 
-const ALLOWED_NODE_IDS = parseCsvSet(process.env.HUB_ALLOWED_NODE_IDS);
+const ALLOWED_NODE_IDS = parseCsvSet(
+  process.env.GATEWAY_ALLOWED_NODE_IDS ?? process.env.HUB_ALLOWED_NODE_IDS,
+);
 const ALLOWED_NODE_FINGERPRINTS = parseCsvSet(
-  process.env.HUB_ALLOWED_NODE_FINGERPRINTS,
+  process.env.GATEWAY_ALLOWED_NODE_FINGERPRINTS ?? process.env.HUB_ALLOWED_NODE_FINGERPRINTS,
 );
 
 /**
@@ -149,7 +154,7 @@ export function relayToNode(
         headers: {},
         body: {
           error: 'no_node_connected',
-          message: 'No node is currently connected to this hub',
+          message: 'No node is currently connected to this gateway',
         },
       });
       return;
@@ -177,7 +182,7 @@ export function relayToNode(
 function handleNodeMessage(
   ws: WebSocket,
   msg: Record<string, unknown>,
-  log: HubOptions['logger'],
+  log: GatewayOptions['logger'],
 ): void {
   switch (msg.type) {
     case 'enroll': {
@@ -342,15 +347,15 @@ function handleSSERelay(
   });
 }
 
-// ── Attach hub to HTTP server ──
+// ── Attach gateway WebSocket server to an HTTP server ──
 
 /**
- * Attach the WebSocket hub to an HTTP server.
+ * Attach the WebSocket gateway to an HTTP server.
  * Call this on any http.Server to enable node connections.
  */
-export function attachHub(
+export function attachGateway(
   httpServer: http.Server,
-  opts: HubOptions = {},
+  opts: GatewayOptions = {},
 ): WebSocketServer {
   const log = opts.logger ?? console;
 
@@ -399,10 +404,10 @@ export function attachHub(
 // ── HTTP request handler (API relay middleware) ──
 
 /**
- * Handle an HTTP request — route hub API or relay to node.
- * Returns true if handled, false to pass through.
+ * Handle an HTTP request — route gateway API or relay to node.
+ * Returns true if the request was handled.
  */
-export function handleHubRequest(
+export function handleGatewayRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): boolean {
@@ -490,26 +495,32 @@ export function handleHubRequest(
   return false;
 }
 
-// ── Convenience: create + start a hub server ──
+// ── Convenience: create + start a standalone gateway server ──
 
-export interface StartHubOptions extends HubOptions {
+export interface StartGatewayOptions extends GatewayOptions {
   port?: number;
   host?: string;
-  /** Optional HTTP request handler for non-hub routes (e.g., serving static files). */
+  /** Optional HTTP request handler for non-gateway routes (e.g., serving static files). */
   onRequest?: (req: http.IncomingMessage, res: http.ServerResponse) => void;
 }
 
+/** @deprecated Use startGateway() */
+export const StartHubOptions = undefined;
+
 /**
- * Create and start a standalone hub server.
+ * Create and start a standalone gateway server.
  * Convenience for quick setup — or use attachHub() for more control.
  */
-export function startHub(opts: StartHubOptions = {}): Promise<http.Server> {
-  const port = opts.port ?? parseInt(process.env.HUB_PORT || '2755', 10);
+export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Server> {
+  const port = opts.port ?? parseInt(
+    process.env.GATEWAY_PORT ?? process.env.HUB_PORT ?? '2755',
+    10,
+  );
   const host = opts.host ?? '0.0.0.0';
   const log = opts.logger ?? console;
 
   const httpServer = http.createServer((req, res) => {
-    if (handleHubRequest(req, res)) return;
+    if (handleGatewayRequest(req, res)) return;
     if (opts.onRequest) {
       opts.onRequest(req, res);
       return;
@@ -518,12 +529,19 @@ export function startHub(opts: StartHubOptions = {}): Promise<http.Server> {
     res.end(JSON.stringify({ error: 'not_found' }));
   });
 
-  attachHub(httpServer, opts);
+  attachGateway(httpServer, opts);
 
   return new Promise((resolve) => {
     httpServer.listen(port, host, () => {
-      log.info?.(`[gateway] TiClaw Gateway listening on http://${host}:${port}`);
+      log.info?.(`[gateway] TiClaw Gateway listening on ws://${host}:${port}`);
       resolve(httpServer);
     });
   });
 }
+
+/** @deprecated Use startGateway() */
+export const startHub = startGateway;
+/** @deprecated Use attachGateway() */
+export const attachHub = attachGateway;
+/** @deprecated Use handleGatewayRequest() */
+export const handleHubRequest = handleGatewayRequest;

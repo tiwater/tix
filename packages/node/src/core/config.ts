@@ -44,6 +44,10 @@ const envConfig = readEnvFile([
   'TASK_DEFAULT_RETRY_COUNT',
   'TASK_DEFAULT_RETRY_BACKOFF_MS',
   'TC_NODE_NAME',
+  'TICLAW_AUTH_TOKEN',
+  'SUPEN_NODE_ID',
+  'WORKSPACE_ROOT',
+  'ALLOWED_ORIGINS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -267,13 +271,22 @@ export const TIMEZONE =
 
 // HTTP SSE channel
 export const HTTP_PORT = parseInt(
-  process.env.HTTP_PORT || envConfig.HTTP_PORT || '2755',
+  process.env.PORT || process.env.HTTP_PORT || envConfig.HTTP_PORT || '2756',
   10,
 );
 export const HTTP_ENABLED =
   (process.env.HTTP_ENABLED ?? envConfig.HTTP_ENABLED ?? 'true') !== 'false';
 export const HTTP_API_KEY =
   process.env.HTTP_API_KEY || envConfig.HTTP_API_KEY || '';
+
+export const TICLAW_AUTH_TOKEN =
+  process.env.TICLAW_AUTH_TOKEN || envConfig.TICLAW_AUTH_TOKEN || '';
+export const SUPEN_NODE_ID =
+  process.env.SUPEN_NODE_ID || envConfig.SUPEN_NODE_ID || '';
+export const WORKSPACE_ROOT =
+  process.env.WORKSPACE_ROOT || envConfig.WORKSPACE_ROOT || '';
+export const ALLOWED_ORIGINS =
+  process.env.ALLOWED_ORIGINS || envConfig.ALLOWED_ORIGINS || '';
 
 // LLM API keys — prefer MiniMax if configured, fall back to Anthropic
 export const ANTHROPIC_API_KEY =
