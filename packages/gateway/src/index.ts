@@ -34,9 +34,6 @@ export interface GatewayOptions {
   handleUpgrade?: boolean;
 }
 
-/** @deprecated Use GatewayOptions */
-export type HubOptions = GatewayOptions;
-
 // ── State ──
 
 const nodes = new Map<WebSocket, NodeInfo>();
@@ -538,10 +535,3 @@ export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Serve
     });
   });
 }
-
-/** @deprecated Use startGateway() */
-export const startHub = startGateway;
-/** @deprecated Use attachGateway() */
-export const attachHub = attachGateway;
-/** @deprecated Use handleGatewayRequest() */
-export const handleHubRequest = handleGatewayRequest;

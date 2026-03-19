@@ -655,8 +655,8 @@ async function main(): Promise<void> {
   const CHANNEL_CONNECT_TIMEOUT = 15_000;
   const enabledFromConfig = getEnabledChannelsFromConfig();
   const registeredChannelNames = getRegisteredChannelNames();
-  // Infrastructure channels (hub-client) must always connect regardless of config
-  const INFRA_CHANNELS = ['hub-client'];
+  // Infrastructure channels (gateway-client) must always connect regardless of config
+  const INFRA_CHANNELS = ['gateway-client'];
   const toConnect =
     enabledFromConfig.length > 0
       ? registeredChannelNames.filter(

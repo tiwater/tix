@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "start": "node dist/start.js",
+    "dev": "tsc --watch & sleep 2 && node --watch dist/start.js"
   },
   "files": [
     "dist"

@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import http from 'http';
 import crypto from 'crypto';
 import { logger } from '../core/logger.js';
-import { readHubConfig, HubConfig } from '../core/hub-config.js';
+import { readGatewayConfig, GatewayConfig } from '../core/gateway-config.js';
 import { validateOutboundEndpoint } from '../core/security.js';
 import {
   readEnrollmentState,
@@ -12,26 +12,26 @@ import { NODE_HOSTNAME, HTTP_PORT } from '../core/config.js';
 import { Channel, NewMessage, RegisteredProject } from '../core/types.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 
-const HUB_JID_PREFIX = 'hub:';
+const GATEWAY_JID_PREFIX = 'gateway:';
 
-export class HubClientChannel implements Channel {
-  name = 'hub-client';
+export class GatewayClientChannel implements Channel {
+  name = 'gateway-client';
   private ws: WebSocket | null = null;
   private opts: ChannelOpts;
   private _connected = false;
-  private config: HubConfig;
+  private config: GatewayConfig;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private reportingInterval: NodeJS.Timeout | null = null;
   private activeSseSubscriptions = new Map<string, { destroy: () => void }>();
 
   constructor(opts: ChannelOpts) {
     this.opts = opts;
-    this.config = readHubConfig();
+    this.config = readGatewayConfig();
   }
 
   async connect(): Promise<void> {
-    if (!this.config.hub_url) {
-      logger.debug('No hub_url configured, HubClientChannel disabled');
+    if (!this.config.gateway_url) {
+      logger.debug('No gateway_url configured, GatewayClientChannel disabled');
       return;
     }
 
@@ -41,28 +41,28 @@ export class HubClientChannel implements Channel {
   private async initiateConnection(): Promise<void> {
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
 
-    const rawUrl = this.config.hub_url!;
+    const rawUrl = this.config.gateway_url!;
     let url: string;
     try {
       url = validateOutboundEndpoint(rawUrl, {
         allowedProtocols: ['ws:', 'wss:'],
-        label: 'hub_url',
+        label: 'gateway_url',
       }).toString();
     } catch (err: any) {
       logger.error(
-        { err: err.message, hub_url: rawUrl },
-        'Refusing to connect hub-client to untrusted endpoint',
+        { err: err.message, gateway_url: rawUrl },
+        'Refusing to connect gateway-client to untrusted endpoint',
       );
       this._connected = false;
       return;
     }
 
-    logger.info({ url }, 'Connecting to hub...');
+    logger.info({ url }, 'Connecting to gateway...');
 
     this.ws = new WebSocket(url);
 
     this.ws.on('open', () => {
-      logger.info({ url }, 'Connected to hub');
+      logger.info({ url }, 'Connected to gateway');
       this._connected = true;
       this.authenticate();
       this.startReporting();
@@ -74,13 +74,13 @@ export class HubClientChannel implements Channel {
 
     this.ws.on('close', () => {
       this._connected = false;
-      logger.warn('Hub connection closed, reconnecting in 5s...');
+      logger.warn('Gateway connection closed, reconnecting in 5s...');
       this.stopReporting();
       this.reconnectTimeout = setTimeout(() => this.initiateConnection(), 5000);
     });
 
     this.ws.on('error', (err) => {
-      logger.error({ err }, 'Hub connection error');
+      logger.error({ err }, 'Gateway connection error');
     });
   }
 
@@ -90,7 +90,7 @@ export class HubClientChannel implements Channel {
 
     // If we have a trust_token in config and we are not yet trusted, attempt enrollment
     if (this.config.trust_token && state.trust_state !== 'trusted') {
-      logger.info('Attempting enrollment with hub using trust_token');
+      logger.info('Attempting enrollment with gateway using trust_token');
       this.ws?.send(
         JSON.stringify({
           type: 'enroll',
@@ -116,7 +116,7 @@ export class HubClientChannel implements Channel {
   /**
    * Build a HMAC token for gateway authentication.
    * Format: `${nodeId}.${timestampMs}.${hmacHex}`
-   * Only generated when the GATEWAY_SECRET env var is set on the edge side.
+   * Only generated when the GATEWAY_SECRET env var is set on the node side.
    */
   private buildGatewayToken(nodeId: string): string | undefined {
     const secret = process.env.GATEWAY_SECRET;
@@ -156,19 +156,18 @@ export class HubClientChannel implements Channel {
   private handleMessage(data: WebSocket.Data): void {
     try {
       const payload = JSON.parse(data.toString());
-      logger.debug({ payload }, 'Received message from hub');
+      logger.debug({ payload }, 'Received message from gateway');
 
       if (payload.type === 'enrollment_result') {
         if (payload.ok) {
-          logger.info('Hub enrollment successful');
-          // Sync enrollment state
+          logger.info('Gateway enrollment successful');
           verifyEnrollmentToken({
             token: this.config.trust_token!,
             nodeFingerprint: payload.node_fingerprint,
             nodeId: NODE_HOSTNAME || undefined,
           });
         } else {
-          logger.error({ code: payload.code }, 'Hub enrollment failed');
+          logger.error({ code: payload.code }, 'Gateway enrollment failed');
         }
         return;
       }
@@ -176,28 +175,28 @@ export class HubClientChannel implements Channel {
       if (payload.type === 'message') {
         const { agent_id, session_id, content, sender, sender_name, task_id } =
           payload;
-        const chatJid = `${HUB_JID_PREFIX}${agent_id}:${session_id}`;
+        const chatJid = `${GATEWAY_JID_PREFIX}${agent_id}:${session_id}`;
 
         const msg: NewMessage = {
           id:
             payload.id ||
-            `hub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            `gateway-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           chat_jid: chatJid,
-          sender: sender || 'hub-user',
-          sender_name: sender_name || 'Hub User',
+          sender: sender || 'gateway-user',
+          sender_name: sender_name || 'Gateway User',
           content,
           timestamp: payload.timestamp || new Date().toISOString(),
           is_from_me: false,
           agent_id,
           session_id,
-          task_id: task_id || `hub-task-${Date.now()}`,
+          task_id: task_id || `gateway-task-${Date.now()}`,
         };
 
         this.opts.onChatMetadata(
           chatJid,
           msg.timestamp,
           agent_id,
-          'hub',
+          'gateway',
           false,
         );
         this.opts.onMessage(chatJid, msg);
@@ -216,7 +215,7 @@ export class HubClientChannel implements Channel {
         return;
       }
     } catch (err) {
-      logger.error({ err }, 'Failed to handle hub message');
+      logger.error({ err }, 'Failed to handle gateway message');
     }
   }
 
@@ -242,7 +241,6 @@ export class HubClientChannel implements Channel {
       const isJson = contentType.includes('application/json');
 
       if (isJson) {
-        // JSON responses: relay as-is
         const body = await res.text();
         let parsed: unknown;
         try {
@@ -279,7 +277,7 @@ export class HubClientChannel implements Channel {
         );
       }
     } catch (err) {
-      logger.error({ err, path: payload.path }, 'Failed to relay API request');
+      logger.error({ err, path: payload.path }, 'Failed to relay API request to gateway');
       this.ws?.send(
         JSON.stringify({
           type: 'api_response',
@@ -306,7 +304,6 @@ export class HubClientChannel implements Channel {
       this.activeSseSubscriptions.delete(streamKey);
     }
 
-    // Connect to the node's own local HTTP SSE endpoint and relay events
     const localUrl = `http://127.0.0.1:${HTTP_PORT}${streamKey}`;
     logger.info({ path: streamKey }, 'SSE relay: subscribing to local stream');
 
@@ -316,7 +313,6 @@ export class HubClientChannel implements Channel {
       res.on('data', (chunk: Buffer) => {
         buffer += chunk.toString();
 
-        // Parse SSE events from buffer (format: "data: {...}\n\n")
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
 
@@ -352,7 +348,6 @@ export class HubClientChannel implements Channel {
       });
 
       res.on('error', (err) => {
-        // ECONNRESET is expected when SSE streams close (server restart, agent done, client disconnect)
         logger.debug({ err, path: streamKey }, 'SSE relay: stream error');
         this.activeSseSubscriptions.delete(streamKey);
       });
@@ -362,7 +357,6 @@ export class HubClientChannel implements Channel {
       logger.error({ err, path: streamKey }, 'SSE relay: failed to connect');
     });
 
-    // Track subscription so we can abort it later
     this.activeSseSubscriptions.set(streamKey, {
       destroy: () => req.destroy(),
     });
@@ -370,11 +364,11 @@ export class HubClientChannel implements Channel {
 
   async sendMessage(jid: string, text: string): Promise<void> {
     if (!this._connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      logger.warn({ jid }, 'Cannot send message: Hub not connected');
+      logger.warn({ jid }, 'Cannot send message: Gateway not connected');
       return;
     }
 
-    const parts = jid.slice(HUB_JID_PREFIX.length).split(':');
+    const parts = jid.slice(GATEWAY_JID_PREFIX.length).split(':');
     const agent_id = parts[0];
     const session_id = parts[1];
 
@@ -394,7 +388,7 @@ export class HubClientChannel implements Channel {
     filePath: string,
     caption?: string,
   ): Promise<void> {
-    logger.warn('HubClientChannel.sendFile not implemented');
+    logger.warn('GatewayClientChannel.sendFile not implemented');
   }
 
   isConnected(): boolean {
@@ -402,7 +396,7 @@ export class HubClientChannel implements Channel {
   }
 
   ownsJid(jid: string): boolean {
-    return jid.startsWith(HUB_JID_PREFIX);
+    return jid.startsWith(GATEWAY_JID_PREFIX);
   }
 
   async disconnect(): Promise<void> {
@@ -416,22 +410,22 @@ export class HubClientChannel implements Channel {
   }
 }
 
-function createHubClientChannel(opts: ChannelOpts): HubClientChannel | null {
-  const config = readHubConfig();
-  if (!config.hub_url) return null;
+function createGatewayClientChannel(opts: ChannelOpts): GatewayClientChannel | null {
+  const config = readGatewayConfig();
+  if (!config.gateway_url) return null;
   try {
-    validateOutboundEndpoint(config.hub_url, {
+    validateOutboundEndpoint(config.gateway_url, {
       allowedProtocols: ['ws:', 'wss:'],
-      label: 'hub_url',
+      label: 'gateway_url',
     });
   } catch (err: any) {
     logger.error(
-      { err: err.message, hub_url: config.hub_url },
-      'Hub client channel disabled due to endpoint security policy',
+      { err: err.message, gateway_url: config.gateway_url },
+      'Gateway client channel disabled due to endpoint security policy',
     );
     return null;
   }
-  return new HubClientChannel(opts);
+  return new GatewayClientChannel(opts);
 }
 
-registerChannel('hub-client', createHubClientChannel);
+registerChannel('gateway-client', createGatewayClientChannel);
