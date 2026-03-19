@@ -8,11 +8,18 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
+import { buildOpenApiSpec } from './openapi.js';
 
 export interface NodeInfo {
   node_id: string;
   node_fingerprint: string;
   trusted: boolean;
+  /** True if the WebSocket connection is currently open. */
+  online: boolean;
+  /** ISO timestamp of last message received from this node. */
+  last_seen?: string;
+  /** IP address the node connected from. */
+  ip?: string;
 }
 
 interface PendingRequest {
@@ -36,11 +43,22 @@ export interface GatewayOptions {
 
 // ── State ──
 
-const nodes = new Map<WebSocket, NodeInfo>();
-const connectionIps = new Map<WebSocket, string>();
+interface NodeState {
+  info: NodeInfo;
+  lastSeen: number;
+}
+
+const nodes = new Map<WebSocket, NodeState>();
 const pendingRequests = new Map<string, PendingRequest>();
 const sseClients = new Map<string, Set<http.ServerResponse>>();
 let requestIdCounter = 0;
+
+/**
+ * GATEWAY_API_KEY — API key that controller clients (e.g. Supen) must provide.
+ * When set, every inbound HTTP request must carry `Authorization: Bearer <key>`.
+ * If unset, the gateway is in open mode (development only).
+ */
+const GATEWAY_API_KEY = process.env.GATEWAY_API_KEY || '';
 
 function parseCsvSet(value?: string): Set<string> {
   if (!value) return new Set();
@@ -127,11 +145,23 @@ function isNodeAllowed(nodeId: string, nodeFingerprint: string): boolean {
 // ── Public API ──
 
 export function listNodes(): NodeInfo[] {
-  return Array.from(nodes.values());
+  return Array.from(nodes.values()).map(({ info, lastSeen }) => ({
+    ...info,
+    online: true,
+    last_seen: new Date(lastSeen).toISOString(),
+  }));
+}
+
+/** Get the WebSocket for a specific node by node_id. */
+export function getNodeById(nodeId: string): WebSocket | null {
+  for (const [ws, { info }] of nodes) {
+    if (info.node_id === nodeId && info.trusted && ws.readyState === WebSocket.OPEN) return ws;
+  }
+  return null;
 }
 
 export function getActiveNode(): WebSocket | null {
-  for (const [ws, info] of nodes) {
+  for (const [ws, { info }] of nodes) {
     if (info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
@@ -142,18 +172,15 @@ export function relayToNode(
   path: string,
   body?: unknown,
   timeoutMs = 15000,
+  targetNodeId?: string,
 ): Promise<RelayResult> {
   return new Promise((resolve) => {
-    const node = getActiveNode();
+    const node = targetNodeId ? getNodeById(targetNodeId) : getActiveNode();
     if (!node) {
-      resolve({
-        status: 503,
-        headers: {},
-        body: {
-          error: 'no_node_connected',
-          message: 'No node is currently connected to this gateway',
-        },
-      });
+      const msg = targetNodeId
+        ? `Node '${targetNodeId}' is not connected to this gateway`
+        : 'No node is currently connected to this gateway';
+      resolve({ status: 503, headers: {}, body: { error: 'no_node_connected', message: msg } });
       return;
     }
 
@@ -181,95 +208,67 @@ function handleNodeMessage(
   msg: Record<string, unknown>,
   log: GatewayOptions['logger'],
 ): void {
+  // Update last_seen on every message
+  const state = nodes.get(ws);
+  if (state) state.lastSeen = Date.now();
+
   switch (msg.type) {
     case 'enroll': {
       const node_id = msg.node_id as string;
       const node_fingerprint = msg.node_fingerprint as string;
+      const ip = nodes.get(ws)?.info.ip;
       // gateway_token = HMAC credential (separate from enrollment trust_token)
       const tokenCheck = verifyNodeToken(msg.gateway_token as string | undefined, node_id);
       if (!tokenCheck.ok) {
         log?.warn?.(
           `[gateway] Rejected node enrollment for id=${node_id}: ${tokenCheck.code}`,
         );
-        ws.send(
-          JSON.stringify({
-            type: 'enrollment_result',
-            ok: false,
-            code: tokenCheck.code,
-          }),
-        );
+        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
       if (!isNodeAllowed(node_id, node_fingerprint)) {
         log?.warn?.(
-          `[gateway] Rejected node enrollment for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
+          `[gateway] Rejected node enrollment for id=${node_id} from ${ip || 'unknown-ip'} due to allowlist policy`,
         );
-        ws.send(
-          JSON.stringify({
-            type: 'enrollment_result',
-            ok: false,
-            code: 'node_not_allowed',
-          }),
-        );
+        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: 'node_not_allowed' }));
         ws.close();
         break;
       }
-      nodes.set(ws, { node_id, node_fingerprint, trusted: true });
+      nodes.set(ws, { info: { node_id, node_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
       log?.info?.(`[gateway] Node enrolled: ${node_id}`);
-      ws.send(
-        JSON.stringify({
-          type: 'enrollment_result',
-          ok: true,
-          node_id,
-          node_fingerprint,
-        }),
-      );
+      ws.send(JSON.stringify({ type: 'enrollment_result', ok: true, node_id, node_fingerprint }));
       break;
     }
 
     case 'auth': {
       const node_id = msg.node_id as string;
       const node_fingerprint = msg.node_fingerprint as string;
+      const ip = nodes.get(ws)?.info.ip;
       const tokenCheck = verifyNodeToken(msg.token as string | undefined, node_id);
       if (!tokenCheck.ok) {
-        log?.warn?.(
-          `[gateway] Rejected node auth for id=${node_id}: ${tokenCheck.code}`,
-        );
-        ws.send(
-          JSON.stringify({
-            type: 'auth_result',
-            ok: false,
-            code: tokenCheck.code,
-          }),
-        );
+        log?.warn?.(`[gateway] Rejected node auth for id=${node_id}: ${tokenCheck.code}`);
+        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
       if (!isNodeAllowed(node_id, node_fingerprint)) {
-        log?.warn?.(
-          `[gateway] Rejected node auth for id=${node_id} from ${connectionIps.get(ws) || 'unknown-ip'} due to allowlist policy`,
-        );
-        ws.send(
-          JSON.stringify({
-            type: 'auth_result',
-            ok: false,
-            code: 'node_not_allowed',
-          }),
-        );
+        log?.warn?.(`[gateway] Rejected node auth for id=${node_id} from ${ip || 'unknown-ip'} due to allowlist policy`);
+        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: 'node_not_allowed' }));
         ws.close();
         break;
       }
-      nodes.set(ws, { node_id, node_fingerprint, trusted: true });
+      nodes.set(ws, { info: { node_id, node_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
       log?.info?.(`[gateway] Node authenticated: ${node_id}`);
       ws.send(JSON.stringify({ type: 'auth_result', ok: true }));
       break;
     }
 
     case 'report': {
-      const info = nodes.get(ws);
-      if (info) {
-        log?.debug?.(`[gateway] Report from ${info.node_id}: ${msg.status}`);
+      const state = nodes.get(ws);
+      if (state) {
+        state.lastSeen = Date.now();
+        log?.debug?.(`[gateway] Report from ${state.info.node_id}: ${msg.status}`);
       }
       break;
     }
@@ -371,8 +370,12 @@ export function attachGateway(
   wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     const ipText = Array.isArray(ip) ? ip[0] : String(ip || '');
-    connectionIps.set(ws, ipText);
-    log.info?.(`[gateway] New node connection from ${ip}`);
+    // Pre-populate state with IP so enroll/auth handlers can read it
+    nodes.set(ws, {
+      info: { node_id: '', node_fingerprint: '', trusted: false, online: true, ip: ipText },
+      lastSeen: Date.now(),
+    });
+    log.info?.(`[gateway] New node connection from ${ipText}`);
 
     ws.on('message', (data) => {
       try {
@@ -383,10 +386,9 @@ export function attachGateway(
     });
 
     ws.on('close', () => {
-      const info = nodes.get(ws);
-      if (info) log.info?.(`[gateway] Node disconnected: ${info.node_id}`);
+      const state = nodes.get(ws);
+      if (state?.info.node_id) log.info?.(`[gateway] Node disconnected: ${state.info.node_id}`);
       nodes.delete(ws);
-      connectionIps.delete(ws);
     });
 
     ws.on('error', (err) => {
@@ -410,80 +412,82 @@ export function handleGatewayRequest(
 ): boolean {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-  // Gateway-native: list nodes
+  // ── OpenAPI spec (self-describing, no auth required) ──
+  if (url.pathname === '/openapi.json' && req.method === 'GET') {
+    const spec = buildOpenApiSpec({ gateway_url: `http://${req.headers.host || 'localhost'}` });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(spec, null, 2));
+    return true;
+  }
+
+  // ── Gateway-native: health (own status, not relayed) ──
+  if (url.pathname === '/health' && req.method === 'GET') {
+    const connected = Array.from(nodes.values()).filter(
+      ({ info }) => info.trusted && info.node_id,
+    );
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      gateway: true,
+      nodes_connected: connected.length,
+      uptime_s: Math.floor(process.uptime()),
+    }));
+    return true;
+  }
+
+  // ── Gateway-native: list nodes ──
   if (url.pathname === '/api/gateway/nodes' && req.method === 'GET') {
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-    });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ nodes: listNodes() }));
     return true;
   }
 
-
-
-  // CORS preflight
-  if (
-    req.method === 'OPTIONS' &&
-    (url.pathname.startsWith('/api/') || url.pathname.startsWith('/runs'))
-  ) {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    });
+  // ── CORS preflight ──
+  const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Node-Id',
+  };
+  if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
+    res.writeHead(204, CORS_HEADERS);
     res.end();
     return true;
   }
 
-  // SSE stream relay
-  if (url.pathname.startsWith('/runs/') && url.pathname.endsWith('/stream')) {
+  // ── Controller auth ──
+  if (GATEWAY_API_KEY) {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!token || token !== GATEWAY_API_KEY) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'unauthorized', message: 'Missing or invalid API key' }));
+      return true;
+    }
+  }
+
+  // ── SSE stream relay — any path ending in /stream ──
+  if (req.method === 'GET' && url.pathname.endsWith('/stream')) {
     handleSSERelay(req, res, url);
     return true;
   }
 
-  // API relay to node
-  if (
-    url.pathname.startsWith('/api/') ||
-    url.pathname.startsWith('/runs') ||
-    url.pathname === '/health'
-  ) {
+  // ── API relay to node (with optional X-Node-Id targeting) ──
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/runs')) {
+    const targetNodeId = req.headers['x-node-id'] as string | undefined;
     let body = '';
-    req.on('data', (chunk: Buffer) => {
-      body += chunk;
-    });
+    req.on('data', (chunk: Buffer) => { body += chunk; });
     req.on('end', async () => {
       let parsedBody: unknown;
-      try {
-        parsedBody = body ? JSON.parse(body) : undefined;
-      } catch {
-        parsedBody = body;
-      }
-      const result = await relayToNode(
-        req.method || 'GET',
-        url.pathname + url.search,
-        parsedBody,
-      );
+      try { parsedBody = body ? JSON.parse(body) : undefined; } catch { parsedBody = body; }
+      const result = await relayToNode(req.method || 'GET', url.pathname + url.search, parsedBody, 15000, targetNodeId);
 
       if (result.encoding === 'base64' && typeof result.body === 'string') {
-        // Binary response from node — decode base64 and stream
         const buffer = Buffer.from(result.body, 'base64');
-        res.writeHead(result.status, {
-          'Access-Control-Allow-Origin': '*',
-          ...result.headers,
-          'Content-Length': String(buffer.length),
-        });
+        res.writeHead(result.status, { 'Access-Control-Allow-Origin': '*', ...result.headers, 'Content-Length': String(buffer.length) });
         res.end(buffer);
       } else {
-        // JSON response
-        res.writeHead(result.status, {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          ...result.headers,
-        });
-        res.end(
-          typeof result.body === 'string' ? result.body : JSON.stringify(result.body),
-        );
+        res.writeHead(result.status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', ...result.headers });
+        res.end(typeof result.body === 'string' ? result.body : JSON.stringify(result.body));
       }
     });
     return true;
