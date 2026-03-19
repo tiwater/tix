@@ -12,6 +12,10 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
 TICLAW_PORT="${TICLAW_PORT:-2756}"
+TICLAW_HOME="/tmp/ticlaw-e2e-$$"
+export TICLAW_HOME
+mkdir -p "$TICLAW_HOME"
+
 SERVER_PID=""
 NO_SERVER=false
 FILTER=""
@@ -36,6 +40,10 @@ cleanup() {
     echo -e "\n${CYAN}Stopping server (PID ${SERVER_PID})...${NC}"
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
+  fi
+  if [ "$NO_SERVER" = false ]; then
+    echo -e "${CYAN}Cleaning up temporary TICLAW_HOME: ${TICLAW_HOME}${NC}"
+    rm -rf "$TICLAW_HOME"
   fi
 }
 trap cleanup EXIT

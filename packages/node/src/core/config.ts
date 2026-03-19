@@ -80,7 +80,7 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 
 // Absolute paths for TiClaw data management
 const HOME_DIR = process.env.HOME || os.homedir();
-export const TICLAW_HOME = path.join(HOME_DIR, '.ticlaw');
+export const TICLAW_HOME = process.env.TICLAW_HOME || path.join(HOME_DIR, '.ticlaw');
 
 // Ensure base directory exists
 if (!fs.existsSync(TICLAW_HOME)) {
