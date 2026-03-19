@@ -8,7 +8,6 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { buildOpenApiSpec } from './openapi.js';
 
 export interface NodeInfo {
   node_id: string;
@@ -406,15 +405,54 @@ export function attachGateway(
  * Handle an HTTP request — route gateway API or relay to node.
  * Returns true if the request was handled.
  */
-export function handleGatewayRequest(
+export async function handleGatewayRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-): boolean {
+): Promise<boolean> {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-  // ── OpenAPI spec (self-describing, no auth required) ──
+  // ── OpenAPI spec (gateway-native paths + node paths fetched live) ──
   if (url.pathname === '/openapi.json' && req.method === 'GET') {
-    const spec = buildOpenApiSpec({ gateway_url: `http://${req.headers.host || 'localhost'}` });
+    const gatewayUrl = `http://${req.headers.host || 'localhost'}`;
+
+    // Gateway-native paths (always present, no node needed)
+    const gatewayPaths: Record<string, unknown> = {
+      '/openapi.json': { get: { tags: ['Gateway'], summary: 'OpenAPI spec (this document)', security: [], responses: { '200': { description: 'OpenAPI 3.0 JSON' } } } },
+      '/health': { get: { tags: ['Gateway'], summary: 'Gateway health (node count, uptime)', security: [], responses: { '200': { description: 'OK' } } } },
+      '/api/gateway/nodes': { get: { tags: ['Gateway'], summary: 'List connected nodes', responses: { '200': { description: 'Nodes array' } } } },
+    };
+
+    // Try to fetch node spec and merge
+    let nodePaths: Record<string, unknown> = {};
+    let nodeInfo: Record<string, unknown> = {};
+    try {
+      const nodeSpec = await relayToNode('GET', '/api/v1/openapi.json', undefined, 5000);
+      if (nodeSpec.status === 200 && nodeSpec.body && typeof nodeSpec.body === 'object') {
+        const spec = nodeSpec.body as Record<string, unknown>;
+        nodePaths = (spec.paths as Record<string, unknown>) || {};
+        nodeInfo = (spec.info as Record<string, unknown>) || {};
+      }
+    } catch { /* node not connected — return gateway-only spec */ }
+
+    const spec = {
+      openapi: '3.0.3',
+      info: {
+        title: 'TiClaw Gateway API',
+        version: (nodeInfo.version as string) || '1.0.0',
+        description:
+          'TiClaw Gateway API. Gateway-native routes (/health, /api/gateway/*) plus all node routes relayed transparently. ' +
+          'Use X-Node-Id header to target a specific node.',
+      },
+      servers: [{ url: gatewayUrl, description: 'TiClaw Gateway' }],
+      security: [{ bearerAuth: [] }],
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via GATEWAY_API_KEY env var.' },
+        },
+      },
+      paths: { ...gatewayPaths, ...nodePaths },
+    };
+
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(spec, null, 2));
     return true;
@@ -520,8 +558,8 @@ export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Serve
   const host = opts.host ?? '0.0.0.0';
   const log = opts.logger ?? console;
 
-  const httpServer = http.createServer((req, res) => {
-    if (handleGatewayRequest(req, res)) return;
+  const httpServer = http.createServer(async (req, res) => {
+    if (await handleGatewayRequest(req, res)) return;
     if (opts.onRequest) {
       opts.onRequest(req, res);
       return;

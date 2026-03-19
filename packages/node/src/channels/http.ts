@@ -1709,6 +1709,17 @@ export class HttpChannel implements Channel {
         }
         return;
       }
+      // ── OpenAPI spec (auto-generated from route registry) ──
+
+      if (pathname === '/api/v1/openapi.json' && req.method === 'GET') {
+        const { buildNodeOpenApiSpec } = await import('./http-routes.js');
+        const spec = buildNodeOpenApiSpec({
+          serverUrl: `http://${req.headers.host || `localhost:${HTTP_PORT}`}`,
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(spec, null, 2));
+        return;
+      }
 
       // ── Web UI API: Node ──
 
