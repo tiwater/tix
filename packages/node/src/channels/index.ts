@@ -14,8 +14,6 @@ import './acp.js';
 // http / SSE (web UI)
 import './http.js';
 
-// gateway-client
-import './gateway-client.js';
 
 // gmail
 

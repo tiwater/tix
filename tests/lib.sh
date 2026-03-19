@@ -7,16 +7,16 @@ set -euo pipefail
 # ────────────────────────────────────────────────────
 # Config
 # ────────────────────────────────────────────────────
-TC_PORT="${TC_PORT:-2755}"
-TC_TIMEOUT="${TC_TIMEOUT:-120}"
-TC_CURL_TIMEOUT="${TC_CURL_TIMEOUT:-8}"   # seconds before curl gives up
-TC_CLI="node $(dirname "$0")/../cli/dist/index.js"
+TICLAW_PORT="${TICLAW_PORT:-2756}"
+TICLAW_TIMEOUT="${TICLAW_TIMEOUT:-120}"
+TICLAW_CURL_TIMEOUT="${TICLAW_CURL_TIMEOUT:-8}"   # seconds before curl gives up
+TICLAW_CLI="node $(dirname "$0")/../cli/dist/index.js"
 TESTS_PASSED=0
 TESTS_FAILED=0
 TESTS_TOTAL=0
 
 # Convenience wrapper: curl with a short timeout so tests never hang
-tc_curl() { curl --max-time "$TC_CURL_TIMEOUT" "$@"; }
+ticlaw_curl() { curl --max-time "$TICLAW_CURL_TIMEOUT" "$@"; }
 
 # Colors
 RED='\033[0;31m'
@@ -30,7 +30,7 @@ NC='\033[0m' # No Color
 # Server management
 # ────────────────────────────────────────────────────
 wait_for_server() {
-  local port="${1:-$TC_PORT}"
+  local port="${1:-$TICLAW_PORT}"
   local timeout="${2:-30}"
   local elapsed=0
   echo -e "${CYAN}Waiting for server on port ${port}...${NC}"
@@ -55,7 +55,7 @@ send_message() {
   local message="$1"
   local agent="${2:-default}"
   local session="${3:-}"
-  local timeout="${4:-$TC_TIMEOUT}"
+  local timeout="${4:-$TICLAW_TIMEOUT}"
 
   local session_flag=""
   if [ -n "$session" ]; then
@@ -66,12 +66,12 @@ send_message() {
   # SSE connections doesn't flush stdout properly in subshell capture mode
   local tmpfile="/tmp/ticlaw-e2e-$$-${RANDOM}.json"
 
-  $TC_CLI chat "$message" \
+  $TICLAW_CLI chat "$message" \
     --agent "$agent" \
     $session_flag \
     --json \
     --timeout "$timeout" \
-    --port "$TC_PORT" \
+    --port "$TICLAW_PORT" \
     > "$tmpfile" 2>/dev/null || true
 
   LAST_RESULT=""

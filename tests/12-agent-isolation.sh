@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 12: Multi-Agent Skill Isolation"
 
-BASE="http://localhost:${TC_PORT:-3000}"
+BASE="http://localhost:${TICLAW_PORT:-2756}"
 
 # 1. Setup isolated agents
 AGENT_A="agent_a_$$"

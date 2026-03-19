@@ -59,6 +59,7 @@ import {
 } from './core/types.js';
 
 import { AgentRunner } from './core/runner.js';
+import { Gateway } from './core/gateway.js';
 import { broadcastToChat } from './channels/http.js';
 import { getEnabledChannelsFromConfig, readEnvFile } from './core/env.js';
 import {
@@ -652,16 +653,23 @@ async function main(): Promise<void> {
       registerProject(jid, group),
   };
 
+  // ── Gateway uplink (core infrastructure, N:1 — many nodes → one gateway) ──
+  const gateway = new Gateway({
+    onMessage: (chatJid, msg) => channelOpts.onMessage(chatJid, msg),
+    onChatMetadata: (chatJid, timestamp, name, channel, isGroup) =>
+      channelOpts.onChatMetadata(chatJid, timestamp, name, channel, isGroup),
+  });
+  await gateway.connect();
+  // Add to channels so outbound routing (sendMessage/ownsJid) works
+  channels.push(gateway as any);
+
+  // ── Consumer channels ──
   const CHANNEL_CONNECT_TIMEOUT = 15_000;
   const enabledFromConfig = getEnabledChannelsFromConfig();
   const registeredChannelNames = getRegisteredChannelNames();
-  // Infrastructure channels (gateway-client) must always connect regardless of config
-  const INFRA_CHANNELS = ['gateway-client'];
   const toConnect =
     enabledFromConfig.length > 0
-      ? registeredChannelNames.filter(
-          (n) => enabledFromConfig.includes(n) || INFRA_CHANNELS.includes(n),
-        )
+      ? registeredChannelNames.filter((n) => enabledFromConfig.includes(n))
       : registeredChannelNames;
   for (const name of toConnect) {
     const factory = getChannelFactory(name);
@@ -686,15 +694,11 @@ async function main(): Promise<void> {
           ]);
           channels.push(channel);
         } catch (err) {
-          logger.error(
-            { channel: name, err },
-            'Failed to connect channel — skipping',
-          );
+          logger.error({ channel: name, err }, 'Failed to connect channel — skipping');
         }
       }
     }
   }
-
   sendFn = async (jid: string, text: string, options?: { embeds?: any[]; message_id?: string }) => {
     const messageId = options?.message_id || `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     await routeOutbound(channels, jid, text, { ...options, message_id: messageId });

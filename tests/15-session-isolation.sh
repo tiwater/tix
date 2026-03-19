@@ -15,7 +15,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 15: Session Isolation & Per-Agent skills.json Checks"
 
-BASE="http://localhost:${TC_PORT:-2755}"
+BASE="http://localhost:${TICLAW_PORT:-2756}"
 AGENT="iso_agent_$$"
 
 # ── Fixture setup ──

@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 22: Model Selection and Fallback"
 
-BASE="http://localhost:${TC_PORT:-3000}"
+BASE="http://localhost:${TICLAW_PORT:-2756}"
 
 AGENT_DEFAULT="agent_def_$$"
 AGENT_CUSTOM="agent_cus_$$"

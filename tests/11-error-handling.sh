@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 11: Error Handling"
 
-BASE="http://localhost:${TC_PORT}"
+BASE="http://localhost:${TICLAW_PORT}"
 
 # ── Test 11.1: POST /runs without required fields ──
 echo -e "  POST /runs (missing fields)"

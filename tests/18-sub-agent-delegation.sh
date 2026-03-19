@@ -11,12 +11,12 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 18: Sub-Agent Delegation Error Handling"
 
-BASE="http://localhost:${TC_PORT:-2755}"
+BASE="http://localhost:${TICLAW_PORT:-2756}"
 
 # ── Test 18.1: /api/tasks alive ──
 echo -e "  Testing /api/tasks endpoint..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-tasks=$(tc_curl -sf "${BASE}/api/tasks" 2>/dev/null) || tasks=""
+tasks=$(ticlaw_curl -sf "${BASE}/api/tasks" 2>/dev/null) || tasks=""
 if [ -n "$tasks" ] && echo "$tasks" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} /api/tasks returns valid JSON"
   TESTS_PASSED=$((TESTS_PASSED + 1))

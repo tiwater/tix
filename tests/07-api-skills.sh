@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 7: Skills API"
 
-BASE="http://localhost:${TC_PORT}"
+BASE="http://localhost:${TICLAW_PORT}"
 
 # ── Test 7.1: List skills via API ──
 echo -e "  GET /api/skills"

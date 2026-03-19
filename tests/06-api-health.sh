@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 6: API Health & Node Info"
 
-BASE="http://localhost:${TC_PORT}"
+BASE="http://localhost:${TICLAW_PORT}"
 
 # ── Test 6.1: Health endpoint ──
 echo -e "  GET /health"

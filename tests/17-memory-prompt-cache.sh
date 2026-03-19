@@ -17,7 +17,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 17: Memory Isolation & Prompt Cache Invalidation"
 
-BASE="http://localhost:${TC_PORT:-2755}"
+BASE="http://localhost:${TICLAW_PORT:-2756}"
 TICLAW_HOME="${TICLAW_HOME:-$HOME/.ticlaw}"
 MEM_AGENT="mem_agent_$$"
 
