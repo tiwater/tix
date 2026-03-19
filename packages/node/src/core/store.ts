@@ -290,7 +290,7 @@ export function ensureSession(input: {
     agent_id: input.agent_id,
     channel: input.channel,
     source_ref: input.source_ref,
-    status: input.status || 'active',
+    status: input.status || 'idle',
     created_at: now,
     updated_at: now,
   };
@@ -340,18 +340,16 @@ export function getAllSessions(): SessionRecord[] {
 }
 
 export function updateSessionStatus(
+  agentId: string,
   sessionId: string,
   status: SessionRecord['status'],
 ): void {
-  for (const agentId of listDirs(AGENTS_DIR)) {
-    const jsonPath = sessionJsonPath(agentId, sessionId);
-    const session = readJson<SessionRecord>(jsonPath);
-    if (session) {
-      session.status = status;
-      session.updated_at = new Date().toISOString();
-      writeJson(jsonPath, session);
-      return;
-    }
+  const jsonPath = sessionJsonPath(agentId, sessionId);
+  const session = readJson<SessionRecord>(jsonPath);
+  if (session) {
+    session.status = status;
+    session.updated_at = new Date().toISOString();
+    writeJson(jsonPath, session);
   }
 }
 

@@ -165,19 +165,22 @@ async function processMessages(chatJid: string): Promise<boolean> {
     };
   }
 
-  // Resolve or create a session for this chat so directories exist
+  // Resolve or create a session for this chat so directories exist.
+  // IMPORTANT: always resolve agentId + sessionId from the JID — never use
+  // chatJid itself as session_id, or the full JID gets stored and re-prefixed
+  // on every subsequent call, making the key grow indefinitely.
   let agentId = (group as any).agent_id || group.folder;
-  let sessionId = chatJid;
-  if (agentId === 'unknown') {
-    const resolved = resolveFromChatJid(chatJid);
-    if (resolved) {
-      agentId = resolved.agentId;
-      sessionId = resolved.sessionId;
-    } else {
-      const parts = chatJid.split(':');
-      if (parts.length >= 2) {
-        agentId = parts[1];
-      }
+  let sessionId: string;
+  const resolved = resolveFromChatJid(chatJid);
+  if (resolved) {
+    agentId = resolved.agentId;
+    sessionId = resolved.sessionId;
+  } else {
+    // Fallback for unrecognised JID formats: split on ':' and use last segment
+    const parts = chatJid.split(':');
+    sessionId = parts.length >= 2 ? parts.slice(1).join(':') : chatJid;
+    if (agentId === 'unknown' && parts.length >= 2) {
+      agentId = parts[1];
     }
   }
   const channel = chatJid.startsWith('dc:')

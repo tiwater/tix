@@ -274,11 +274,20 @@ function createAppState() {
     messages = [...messages, { id: id || `bot-${Date.now()}`, role: 'bot', text, time: new Date().toLocaleTimeString() }];
   }
 
+  // Strip any channel-prefix from a sessionId before using it in API paths.
+  // A sessionId should never contain colons — if it does it has been accidentally
+  // set to the full JID (e.g. "web:agent:session") and only the last segment is valid.
+  function bareSessionId(sid: string): string {
+    // Full JID format: "<prefix>:<agentId>:<sessionId>"
+    // If we detect more than one colon we assume it's still a JID and take the last segment.
+    const parts = sid.split(':');
+    return parts.length >= 3 ? parts[parts.length - 1] : sid;
+  }
+
   // --- SSE Connection ---
   function connectSSE() {
     if (eventSource) { eventSource.close(); eventSource = null; }
-    // Ensure we don't accidentally pass a full JID as the session_id
-    const rawSessionId = sessionId.startsWith('web:') ? sessionId.split(':').pop() || sessionId : sessionId;
+    const rawSessionId = bareSessionId(sessionId);
     const url = `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(rawSessionId)}/stream`;
     eventSource = new EventSource(url);
 
@@ -290,7 +299,7 @@ function createAppState() {
 
     async function fetchMessageHistory() {
       try {
-        const res = await fetch(`/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages?limit=50`);
+        const res = await fetch(`/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(bareSessionId(sessionId))}/messages?limit=50`);
         if (!res.ok) return;
         const data = await res.json();
         if (data.messages?.length > 0) {
@@ -715,7 +724,7 @@ function createAppState() {
     progressCategory = '';
 
     try {
-      const res = await fetch(`/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      const res = await fetch(`/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(bareSessionId(sessionId))}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sender: 'web-user', content: fullContent })

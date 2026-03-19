@@ -38,6 +38,7 @@ import {
   storeInteractionEvent,
   createSchedule,
   getSchedulesForAgent,
+  updateSessionStatus,
 } from './store.js';
 import { randomUUID, type UUID } from 'crypto';
 
@@ -533,6 +534,7 @@ export class AgentRunner {
     this.state.status = 'busy';
     this.state.recent_logs = [];
     this.controller = new AbortController();
+    updateSessionStatus(this.state.agent_id, this.state.session_id, 'running');
 
     const session = getSessionForAgent(
       this.state.agent_id,
@@ -883,13 +885,16 @@ export class AgentRunner {
 
       this.state.status = 'idle';
       this.state.activity = { phase: 'done' };
+      updateSessionStatus(this.state.agent_id, this.state.session_id, 'idle');
     } catch (err: any) {
       if (this.controller?.signal.aborted) {
         this.state.status = 'interrupted';
         this.state.activity = { phase: 'interrupted' };
+        updateSessionStatus(this.state.agent_id, this.state.session_id, 'idle');
       } else {
         this.state.status = 'error';
         this.state.activity = { phase: 'error', action: err.message };
+        updateSessionStatus(this.state.agent_id, this.state.session_id, 'error');
         logger.error(
           { err, agent_id: this.state.agent_id },
           'AgentRunner: Loop failed',

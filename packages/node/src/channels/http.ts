@@ -111,6 +111,7 @@ import {
 } from '../core/enrollment.js';
 import { logger } from '../core/logger.js';
 import { getTaskLogPath } from '../core/utils.js';
+import { isPathWithin } from '../core/security.js';
 import { getExecutorStats, listActiveTasks } from '../task-executor.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { maybeHandleAcpRequest } from './acp.js';
@@ -179,9 +180,9 @@ function startArtifactWatcher() {
       const parts = filename.split(path.sep);
       const agentId = parts[0];
       const relPath = parts.slice(1).join('/');
-      
+
       if (!agentId || !relPath) return;
-      
+
       for (const chatJid of sseClients.keys()) {
         if (chatJid.includes(agentId) || chatJid.startsWith('web:')) {
           broadcastToChat(chatJid, {
@@ -194,7 +195,7 @@ function startArtifactWatcher() {
       }
     });
   } catch (err) {
-      if (typeof logger !== 'undefined') logger.warn({ err }, 'Failed to start recursive artifact watcher (possibly OS limitation)');
+    if (typeof logger !== 'undefined') logger.warn({ err }, 'Failed to start recursive artifact watcher (possibly OS limitation)');
   }
 }
 
@@ -467,10 +468,10 @@ function generateSessionTitleBackground(agentId: string, sessionId: string, mess
       const models = getAgentModelConfig(agentId);
       const modelConfig = models.length > 0 ? models[0] : null;
       if (!modelConfig || !modelConfig.api_key) {
-         // Fallback if no LLM configured: use simple truncation
-         const fallback = message.slice(0, 30) + (message.length > 30 ? '…' : '');
-         updateSessionTitle(agentId, sessionId, fallback);
-         return;
+        // Fallback if no LLM configured: use simple truncation
+        const fallback = message.slice(0, 30) + (message.length > 30 ? '…' : '');
+        updateSessionTitle(agentId, sessionId, fallback);
+        return;
       }
 
       const client = new Anthropic({
@@ -861,8 +862,48 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── API: Workspace File Serving ──
+      const workspaceFileMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/workspace\/(.+)$/);
+      if (workspaceFileMatch && req.method === 'GET') {
+        const agentId = decodeURIComponent(workspaceFileMatch[1]);
+        const relPath = decodeURIComponent(workspaceFileMatch[2]);
+        const workspacePath = agentPaths(agentId).workspace;
+        const absPath = path.join(workspacePath, relPath);
+        
+        // Security check: prevent directory traversal
+        if (!isPathWithin(workspacePath, absPath)) {
+          writeJson(res, 403, { error: 'forbidden' });
+          return;
+        }
+        
+        if (fs.existsSync(absPath)) {
+          const stat = fs.statSync(absPath);
+          if (stat.isFile()) {
+            const stream = fs.createReadStream(absPath);
+            const ext = path.extname(absPath).toLowerCase();
+            const mimeTypes: Record<string, string> = {
+              '.png': 'image/png',
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.gif': 'image/gif',
+              '.svg': 'image/svg+xml',
+              '.pdf': 'application/pdf',
+              '.txt': 'text/plain',
+              '.md': 'text/markdown',
+              '.json': 'application/json',
+            };
+            res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+            stream.pipe(res);
+            return;
+          }
+        }
+        
+        writeJson(res, 404, { error: 'not_found' });
+        return;
+      }
+
       // ── API: AgentSpace Resource Indexing ──
-      
+
       const artifactsMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/artifacts$/);
       if ((artifactsMatch || pathname === '/api/mind/artifacts') && req.method === 'GET') {
         const agentId = artifactsMatch ? decodeURIComponent(artifactsMatch[1]) : url.searchParams.get('agent_id');
@@ -904,7 +945,7 @@ export class HttpChannel implements Channel {
               mtimeMs: stat.mtimeMs,
             };
           } catch {
-             // skip
+            // skip
           }
         }
         writeJson(res, 200, { artifacts });
@@ -1076,7 +1117,7 @@ export class HttpChannel implements Channel {
       const sseV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)\/stream$/);
       if (
         (sseV1Match ||
-         (pathname.startsWith('/runs/') && pathname.endsWith('/stream'))) &&
+          (pathname.startsWith('/runs/') && pathname.endsWith('/stream'))) &&
         req.method === 'GET'
       ) {
         const agentId = sseV1Match ? decodeURIComponent(sseV1Match[1]) : url.searchParams.get('agent_id');
@@ -1339,7 +1380,7 @@ export class HttpChannel implements Channel {
         }
         let chatJid = sessionId;
         if (!sessionId.includes(':')) {
-           chatJid = buildHttpSessionId(agentId, sessionId);
+          chatJid = buildHttpSessionId(agentId, sessionId);
         }
         const msgs = getRecentMessages(chatJid, limit);
         writeJson(res, 200, {
@@ -1381,7 +1422,7 @@ export class HttpChannel implements Channel {
               model = config.model;
             }
           } catch {
-             /* ignore */
+            /* ignore */
           }
           return {
             agent_id: a.agent_id,
@@ -1485,7 +1526,7 @@ export class HttpChannel implements Channel {
         const agentId = decodeURIComponent(agentModelMatch[1]);
         const body = await readJsonBody(req);
         const modelId = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined;
-        
+
         try {
           const configPath = agentPaths(agentId).config;
           let config: any = {};
@@ -1726,7 +1767,7 @@ export class HttpChannel implements Channel {
       if ((pathname === '/api/v1/node' || pathname === '/api/node') && req.method === 'GET') {
         const enrollment = readEnrollmentState(NODE_HOSTNAME || undefined);
         const stats = getExecutorStats();
-        
+
         // System Telemetry
         const cpus = os.cpus();
         const memTotal = os.totalmem();

@@ -52,7 +52,7 @@ export interface SessionRecord {
   channel: string;
   source_ref?: string;
   title?: string;
-  status: 'active' | 'completed' | 'error';
+  status: 'idle' | 'running' | 'error';
   created_at: string;
   updated_at: string;
 }
