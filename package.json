@@ -2,16 +2,16 @@
   "name": "ticlaw-workspace",
   "private": true,
   "version": "1.3.0",
-  "description": "TiClaw monorepo — Mind builder platform",
+  "description": "TiClaw — Local-first AI Agent Node + Gateway",
   "type": "module",
   "scripts": {
-    "build":    "pnpm -r --filter './packages/*' run build",
-    "dev":      "pnpm --filter @ticlaw/gateway run build && concurrently \"pnpm --filter web run dev\" \"sleep 2 && pnpm --filter @ticlaw/edge run dev\"",
-    "dev:web":  "pnpm --filter web run dev",
-    "dev:edge": "pnpm --filter @ticlaw/edge run dev",
-    "chat":     "node cli/dist/index.js chat",
-    "test":     "pnpm --filter @ticlaw/edge run test",
-    "test:e2e": "bash tests/run-e2e.sh"
+    "build":       "pnpm --filter @ticlaw/gateway run build && pnpm --filter @ticlaw/edge run build",
+    "dev":         "pnpm --filter @ticlaw/gateway run build && concurrently -n gateway,node -c cyan,green \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/edge run dev\"",
+    "dev:node":    "pnpm --filter @ticlaw/edge run dev",
+    "dev:gateway": "pnpm --filter @ticlaw/gateway run dev",
+    "dev:web":     "concurrently -n gateway,node,web -c cyan,green,blue \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/edge run dev\" \"pnpm --filter web run dev\"",
+    "test":        "pnpm --filter @ticlaw/edge run test",
+    "test:e2e":    "bash tests/run-e2e.sh"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
