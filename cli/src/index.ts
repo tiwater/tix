@@ -34,7 +34,7 @@ program
 program
   .command('bootstrap')
   .description(
-    'First-time setup: detect CLIs, configure .env, apply initial skills, install service',
+    'First-time setup: detect CLIs, configure ~/.ticlaw/config.yaml, apply initial skills, install service',
   )
   .action(bootstrap);
 

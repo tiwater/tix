@@ -41,8 +41,8 @@ services:
     name: ticlaw
     runtime: node
     plan: starter
-    rootDir: apps/web
-    buildCommand: "cd .. && pnpm install && pnpm --filter @ticlaw/gateway run build && cd apps/web && pnpm run build"
+    rootDir: examples/web
+    buildCommand: "cd .. && pnpm install && pnpm --filter @ticlaw/gateway run build && cd examples/web && pnpm run build"
     startCommand: "node --import tsx server.ts"
     envVars:
       - key: NODE_VERSION

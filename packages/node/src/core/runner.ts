@@ -39,6 +39,7 @@ import {
   createSchedule,
   getSchedulesForAgent,
   updateSessionStatus,
+  updateSessionUsage,
 } from './store.js';
 import { randomUUID, type UUID } from 'crypto';
 
@@ -641,6 +642,21 @@ export class AgentRunner {
                 if (fs.existsSync(absPath)) {
                   this.events.onFile(absPath, path.basename(absPath));
                 }
+              }
+            }
+
+            // Capture token usage if provided by the result event
+            const usage = event.usage || event.message?.usage || event.result?.usage;
+            if (usage) {
+              const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
+              const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
+              if (inputTokens > 0 || outputTokens > 0) {
+                updateSessionUsage(
+                  this.state.agent_id,
+                  this.state.session_id,
+                  inputTokens,
+                  outputTokens
+                );
               }
             }
 

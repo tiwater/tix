@@ -12,7 +12,7 @@ importers:
         specifier: ^9.2.1
         version: 9.2.1
 
-  apps/web:
+  examples/web:
     dependencies:
       '@ticlaw/gateway':
         specifier: workspace:*

@@ -6,7 +6,7 @@ import { readEnvFile, readModelsConfig, type ModelEntry } from './env.js';
 import { logger } from './logger.js';
 export type { ModelEntry };
 
-// Read config values from .env (falls back to process.env).
+// Read config values from ~/.ticlaw/config.yaml.
 // Secrets are NOT read here — they stay on disk and are loaded only
 // where needed (container-runner.ts) to avoid leaking to child processes.
 const envConfig = readEnvFile([

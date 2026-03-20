@@ -353,6 +353,22 @@ export function updateSessionStatus(
   }
 }
 
+export function updateSessionUsage(
+  agentId: string,
+  sessionId: string,
+  tokensIn: number,
+  tokensOut: number,
+): void {
+  const jsonPath = sessionJsonPath(agentId, sessionId);
+  const session = readJson<SessionRecord>(jsonPath);
+  if (session) {
+    session.tokens_in = (session.tokens_in || 0) + tokensIn;
+    session.tokens_out = (session.tokens_out || 0) + tokensOut;
+    session.updated_at = new Date().toISOString();
+    writeJson(jsonPath, session);
+  }
+}
+
 /**
  * Reset sessions stuck as "running" — called at startup to recover from crashes.
  * A "running" session cannot survive a process restart, so these are stale.

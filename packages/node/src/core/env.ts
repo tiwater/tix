@@ -146,44 +146,12 @@ llm:
 `;
 
 /**
- * Read config values. Priority: process.env → config.yaml → .env (dev fallback).
- * Does NOT load anything into process.env — callers decide what to
- * do with the values. This keeps secrets out of the process environment
- * so they don't leak to child processes.
+ * Read config values from ~/.ticlaw/config.yaml.
+ * Runtime priority is still enforced by callers as: process.env -> config.yaml.
+ * This function does NOT mutate process.env.
  */
 export function readEnvFile(keys: string[]): Record<string, string> {
-  // 1. Read from ~/.ticlaw/config.yaml (production)
-  const yamlConfig = readConfigYaml(keys);
-
-  // 2. Read from .env (dev fallback)
-  const envFile = path.join(process.cwd(), '.env');
-  let dotenvConfig: Record<string, string> = {};
-  try {
-    const content = fs.readFileSync(envFile, 'utf-8');
-    const wanted = new Set(keys);
-
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      if (!wanted.has(key)) continue;
-      let value = trimmed.slice(eqIdx + 1).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      if (value) dotenvConfig[key] = value;
-    }
-  } catch {
-    logger.debug('.env file not found, using config.yaml or defaults');
-  }
-
-  // YAML takes priority over .env
-  return { ...dotenvConfig, ...yamlConfig };
+  return readConfigYaml(keys);
 }
 
 /** Path to the YAML config file */

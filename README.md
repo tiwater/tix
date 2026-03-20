@@ -59,17 +59,14 @@ npm install -g ticlaw
 
 ### 2. Configure
 
-Create a `.env` file or export environment variables:
+Use `~/.ticlaw/config.yaml` as the single runtime config file:
 
-```env
-# Multi-account Feishu configuration
-TC_FEISHU_ENABLED=true
-TC_FEISHU_ACCOUNTS='[{"appId": "cli_xxx", "appSecret": "..."}]'
-
-# Multi-account DingTalk configuration
-TC_DINGTALK_ENABLED=true
-TC_DINGTALK_ACCOUNTS='[{"appId": "dingxxx", "appSecret": "..."}]'
+```bash
+mkdir -p ~/.ticlaw
+cp ./config.example.yaml ~/.ticlaw/config.yaml
 ```
+
+Then edit `~/.ticlaw/config.yaml` with your channel + LLM credentials.
 
 ### 3. Launch
 

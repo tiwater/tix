@@ -53,6 +53,8 @@ export interface SessionRecord {
   source_ref?: string;
   title?: string;
   status: 'idle' | 'running' | 'error';
+  tokens_in?: number;
+  tokens_out?: number;
   created_at: string;
   updated_at: string;
 }
@@ -195,6 +197,8 @@ export interface NewMessage {
   session_id?: string;
   task_id?: string;
   attachments?: Attachment[];
+  tokens_in?: number;
+  tokens_out?: number;
 }
 
 export interface AvailableProject {
