@@ -353,6 +353,27 @@ export function updateSessionStatus(
   }
 }
 
+/**
+ * Reset sessions stuck as "running" — called at startup to recover from crashes.
+ * A "running" session cannot survive a process restart, so these are stale.
+ */
+export function cleanupStaleSessions(): number {
+  let cleaned = 0;
+  for (const agentId of listDirs(AGENTS_DIR)) {
+    for (const session of getSessionsForAgent(agentId)) {
+      if (session.status === 'running') {
+        updateSessionStatus(agentId, session.session_id, 'idle');
+        cleaned++;
+        logger.info(
+          { agentId, sessionId: session.session_id },
+          'Reset stale running session to idle',
+        );
+      }
+    }
+  }
+  return cleaned;
+}
+
 export function updateSessionTitle(
   agentId: string,
   sessionId: string,

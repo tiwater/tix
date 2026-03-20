@@ -30,6 +30,7 @@ import {
   getRouterState,
   getSession,
   initStore,
+  cleanupStaleSessions,
   setRegisteredProject,
   setRouterState,
   storeChatMetadata,
@@ -187,7 +188,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
     ? 'discord'
     : chatJid.startsWith('web:')
       ? 'http'
-      : chatJid.startsWith('feishu:') || chatJid.startsWith('fs:')
+      : chatJid.startsWith('feishu:')
         ? 'feishu'
         : 'unknown';
   const session = ensureSession({
@@ -376,6 +377,16 @@ async function processMessages(chatJid: string): Promise<boolean> {
               };
               lastProgressEvent = { ...eventData };
 
+              // Broadcast runner_state for all status transitions so
+              // consumers get real-time status updates.
+              if (chatJid.startsWith('web:')) {
+                broadcastToChat(chatJid, {
+                  type: 'runner_state',
+                  chat_jid: chatJid,
+                  ...state,
+                });
+              }
+
               // Forward streaming text deltas to SSE clients
               if (
                 eventData.phase === 'stream_event' &&
@@ -423,6 +434,15 @@ async function processMessages(chatJid: string): Promise<boolean> {
               }
             },
             onReply: async (text) => {
+              // Finalize streaming: emit stream_end so consumers
+              // know the streaming phase is complete.
+              if (chatJid.startsWith('web:') && streamState.nextSeq > 1) {
+                broadcastToChat(chatJid, {
+                  type: 'stream_end',
+                  stream_id: streamState.streamId,
+                });
+              }
+
               // Clear progress indicators
               if (chatJid.startsWith('web:')) {
                 broadcastToChat(chatJid, { type: 'progress_end' });
@@ -619,6 +639,7 @@ async function main(): Promise<void> {
   logger.info('TiClaw starting');
 
   initStore();
+  cleanupStaleSessions();
   logger.info('Database initialized');
 
   // Ensure default agent and session exist

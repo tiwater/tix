@@ -920,6 +920,14 @@ export class AgentRunner {
       }
     } finally {
       this.controller = null;
+      // Safety-net: ensure filesystem status always matches in-memory state.
+      // The try/catch branches above already set both, but this guards against
+      // any code path that might set this.state.status without writing to disk.
+      const terminalStatus = this.state.status === 'busy' ? 'idle' : this.state.status;
+      const diskStatus = terminalStatus === 'interrupted' ? 'idle' : terminalStatus;
+      if (diskStatus === 'idle' || diskStatus === 'error') {
+        updateSessionStatus(this.state.agent_id, this.state.session_id, diskStatus);
+      }
       await this.notifyState();
     }
   }
