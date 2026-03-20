@@ -149,13 +149,56 @@ Without `X-Node-Id`, the gateway routes to the **first connected trusted node**.
 
 ---
 
+## Render deployment (separate gateway + node containers)
+
+The repository includes a `render.yaml` Blueprint that deploys the TiClaw
+gateway and the TiClaw node as **two separate Docker services**:
+
+- `ticlaw-gateway` (`type: web`) is the public HTTPS/WebSocket entrypoint for your consumer app.
+- `ticlaw-node` (`type: pserv`) stays private on Render's internal network and connects outward to the gateway.
+
+### How the Render wiring works
+
+1. Render assigns `ticlaw-gateway` an internal `host:port`.
+2. The Blueprint injects that value into the node as `GATEWAY_HOSTPORT`.
+3. The node turns `GATEWAY_HOSTPORT` into `ws://<host:port>` automatically at startup.
+4. Your consumer app should call the public gateway URL and never call the node directly.
+
+### Required secrets on Render
+
+- `GATEWAY_API_KEY`: bearer token your consumer app sends to the gateway.
+- `LLM_API_KEY`: model provider key for the node runtime.
+- `LLM_BASE_URL`: optional override for the model endpoint used by the node.
+
+`GATEWAY_SECRET` is generated once on the gateway and shared to the node via a
+Blueprint service reference so the node can authenticate with HMAC.
+
+### Consumer app connection
+
+Point your consumer application at the **gateway** service URL, for example:
+
+```
+https://ticlaw-gateway.onrender.com
+```
+
+Use that base URL for both REST and SSE traffic, and include:
+
+```
+Authorization: Bearer <GATEWAY_API_KEY>
+```
+
+The node service remains private and should not be exposed publicly.
+
+---
+
 ## Environment Variables
 
 ### Gateway
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GATEWAY_PORT` | `2755` | Port the gateway listens on |
+| `PORT` | *(platform-managed)* | Preferred HTTP port in containers/platforms like Render |
+| `GATEWAY_PORT` | `2755` | Port the gateway listens on outside platform-managed environments |
 | `GATEWAY_API_KEY` | *(none)* | Controller auth key. Empty = open mode |
 | `GATEWAY_SECRET` | *(none)* | HMAC secret for node authentication |
 | `GATEWAY_ALLOWED_NODE_IDS` | *(all)* | CSV allowlist of permitted node IDs |
@@ -164,7 +207,8 @@ Without `X-Node-Id`, the gateway routes to the **first connected trusted node**.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GATEWAY_URL` | `ws://localhost:2755` | Gateway to connect to |
+| `GATEWAY_URL` | `ws://localhost:2755` | Full WebSocket URL for the gateway |
+| `GATEWAY_HOSTPORT` | *(none)* | Internal `<host>:<port>` pair; node converts it to `ws://...` automatically |
 | `HTTP_PORT` | `2756` | Node's local HTTP port |
 | `GATEWAY_SECRET` | *(none)* | Must match gateway's secret |
 | `GATEWAY_TRUST_TOKEN` | *(none)* | One-time enrollment token |
