@@ -93,15 +93,19 @@ import {
   getSession,
   getSessionForAgent,
   getSessionsForAgent,
+  getArchivedSessionsForAgent,
   getSchedulesForAgent,
   createSchedule,
   updateSchedule,
   deleteSchedule,
   deleteSession,
   deleteSessionForAgent,
-  updateSessionTitle,
+  archiveSessionForAgent,
+  restoreSessionForAgent,
+  updateSessionMetadata,
   resolveFromChatJid,
 } from '../core/store.js';
+import { type SessionRecord } from '../core/types.js';
 import { SkillsRegistry } from '../skills/registry.js';
 import {
   createEnrollmentToken,
@@ -470,7 +474,7 @@ function generateSessionTitleBackground(agentId: string, sessionId: string, mess
       if (!modelConfig || !modelConfig.api_key) {
         // Fallback if no LLM configured: use simple truncation
         const fallback = message.slice(0, 30) + (message.length > 30 ? '…' : '');
-        updateSessionTitle(agentId, sessionId, fallback);
+        updateSessionMetadata(agentId, sessionId, { title: fallback });
         return;
       }
 
@@ -502,7 +506,7 @@ ${message}`;
           title = title.slice(1, -1).trim();
         }
         if (title.length > 60) title = title.slice(0, 60) + '…';
-        updateSessionTitle(agentId, sessionId, title);
+        updateSessionMetadata(agentId, sessionId, { title });
         logger.debug({ agentId, sessionId, title }, 'Generated LLM session title');
 
         // Broadcast a generic session update event
@@ -1603,7 +1607,10 @@ export class HttpChannel implements Channel {
 
         try {
           if (agentId) {
-            const deleted = deleteSessionForAgent(agentId, id);
+            let deleted = deleteSessionForAgent(agentId, id);
+            if (!deleted) {
+              deleted = deleteSessionForAgent(agentId, id, true);
+            }
             if (!deleted) {
               writeProtocolError(
                 res,
@@ -1629,20 +1636,60 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // PATCH /api/v1/agents/:agent_id/sessions/:session_id — update session (title)
+      // PATCH /api/v1/agents/:agent_id/sessions/:session_id — update session metadata/archive status
       if (sessionDeleteMatch && req.method === 'PATCH') {
         const id = sessionV1Match ? decodeURIComponent(sessionV1Match[2]) : decodeURIComponent(sessionDeleteMatch[1]);
         const body = await readJsonBody(req);
         const agentId = sessionV1Match
           ? decodeURIComponent(sessionV1Match[1])
           : (typeof body.agent_id === 'string' ? body.agent_id.trim() : '');
-        const title = typeof body.title === 'string' ? body.title.trim() : '';
-        if (!agentId || !title) {
-          writeJson(res, 400, { error: 'agent_id and title are required' });
+        
+        let updated = false;
+        const title = typeof body.title === 'string' ? body.title.trim() : undefined;
+        const archived = typeof body.archived === 'boolean' ? body.archived : undefined;
+        
+        if (!agentId) {
+          writeJson(res, 400, { error: 'agent_id is required' });
           return;
         }
-        const ok = updateSessionTitle(agentId, id, title);
-        writeJson(res, ok ? 200 : 404, ok ? { ok: true, title } : { error: 'session not found' });
+        
+        const updates: Partial<SessionRecord> = {};
+        if (title !== undefined) updates.title = title;
+        if (archived !== undefined) updates.archived = archived;
+        
+        if (archived === false) {
+          restoreSessionForAgent(agentId, id);
+          updated = true;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          const ok = updateSessionMetadata(agentId, id, updates);
+          if (!ok) {
+            writeJson(res, 404, { error: 'session not found' });
+            return;
+          }
+          updated = true;
+        }
+
+        if (archived === true) {
+          archiveSessionForAgent(agentId, id);
+          updated = true;
+        }
+        
+        if (updated) {
+          writeJson(res, 200, { ok: true, session_id: id });
+        } else {
+          writeJson(res, 400, { error: 'No valid fields to update provided' });
+        }
+        return;
+      }
+      
+      // GET /api/v1/agents/:agent_id/archived_sessions
+      const archivedSessionsV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/archived_sessions$/);
+      if (archivedSessionsV1Match && req.method === 'GET') {
+        const agentId = decodeURIComponent(archivedSessionsV1Match[1]);
+        const sessions = getArchivedSessionsForAgent(agentId);
+        writeJson(res, 200, { sessions });
         return;
       }
 

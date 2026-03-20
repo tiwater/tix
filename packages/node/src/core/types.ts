@@ -55,6 +55,7 @@ export interface SessionRecord {
   status: 'idle' | 'running' | 'error';
   tokens_in?: number;
   tokens_out?: number;
+  archived?: boolean;
   created_at: string;
   updated_at: string;
 }

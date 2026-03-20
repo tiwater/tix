@@ -319,12 +319,31 @@ export function getSessionForAgent(
 export function getSessionsForAgent(agentId: string): SessionRecord[] {
   const sessionsBase = path.join(agentDir(agentId), 'sessions');
   const sessions: SessionRecord[] = [];
-  for (const sid of listDirs(sessionsBase)) {
-    const session = readJson<SessionRecord>(sessionJsonPath(agentId, sid));
-    if (session) sessions.push(session);
+  if (fs.existsSync(sessionsBase)) {
+    for (const sid of listDirs(sessionsBase)) {
+      const session = readJson<SessionRecord>(sessionJsonPath(agentId, sid));
+      if (session) sessions.push(session);
+    }
   }
   return sessions.sort((a, b) =>
     (b.created_at || '').localeCompare(a.created_at || ''),
+  );
+}
+
+export function getArchivedSessionsForAgent(agentId: string): SessionRecord[] {
+  const sessionsBase = path.join(agentDir(agentId), 'archived_sessions');
+  const sessions: SessionRecord[] = [];
+  if (fs.existsSync(sessionsBase)) {
+    for (const sid of listDirs(sessionsBase)) {
+      const jsonPath = path.join(sessionsBase, sid, 'session.json');
+      const session = readJson<SessionRecord>(jsonPath);
+      if (session) {
+        sessions.push({ ...session, status: 'archived' as any });
+      }
+    }
+  }
+  return sessions.sort((a, b) =>
+    (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''),
   );
 }
 
@@ -390,41 +409,70 @@ export function cleanupStaleSessions(): number {
   return cleaned;
 }
 
-export function updateSessionTitle(
+export function updateSessionMetadata(
   agentId: string,
   sessionId: string,
-  title: string,
+  updates: Partial<SessionRecord>,
 ): boolean {
   const jsonPath = sessionJsonPath(agentId, sessionId);
   const session = readJson<SessionRecord>(jsonPath);
   if (!session) return false;
-  session.title = title;
+  if (updates.title !== undefined) session.title = updates.title;
   session.updated_at = new Date().toISOString();
   writeJson(jsonPath, session);
   return true;
 }
 
+export function archiveSessionForAgent(
+  agentId: string,
+  sessionId: string,
+): boolean {
+  const dir = sessionDir(agentId, sessionId);
+  if (!fs.existsSync(dir)) return false;
+  const archiveDir = path.join(agentDir(agentId), 'archived_sessions');
+  fs.mkdirSync(archiveDir, { recursive: true });
+  
+  const targetDir = path.join(archiveDir, sessionId);
+  if (fs.existsSync(targetDir)) return false; // already archived
+  
+  fs.renameSync(dir, targetDir);
+  return true;
+}
+
+export function restoreSessionForAgent(
+  agentId: string,
+  sessionId: string,
+): boolean {
+  const archivePath = path.join(agentDir(agentId), 'archived_sessions', sessionId);
+  if (!fs.existsSync(archivePath)) return false;
+  
+  const restoreDir = sessionDir(agentId, sessionId);
+  fs.mkdirSync(path.dirname(restoreDir), { recursive: true });
+  
+  if (fs.existsSync(restoreDir)) return false;
+  
+  fs.renameSync(archivePath, restoreDir);
+  return true;
+}
+
 export function deleteSession(sessionId: string): void {
   for (const agentId of listDirs(AGENTS_DIR)) {
-    const dir = sessionDir(agentId, sessionId);
-    if (fs.existsSync(dir)) {
-      const archiveDir = path.join(agentDir(agentId), 'archived', 'sessions');
-      fs.mkdirSync(archiveDir, { recursive: true });
-      fs.renameSync(dir, path.join(archiveDir, sessionId));
-      return;
-    }
+    if (deleteSessionForAgent(agentId, sessionId)) return;
+    if (deleteSessionForAgent(agentId, sessionId, true)) return;
   }
 }
 
 export function deleteSessionForAgent(
   agentId: string,
   sessionId: string,
+  fromArchived: boolean = false
 ): boolean {
-  const dir = sessionDir(agentId, sessionId);
+  const dir = fromArchived 
+    ? path.join(agentDir(agentId), 'archived_sessions', sessionId)
+    : sessionDir(agentId, sessionId);
+    
   if (!fs.existsSync(dir)) return false;
-  const archiveDir = path.join(agentDir(agentId), 'archived', 'sessions');
-  fs.mkdirSync(archiveDir, { recursive: true });
-  fs.renameSync(dir, path.join(archiveDir, sessionId));
+  fs.rmSync(dir, { recursive: true, force: true });
   return true;
 }
 
