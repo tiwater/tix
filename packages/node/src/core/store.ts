@@ -17,7 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 
-import { AGENTS_DIR, TICLAW_HOME, TIMEZONE } from './config.js';
+import { AGENTS_DIR, TICLAW_HOME, TIMEZONE, getAgentModelConfig } from './config.js';
 import { logger } from './logger.js';
 import type {
   AgentRecord,
@@ -378,14 +378,71 @@ export function updateSessionUsage(
   tokensIn: number,
   tokensOut: number,
 ): void {
-  const jsonPath = sessionJsonPath(agentId, sessionId);
-  const session = readJson<SessionRecord>(jsonPath);
+  const now = new Date().toISOString();
+
+  // 1. Update Session Usage
+  const sessPath = sessionJsonPath(agentId, sessionId);
+  const session = readJson<SessionRecord>(sessPath);
   if (session) {
     session.tokens_in = (session.tokens_in || 0) + tokensIn;
     session.tokens_out = (session.tokens_out || 0) + tokensOut;
-    session.updated_at = new Date().toISOString();
-    writeJson(jsonPath, session);
+    session.updated_at = now;
+    writeJson(sessPath, session);
   }
+
+  // 2. Update Agent Usage (Aggregate)
+  const aPath = agentJsonPath(agentId);
+  const agent = readJson<AgentRecord>(aPath);
+  if (agent) {
+    agent.tokens_in = (agent.tokens_in || 0) + tokensIn;
+    agent.tokens_out = (agent.tokens_out || 0) + tokensOut;
+    agent.updated_at = now;
+    writeJson(aPath, agent);
+  }
+}
+
+export function getUsageStats(record: { tokens_in?: number; tokens_out?: number; agent_id?: string }) {
+  const tokens_in = record.tokens_in || 0;
+  const tokens_out = record.tokens_out || 0;
+  let estimated_cost_usd = 0;
+
+  if (record.agent_id) {
+    const models = getAgentModelConfig(record.agent_id);
+    const model = models.length > 0 ? models[0] : null;
+    if (model?.pricing) {
+      estimated_cost_usd =
+        (tokens_in / 1_000_000) * model.pricing.input_usd_per_1m +
+        (tokens_out / 1_000_000) * model.pricing.output_usd_per_1m;
+    }
+  }
+
+  return {
+    tokens_in,
+    tokens_out,
+    tokens_total: tokens_in + tokens_out,
+    estimated_cost_usd: Number(estimated_cost_usd.toFixed(6)),
+  };
+}
+
+/** Get global usage across all agents and sessions. */
+export function getGlobalUsage() {
+  let tokens_in = 0;
+  let tokens_out = 0;
+  let total_cost = 0;
+
+  for (const agent of getAllAgents()) {
+    const stats = getUsageStats(agent);
+    tokens_in += stats.tokens_in;
+    tokens_out += stats.tokens_out;
+    total_cost += stats.estimated_cost_usd;
+  }
+
+  return {
+    tokens_in,
+    tokens_out,
+    tokens_total: tokens_in + tokens_out,
+    estimated_cost_usd: Number(total_cost.toFixed(6)),
+  };
 }
 
 /**

@@ -75,7 +75,7 @@
           <div>
             <div class="flex items-center gap-2 mb-2">
               <span
-                class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary"
+                class="inline-flex items-center justify-center h-8 rounded-lg bg-primary/10 text-primary"
               >
                 <Monitor size={16} />
               </span>

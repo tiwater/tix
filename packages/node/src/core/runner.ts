@@ -501,6 +501,8 @@ export class AgentRunner {
   private state: RunnerState;
   private controller: AbortController | null = null;
   private events: RunnerEvents;
+  private lastInputTokens = 0;
+  private lastOutputTokens = 0;
 
   constructor(agentId: string, sessionId: string, events: RunnerEvents = {}) {
     this.events = events;
@@ -535,6 +537,8 @@ export class AgentRunner {
     this.state.task_id = taskId || `task-${Date.now()}`;
     this.state.status = 'busy';
     this.state.recent_logs = [];
+    this.lastInputTokens = 0;
+    this.lastOutputTokens = 0;
     this.controller = new AbortController();
     updateSessionStatus(this.state.agent_id, this.state.session_id, 'running');
 
@@ -650,12 +654,17 @@ export class AgentRunner {
             if (usage) {
               const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
               const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
-              if (inputTokens > 0 || outputTokens > 0) {
+              
+              // Delta against already-tracked intermediate usage
+              const inputDelta = Math.max(0, inputTokens - this.lastInputTokens);
+              const outputDelta = Math.max(0, outputTokens - this.lastOutputTokens);
+              
+              if (inputDelta > 0 || outputDelta > 0) {
                 updateSessionUsage(
                   this.state.agent_id,
                   this.state.session_id,
-                  inputTokens,
-                  outputTokens
+                  inputDelta,
+                  outputDelta
                 );
               }
             }
@@ -1113,6 +1122,28 @@ When asked to list your capabilities, skills, or tools:
         this.state.activity.target = JSON.stringify(tool.input);
       } else {
         this.state.activity.action = 'thinking';
+      }
+
+      // Intermediate usage from assistant message
+      const usage = event.message?.usage;
+      if (usage) {
+        const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
+        const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
+        
+        // Calculate delta to avoid double-counting if usage is cumulative
+        const inputDelta = Math.max(0, inputTokens - this.lastInputTokens);
+        const outputDelta = Math.max(0, outputTokens - this.lastOutputTokens);
+        
+        if (inputDelta > 0 || outputDelta > 0) {
+          updateSessionUsage(
+            this.state.agent_id,
+            this.state.session_id,
+            inputDelta,
+            outputDelta
+          );
+          this.lastInputTokens = inputTokens;
+          this.lastOutputTokens = outputTokens;
+        }
       }
     } else if (type === 'stream_event' && event.event?.delta?.text) {
       this.state.activity.action = 'speaking';

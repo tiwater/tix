@@ -317,16 +317,55 @@ export const LLM_BASE_URL =
  * Env-var-only setups (no config.yaml models array) will get a synthetic single-entry
  * list built from LLM_API_KEY / LLM_BASE_URL / DEFAULT_LLM_MODEL.
  */
+/** Pricing per 1M tokens in USD. */
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  // GLM-4 (BigModel)
+  'glm-4': { input: 0.1, output: 0.1 },
+  'glm-4v': { input: 0.1, output: 0.1 },
+  'glm-4-air': { input: 0.01, output: 0.01 },
+  'glm-4-flash': { input: 0.0, output: 0.0 }, // Free
+  
+  // Claude 3.5 (Anthropic)
+  'claude-3-5-sonnet-latest': { input: 3.0, output: 15.0 },
+  'claude-3-5-haiku-latest': { input: 0.25, output: 1.25 },
+  'claude-3-opus-latest': { input: 15.0, output: 75.0 },
+  
+  // Gemini 1.5 (Google)
+  'gemini-1.5-pro': { input: 1.25, output: 5.0 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.3 },
+};
+
+export function getModelPricing(modelName: string) {
+  // Fuzzy match: 'glm-4-plus' matches 'glm-4'
+  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
+    if (modelName.toLowerCase().startsWith(key)) {
+      return pricing;
+    }
+  }
+  return { input: 0, output: 0 };
+}
+
 export const MODELS_REGISTRY: ModelEntry[] = (() => {
   const fromYaml = readModelsConfig();
-  if (fromYaml.length > 0) return fromYaml;
+  const entries = fromYaml.length > 0 ? fromYaml : (() => {
+    // Env-var fallback: build a single synthetic entry
+    const apiKey = ANTHROPIC_API_KEY || LLM_API_KEY;
+    const baseUrl = LLM_BASE_URL;
+    const model = process.env.LLM_MODEL || envConfig.LLM_MODEL || '';
+    if (!apiKey) return [];
+    return [{ id: 'default', api_key: apiKey, base_url: baseUrl, model, default: true }];
+  })();
 
-  // Env-var fallback: build a single synthetic entry
-  const apiKey = ANTHROPIC_API_KEY || LLM_API_KEY;
-  const baseUrl = LLM_BASE_URL;
-  const model = process.env.LLM_MODEL || envConfig.LLM_MODEL || '';
-  if (!apiKey) return [];
-  return [{ id: 'default', api_key: apiKey, base_url: baseUrl, model, default: true }];
+  // Enrich with pricing
+  for (const entry of entries) {
+    if (!entry.pricing) {
+      const p = getModelPricing(entry.model);
+      if (p.input > 0 || p.output > 0) {
+        entry.pricing = { input_usd_per_1m: p.input, output_usd_per_1m: p.output };
+      }
+    }
+  }
+  return entries;
 })();
 
 /** The default model entry (marked default:true, or first in list). */

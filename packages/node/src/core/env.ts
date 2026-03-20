@@ -12,6 +12,11 @@ export interface ModelEntry {
   model: string;
   /** If true, this model is used when no agent-level model is specified. First in list wins if none marked default. */
   default?: boolean;
+  /** Optional pricing information per 1M tokens. */
+  pricing?: {
+    input_usd_per_1m: number;
+    output_usd_per_1m: number;
+  };
 }
 
 const TICLAW_CONFIG_PATH = path.join(

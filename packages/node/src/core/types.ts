@@ -44,6 +44,8 @@ export interface AgentRecord {
   name: string;
   created_at: string;
   updated_at: string;
+  tokens_in?: number;
+  tokens_out?: number;
 }
 
 export interface SessionRecord {

@@ -89,6 +89,8 @@ import {
   getAllSchedules,
   getAllSessions,
   getAgent,
+  getGlobalUsage,
+  getUsageStats,
   getRecentMessages,
   getSession,
   getSessionForAgent,
@@ -1408,12 +1410,30 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── Web UI API: Usage ──
+
+      if ((pathname === '/api/v1/usage' || pathname === '/api/usage') && req.method === 'GET') {
+        const globalUsage = getGlobalUsage();
+        const allAgents = getAllAgents();
+        const agentUsage = allAgents.map((a) => ({
+          agent_id: a.agent_id,
+          name: a.name,
+          usage: getUsageStats(a),
+        }));
+
+        writeJson(res, 200, {
+          total: globalUsage,
+          agents: agentUsage,
+        });
+        return;
+      }
+
       // ── Web UI API: Agents ──
 
       if ((pathname === '/api/v1/agents' || pathname === '/api/agents' || pathname === '/agents') && req.method === 'GET') {
         const allAgents = getAllAgents();
         const allSessions = getAllSessions();
-        // Enrich with session counts
+        // Enrich with session counts and usage
         const agentList = allAgents.map((a) => {
           const agentSessions = allSessions.filter(
             (s) => s.agent_id === a.agent_id,
@@ -1432,6 +1452,7 @@ export class HttpChannel implements Channel {
             agent_id: a.agent_id,
             name: a.name,
             session_count: agentSessions.length,
+            usage: getUsageStats(a),
             created_at: a.created_at,
             updated_at: a.updated_at,
             model,
@@ -1901,6 +1922,7 @@ export class HttpChannel implements Channel {
       session_id: session?.session_id,
       text,
       embeds: options?.embeds,
+      usage: session ? getUsageStats(session) : undefined,
     });
     logger.debug(
       {
