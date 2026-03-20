@@ -30,6 +30,7 @@ create_session=$(curl --max-time 8 -sf -X POST "${BASE}/api/sessions" \
 if [ -n "$create_session" ]; then
   echo -e "  ${GREEN}✓${NC} Session created"
   TESTS_PASSED=$((TESTS_PASSED + 1))
+  register_session "default:e2e-test-session"
 else
   echo -e "  ${RED}✗${NC} Failed to create session"
   TESTS_FAILED=$((TESTS_FAILED + 1))

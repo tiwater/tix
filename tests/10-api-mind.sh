@@ -7,7 +7,9 @@ print_scenario_header "Scenario 10: Mind API"
 
 BASE="http://localhost:${TICLAW_PORT}"
 AGENT_ID="mind_api_$$"
-AGENT_DIR="$HOME/.ticlaw/agents/$AGENT_ID"
+AGENT_DIR="${TICLAW_HOME}/agents/${AGENT_ID}"
+
+register_agent "$AGENT_ID"
 
 mkdir -p "$AGENT_DIR/memory"
 echo "SOUL:${AGENT_ID}" > "$AGENT_DIR/SOUL.md"

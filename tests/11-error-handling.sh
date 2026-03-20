@@ -38,18 +38,32 @@ fi
 echo ""
 echo -e "  POST /api/schedules (invalid cron)"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-bad_cron_status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE}/api/schedules" \
+create_result=$(curl -s -X POST "${BASE}/api/schedules" \
   -H "Content-Type: application/json" \
-  -d '{"agent_id":"default","prompt":"test","cron":"not-a-cron","enabled":false}' 2>/dev/null) || bad_cron_status="0"
-# Either 400 (validation) or 201 (server doesn't validate cron at creation time) is informative
-if [ "$bad_cron_status" = "400" ]; then
+  -d '{"agent_id":"default","prompt":"test","cron":"not-a-cron","enabled":false}' 2>/dev/null) || create_result=""
+
+bad_cron_status=$(echo "$create_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status', '0'))" 2>/dev/null || echo "0")
+# If status isn't there, check for schedule ID to see if it was created
+SCHED_ID=$(echo "$create_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id', d.get('schedule',{}).get('id','')))" 2>/dev/null || echo "")
+
+if [ -n "$SCHED_ID" ]; then
+  register_schedule "$SCHED_ID"
+fi
+
+# Get HTTP status code separately if needed, but for this test we can just check if it was rejected or accepted
+# Let's re-run with -w to be sure about status code
+bad_cron_http=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE}/api/schedules" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id":"default","prompt":"test","cron":"not-a-cron","enabled":false}' 2>/dev/null) || bad_cron_http="0"
+
+if [ "$bad_cron_http" = "400" ]; then
   echo -e "  ${GREEN}✓${NC} Invalid cron rejected (HTTP 400)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
-elif [ "$bad_cron_status" = "201" ] || [ "$bad_cron_status" = "200" ]; then
-  echo -e "  ${YELLOW}⚠${NC} Invalid cron accepted (HTTP $bad_cron_status) — server doesn't validate cron syntax at creation"
+elif [ "$bad_cron_http" = "201" ] || [ "$bad_cron_http" = "200" ]; then
+  echo -e "  ${YELLOW}⚠${NC} Invalid cron accepted (HTTP $bad_cron_http) — server doesn't validate cron syntax at creation"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  echo -e "  ${RED}✗${NC} Unexpected HTTP $bad_cron_status"
+  echo -e "  ${RED}✗${NC} Unexpected HTTP $bad_cron_http"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
 

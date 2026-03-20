@@ -13,35 +13,40 @@ AGENT_B="agent_b_$$"
 AGENT_C="agent_c_$$"
 AGENT_D="agent_d_$$"
 
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_A"
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_B"
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_C"
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_D"
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_A/memory"
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_B/memory"
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_C/memory"
-mkdir -p "$HOME/.ticlaw/agents/$AGENT_D/memory"
+register_agent "$AGENT_A"
+register_agent "$AGENT_B"
+register_agent "$AGENT_C"
+register_agent "$AGENT_D"
+
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_A"
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_B"
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_C"
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_D"
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_A/memory"
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_B/memory"
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_C/memory"
+mkdir -p "${TICLAW_HOME}/agents/$AGENT_D/memory"
 
 # Agent A gets ONLY web-search
-echo '["web-search"]' > "$HOME/.ticlaw/agents/$AGENT_A/skills.json"
+echo '["web-search"]' > "${TICLAW_HOME}/agents/$AGENT_A/skills.json"
 # Give A and B distinct identities too
-echo "I am Agent A. My favorite color is red." > "$HOME/.ticlaw/agents/$AGENT_A/SOUL.md"
-echo "I remember that I love testing." > "$HOME/.ticlaw/agents/$AGENT_A/MEMORY.md"
+echo "I am Agent A. My favorite color is red." > "${TICLAW_HOME}/agents/$AGENT_A/SOUL.md"
+echo "I remember that I love testing." > "${TICLAW_HOME}/agents/$AGENT_A/MEMORY.md"
 
 # Agent B gets ONLY github 
-echo '["github"]' > "$HOME/.ticlaw/agents/$AGENT_B/skills.json"
-echo "I am Agent B. My favorite color is blue." > "$HOME/.ticlaw/agents/$AGENT_B/SOUL.md"
-echo "I remember that I like to code." > "$HOME/.ticlaw/agents/$AGENT_B/MEMORY.md"
+echo '["github"]' > "${TICLAW_HOME}/agents/$AGENT_B/skills.json"
+echo "I am Agent B. My favorite color is blue." > "${TICLAW_HOME}/agents/$AGENT_B/SOUL.md"
+echo "I remember that I like to code." > "${TICLAW_HOME}/agents/$AGENT_B/MEMORY.md"
 
 # Agent C gets NO skills 
-echo '[]' > "$HOME/.ticlaw/agents/$AGENT_C/skills.json"
-echo "I am Agent C. My favorite color is green." > "$HOME/.ticlaw/agents/$AGENT_C/SOUL.md"
-echo "I remember that yesterday I found a dollar." > "$HOME/.ticlaw/agents/$AGENT_C/MEMORY.md"
+echo '[]' > "${TICLAW_HOME}/agents/$AGENT_C/skills.json"
+echo "I am Agent C. My favorite color is green." > "${TICLAW_HOME}/agents/$AGENT_C/SOUL.md"
+echo "I remember that yesterday I found a dollar." > "${TICLAW_HOME}/agents/$AGENT_C/MEMORY.md"
 
 # Agent D gets BOTH web-search and github
-echo '["web-search", "github"]' > "$HOME/.ticlaw/agents/$AGENT_D/skills.json"
-echo "I am Agent D. My favorite color is purple." > "$HOME/.ticlaw/agents/$AGENT_D/SOUL.md"
-echo "I remember that yesterday I lost my keys." > "$HOME/.ticlaw/agents/$AGENT_D/MEMORY.md"
+echo '["web-search", "github"]' > "${TICLAW_HOME}/agents/$AGENT_D/skills.json"
+echo "I am Agent D. My favorite color is purple." > "${TICLAW_HOME}/agents/$AGENT_D/SOUL.md"
+echo "I remember that yesterday I lost my keys." > "${TICLAW_HOME}/agents/$AGENT_D/MEMORY.md"
 
 # ── Test 12.1: Agent A skills and identity ──
 echo -e "  Testing Agent A skills and identity..."

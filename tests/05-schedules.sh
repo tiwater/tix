@@ -19,6 +19,8 @@ if [ -n "$create_result" ]; then
   echo -e "  ${GREEN}✓${NC} Schedule created"
   TESTS_PASSED=$((TESTS_PASSED + 1))
   SCHEDULE_ID=$(echo "$create_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id', d.get('schedule',{}).get('id','')))" 2>/dev/null || echo "")
+  # Register for cleanup
+  [ -n "$SCHEDULE_ID" ] && register_schedule "$SCHEDULE_ID"
 else
   echo -e "  ${RED}✗${NC} Failed to create schedule"
   TESTS_FAILED=$((TESTS_FAILED + 1))

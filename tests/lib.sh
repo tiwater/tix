@@ -11,9 +11,59 @@ TICLAW_PORT="${TICLAW_PORT:-2756}"
 TICLAW_TIMEOUT="${TICLAW_TIMEOUT:-120}"
 TICLAW_CURL_TIMEOUT="${TICLAW_CURL_TIMEOUT:-8}"   # seconds before curl gives up
 TICLAW_CLI="node $(dirname "$0")/../cli/dist/index.js"
+
+# Resolve TICLAW_HOME to ensure tests use the same directory as the server
+# Respect existing environment variable, otherwise default to ~/.ticlaw
+if [ -z "${TICLAW_HOME:-}" ]; then
+  export TICLAW_HOME="$HOME/.ticlaw"
+fi
+
 TESTS_PASSED=0
 TESTS_FAILED=0
 TESTS_TOTAL=0
+
+# Cleanup registry to track resources created during the test
+CLEANUP_SCHEDULES=()
+CLEANUP_AGENTS=()
+CLEANUP_SESSIONS=()
+CLEANUP_FILES=()
+
+register_schedule() { CLEANUP_SCHEDULES+=("$1"); }
+register_agent() { CLEANUP_AGENTS+=("$1"); }
+register_session() { CLEANUP_SESSIONS+=("$1"); } # $1 is agent_id:session_id
+register_file() { CLEANUP_FILES+=("$1"); }
+
+perform_cleanup() {
+  local base_url="http://localhost:${TICLAW_PORT}"
+  
+  # 1. Delete schedules via API (safer as it updates server state)
+  for sched_id in "${CLEANUP_SCHEDULES[@]}"; do
+    curl --max-time 2 -sf -X DELETE "${base_url}/api/schedules/${sched_id}" >/dev/null 2>&1 || true
+  done
+
+  # 2. Delete sessions via API
+  for sess in "${CLEANUP_SESSIONS[@]}"; do
+    local agent_id="${sess%%:*}"
+    local session_id="${sess#*:}"
+    curl --max-time 2 -sf -X DELETE "${base_url}/api/sessions/${session_id}?agent_id=${agent_id}" >/dev/null 2>&1 || true
+  done
+
+  # 3. Delete agents/directories from filesystem
+  for agent_id in "${CLEANUP_AGENTS[@]}"; do
+    local agent_dir="${TICLAW_HOME}/agents/${agent_id}"
+    if [ -d "$agent_dir" ]; then
+      rm -rf "$agent_dir"
+    fi
+  done
+
+  # 4. Delete temp files
+  for f in "${CLEANUP_FILES[@]}"; do
+    rm -rf "$f"
+  done
+}
+
+# Automatically perform cleanup on exit
+trap perform_cleanup EXIT
 
 # Convenience wrapper: curl with a short timeout so tests never hang
 ticlaw_curl() { curl --max-time "$TICLAW_CURL_TIMEOUT" "$@"; }

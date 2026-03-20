@@ -7,7 +7,9 @@ print_scenario_header "Scenario 1: Basic Chat"
 
 # ── Test 1.1: Simple math ──
 echo -e "  Sending: \"What is 2+2? Reply with just the number.\""
-result=$(send_message "What is 2+2? Reply with just the number, nothing else." "default" "e2e-math-$$")
+SESSION="e2e-math-$$"
+register_session "default:$SESSION"
+result=$(send_message "What is 2+2? Reply with just the number, nothing else." "default" "$SESSION")
 response=$(get_response_text "$result")
 
 assert_no_error "Agent responds without error" "$result" || true

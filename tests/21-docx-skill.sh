@@ -7,6 +7,9 @@ DOCX_AGENT="docx-test-$$"
 OUTDIR="/tmp/ticlaw-docx-tests-$$"
 mkdir -p "$OUTDIR"
 
+register_agent "$DOCX_AGENT"
+register_file "$OUTDIR"
+
 print_scenario_header "Scenario 21: Docx Skill"
 
 # ── Test 21.1: Create a simple Word document ──
@@ -88,10 +91,5 @@ else
   echo -e "  ${RED}✗${NC} Unpacked directory not found"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 fi
-
-# ── Cleanup ──
-echo ""
-echo -e "  ${CYAN}Cleaning up test artifacts...${NC}"
-rm -rf "$OUTDIR"
 
 print_summary || true
