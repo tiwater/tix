@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+**/dist
+coverage
+.vscode
+.DS_Store
+*.log
+*.tgz
+examples/web/.svelte-kit
+examples/web/build

@@ -552,7 +552,7 @@ export const StartHubOptions = undefined;
  */
 export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Server> {
   const port = opts.port ?? parseInt(
-    process.env.GATEWAY_PORT ?? process.env.HUB_PORT ?? '2755',
+    process.env.PORT ?? process.env.GATEWAY_PORT ?? process.env.HUB_PORT ?? '2755',
     10,
   );
   const host = opts.host ?? '0.0.0.0';

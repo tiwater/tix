@@ -94,6 +94,21 @@ tc skills auth logout github
 
 ---
 
+## ☁️ Render deployment
+
+This repository is now set up for **separate container deployments** of the
+public gateway and the private node service on Render:
+
+- `packages/gateway/Dockerfile` builds the public gateway container.
+- `packages/node/Dockerfile` builds the private node container with Chrome included for browser automation.
+- `render.yaml` wires the node to the gateway over Render's private network.
+
+Deploy the Blueprint, then point your consumer app to the gateway service URL
+and send `Authorization: Bearer <GATEWAY_API_KEY>` on every request. The node
+service should stay private. See `docs/integrating.md` for the end-to-end flow.
+
+---
+
 ## 🎮 Command Hub & UI
 
 Type commands directly in Feishu/DingTalk or your custom ChatUI:

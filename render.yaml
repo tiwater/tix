@@ -1,53 +1,64 @@
 # Render Blueprint Specification
-# See: https://render.com/docs/blueprint-spec
+# Deploy the public gateway and the private worker node as separate containers.
+# The consumer application should call the gateway over HTTPS; the node connects
+# to the gateway over Render's private network via GATEWAY_HOSTPORT.
 
 services:
-  # 1. Node (Agent Worker) — NOT publicly exposed
-  # The TiClaw service: connects outbound to the Hub via WebSocket
-  # Upgraded to Docker Runtime to support Built-in Chrome 146
+  - type: web
+    name: ticlaw-gateway
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./packages/gateway/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: NODE_ENV
+        value: "production"
+      - key: GATEWAY_API_KEY
+        sync: false
+      - key: GATEWAY_SECRET
+        generateValue: true
+      - key: GATEWAY_ALLOWED_NODE_IDS
+        sync: false
+
   - type: pserv
     name: ticlaw-node
     runtime: docker
-    plan: starter # Chrome requires ~2GB RAM (Starter) for stability
-    dockerfilePath: ./Dockerfile
+    plan: starter
+    dockerfilePath: ./packages/node/Dockerfile
     dockerContext: .
     envVars:
       - key: TICLAW_HOME
         value: "/root/.ticlaw"
       - key: CHROME_PATH
         value: "/usr/bin/google-chrome-stable"
-      - key: NODE_HOSTNAME
-        value: "RenderClaw"
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "10000"
       - key: HTTP_PORT
         value: "10000"
+      - key: NODE_HOSTNAME
+        value: "render-node"
       - key: LLM_API_KEY
         sync: false
       - key: LLM_BASE_URL
-        value: "https://open.bigmodel.cn/api/anthropic"
-      - key: HUB_URL
-        value: "wss://ticlaw.onrender.com"
-      - key: HUB_TRUST_TOKEN
         sync: false
-      - key: HUB_REPORTING_INTERVAL
+      - key: GATEWAY_HOSTPORT
+        fromService:
+          type: web
+          name: ticlaw-gateway
+          property: hostport
+      - key: GATEWAY_SECRET
+        fromService:
+          type: web
+          name: ticlaw-gateway
+          envVarKey: GATEWAY_SECRET
+      - key: GATEWAY_REPORTING_INTERVAL
         value: "60000"
     disk:
       name: ticlaw-data
       mountPath: /root/.ticlaw
       sizeGB: 1
-
-  # 2. Web + Gateway (public-facing) — reference TiClaw controller
-  # Imports @ticlaw/gateway, accepts edge node connections, serves web UI
-  - type: web
-    name: ticlaw
-    runtime: node
-    plan: starter
-    rootDir: examples/web
-    buildCommand: "cd .. && pnpm install && pnpm --filter @ticlaw/gateway run build && cd examples/web && pnpm run build"
-    startCommand: "node --import tsx server.ts"
-    envVars:
-      - key: NODE_VERSION
-        value: "22"
-      - key: NODE_ENV
-        value: "production"
-      - key: PORT
-        value: "10000"

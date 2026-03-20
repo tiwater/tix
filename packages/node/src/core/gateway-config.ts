@@ -34,6 +34,10 @@ export function readGatewayConfig(): GatewayConfig {
   // 2. Override with Environment Variables (support both GATEWAY_URL and legacy HUB_URL)
   if (process.env.GATEWAY_URL) config.gateway_url = process.env.GATEWAY_URL;
   else if (process.env.HUB_URL) config.gateway_url = process.env.HUB_URL;
+  else if (process.env.GATEWAY_HOSTPORT) config.gateway_url = `ws://${process.env.GATEWAY_HOSTPORT}`;
+  else if (process.env.GATEWAY_HOST && (process.env.GATEWAY_PORT || process.env.PORT)) {
+    config.gateway_url = `ws://${process.env.GATEWAY_HOST}:${process.env.GATEWAY_PORT || process.env.PORT}`;
+  }
   if (process.env.GATEWAY_TRUST_TOKEN) config.trust_token = process.env.GATEWAY_TRUST_TOKEN;
   else if (process.env.HUB_TRUST_TOKEN) config.trust_token = process.env.HUB_TRUST_TOKEN;
   if (process.env.GATEWAY_REPORTING_INTERVAL) {
