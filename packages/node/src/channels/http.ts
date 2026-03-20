@@ -1456,6 +1456,7 @@ export class HttpChannel implements Channel {
             created_at: a.created_at,
             updated_at: a.updated_at,
             model,
+            tags: a.tags || [],
           };
         });
         writeJson(res, 200, { agents: agentList });
@@ -1479,7 +1480,7 @@ export class HttpChannel implements Channel {
           .toLowerCase()
           .replace(/[^a-z0-9_-]/g, '-')
           .replace(/-+/g, '-');
-        const agent = ensureAgent({ agent_id: agentId, name });
+        const agent = ensureAgent({ agent_id: agentId, name, tags: body.tags });
         writeJson(res, 201, { agent });
         return;
       }
@@ -1517,7 +1518,7 @@ export class HttpChannel implements Channel {
             config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
           }
           // Merge in allowed top-level config fields
-          const allowed = ['model', 'name', 'llm_base_url', 'system_prompt'];
+          const allowed = ['model', 'name', 'llm_base_url', 'system_prompt', 'tags'];
           for (const key of allowed) {
             if (body[key] !== undefined) config[key] = body[key];
           }

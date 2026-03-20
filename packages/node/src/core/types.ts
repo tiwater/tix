@@ -42,6 +42,7 @@ export interface RegisteredProject {
 export interface AgentRecord {
   agent_id: string;
   name: string;
+  tags?: string[];
   created_at: string;
   updated_at: string;
   tokens_in?: number;

@@ -499,7 +499,7 @@ export function agentPaths(agentId: string) {
  * 2. If present, puts that model first, followed by the rest of the registry for fallback.
  * 3. If absent or invalid, returns the full registry (which puts the default model first).
  */
-export function getAgentModelConfig(agentId: string): ModelEntry[] {
+export function getAgentModelConfig(agentId: string, silent = false): ModelEntry[] {
   let selectedModelId: string | undefined;
 
   try {
@@ -511,7 +511,9 @@ export function getAgentModelConfig(agentId: string): ModelEntry[] {
       }
     }
   } catch (e: any) {
-    logger.warn({ err: e.message, agentId }, 'Failed to parse agent-config.json for model selection');
+    if (!silent) {
+      logger.warn({ err: e.message, agentId }, 'Failed to parse agent-config.json for model selection');
+    }
   }
 
   // If no model explicitly selected or registry empty, return registry as-is
@@ -522,16 +524,17 @@ export function getAgentModelConfig(agentId: string): ModelEntry[] {
 
   // Find the selected model
   const selectedIdx = MODELS_REGISTRY.findIndex(m => m.id === selectedModelId);
-  
+
   // If the agent requested a model that isn't in config.yaml, fall back to default registry
   if (selectedIdx === -1) {
-    logger.warn(
-      { agentId, requestedModel: selectedModelId },
-      'Agent requested model ID not found in config.yaml models block. Falling back to default.'
-    );
+    if (!silent) {
+      logger.warn(
+        { agentId, requestedModel: selectedModelId },
+        'Agent requested model ID not found in config.yaml models block. Falling back to default.'
+      );
+    }
     return MODELS_REGISTRY;
   }
-
   // Build the list: Selected model FIRST, then the rest in their original order for fallback
   const list = [...MODELS_REGISTRY];
   const [selected] = list.splice(selectedIdx, 1);

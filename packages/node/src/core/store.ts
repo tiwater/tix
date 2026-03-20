@@ -215,6 +215,7 @@ export function initStore(): void {
 export function ensureAgent(input: {
   agent_id: string;
   name?: string;
+  tags?: string[];
 }): AgentRecord {
   const jsonPath = agentJsonPath(input.agent_id);
   const existing = readJson<AgentRecord>(jsonPath);
@@ -224,6 +225,7 @@ export function ensureAgent(input: {
     const updated: AgentRecord = {
       ...existing,
       name: input.name || existing.name,
+      tags: input.tags || existing.tags,
       updated_at: now,
     };
     writeJson(jsonPath, updated);
@@ -233,6 +235,7 @@ export function ensureAgent(input: {
   const record: AgentRecord = {
     agent_id: input.agent_id,
     name: input.name || input.agent_id,
+    tags: input.tags,
     created_at: now,
     updated_at: now,
   };
@@ -407,7 +410,7 @@ export function getUsageStats(record: { tokens_in?: number; tokens_out?: number;
   let estimated_cost_usd = 0;
 
   if (record.agent_id) {
-    const models = getAgentModelConfig(record.agent_id);
+    const models = getAgentModelConfig(record.agent_id, true);
     const model = models.length > 0 ? models[0] : null;
     if (model?.pricing) {
       estimated_cost_usd =
