@@ -1524,6 +1524,16 @@ export class HttpChannel implements Channel {
           }
           fs.mkdirSync(path.dirname(configPath), { recursive: true });
           fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+          // Also update AgentRecord (agent.json) for name and tags
+          if (body.name !== undefined || body.tags !== undefined) {
+            ensureAgent({
+              agent_id: agentId,
+              name: body.name,
+              tags: body.tags
+            });
+          }
+
           writeJson(res, 200, { ok: true, config });
         } catch (err: any) {
           writeProtocolError(res, 500, 'internal_error', 'config_update_failed', err.message);
@@ -1844,6 +1854,21 @@ export class HttpChannel implements Channel {
         const loadAvg = os.loadavg();
         const uptime = os.uptime();
 
+        // Disk Telemetry (TiClaw Home)
+        let disk = undefined;
+        try {
+          const stats = fs.statfsSync(TICLAW_HOME);
+          const total = stats.bsize * stats.blocks;
+          const free = stats.bsize * stats.bfree;
+          disk = {
+            total,
+            free,
+            used: total - free,
+          };
+        } catch {
+          /* ignore */
+        }
+
         writeJson(res, 200, {
           hostname: NODE_HOSTNAME,
           enrollment: {
@@ -1866,6 +1891,7 @@ export class HttpChannel implements Channel {
             mem_free: memFree,
             mem_used: memTotal - memFree,
             uptime: uptime,
+            disk,
           }
         });
         return;

@@ -19,6 +19,8 @@ export interface NodeInfo {
   last_seen?: string;
   /** IP address the node connected from. */
   ip?: string;
+  /** System telemetry data. */
+  telemetry?: any;
 }
 
 interface PendingRequest {
@@ -267,6 +269,9 @@ function handleNodeMessage(
       const state = nodes.get(ws);
       if (state) {
         state.lastSeen = Date.now();
+        if (msg.telemetry) {
+          state.info.telemetry = msg.telemetry;
+        }
         log?.debug?.(`[gateway] Report from ${state.info.node_id}: ${msg.status}`);
       }
       break;

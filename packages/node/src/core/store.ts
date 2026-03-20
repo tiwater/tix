@@ -19,6 +19,8 @@ import yaml from 'js-yaml';
 
 import { AGENTS_DIR, TICLAW_HOME, TIMEZONE, getAgentModelConfig } from './config.js';
 import { logger } from './logger.js';
+
+const GLOBAL_USAGE_PATH = path.join(TICLAW_HOME, 'global-usage.json');
 import type {
   AgentRecord,
   Attachment,
@@ -402,6 +404,40 @@ export function updateSessionUsage(
     agent.updated_at = now;
     writeJson(aPath, agent);
   }
+
+  // 3. Update Global Usage (Persistent Log)
+  // This ensures deletion of agents/sessions does not impact the historical total.
+  try {
+    const globalUsage = readJson<{
+      tokens_in: number;
+      tokens_out: number;
+      estimated_cost_usd: number;
+      updated_at: string;
+    }>(GLOBAL_USAGE_PATH) || {
+      tokens_in: 0,
+      tokens_out: 0,
+      estimated_cost_usd: 0,
+      updated_at: now,
+    };
+
+    // Calculate incremental cost for this specific turn
+    const increment = getUsageStats({
+      tokens_in: tokensIn,
+      tokens_out: tokensOut,
+      agent_id: agentId,
+    });
+
+    globalUsage.tokens_in += tokensIn;
+    globalUsage.tokens_out += tokensOut;
+    globalUsage.estimated_cost_usd = Number(
+      (globalUsage.estimated_cost_usd + increment.estimated_cost_usd).toFixed(6),
+    );
+    globalUsage.updated_at = now;
+
+    writeJson(GLOBAL_USAGE_PATH, globalUsage);
+  } catch (e) {
+    logger.warn({ error: e }, 'Failed to update global usage file');
+  }
 }
 
 export function getUsageStats(record: { tokens_in?: number; tokens_out?: number; agent_id?: string }) {
@@ -429,6 +465,23 @@ export function getUsageStats(record: { tokens_in?: number; tokens_out?: number;
 
 /** Get global usage across all agents and sessions. */
 export function getGlobalUsage() {
+  const globalUsage = readJson<{
+    tokens_in: number;
+    tokens_out: number;
+    estimated_cost_usd: number;
+    updated_at: string;
+  }>(GLOBAL_USAGE_PATH);
+
+  if (globalUsage) {
+    return {
+      tokens_in: globalUsage.tokens_in,
+      tokens_out: globalUsage.tokens_out,
+      tokens_total: globalUsage.tokens_in + globalUsage.tokens_out,
+      estimated_cost_usd: globalUsage.estimated_cost_usd,
+    };
+  }
+
+  // Fallback: calculate from current agents (migration path)
   let tokens_in = 0;
   let tokens_out = 0;
   let total_cost = 0;

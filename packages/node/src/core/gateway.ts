@@ -1,11 +1,13 @@
 import WebSocket from 'ws';
 import http from 'http';
 import crypto from 'crypto';
+import os from 'os';
+import fs from 'fs';
 import { logger } from './logger.js';
 import { readGatewayConfig, GatewayConfig } from './gateway-config.js';
 import { validateOutboundEndpoint } from './security.js';
 import { readEnrollmentState, verifyEnrollmentToken } from './enrollment.js';
-import { NODE_HOSTNAME, HTTP_PORT } from './config.js';
+import { NODE_HOSTNAME, HTTP_PORT, TICLAW_HOME } from './config.js';
 import { NewMessage } from './types.js';
 
 const GATEWAY_JID_PREFIX = 'gateway:';
@@ -132,11 +134,39 @@ export class Gateway {
     this.reportingInterval = setInterval(() => {
       if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
         const state = readEnrollmentState(NODE_HOSTNAME || undefined);
+        
+        // System Telemetry
+        const cpus = os.cpus();
+        const memTotal = os.totalmem();
+        const memFree = os.freemem();
+        
+        let disk = undefined;
+        try {
+          const stats = fs.statfsSync(TICLAW_HOME);
+          const total = stats.bsize * stats.blocks;
+          const free = stats.bsize * stats.bfree;
+          disk = { total, free, used: total - free };
+        } catch { /* ignore */ }
+
         this.ws.send(JSON.stringify({
           type: 'report',
           status: 'online',
           trust_state: state.trust_state,
           timestamp: new Date().toISOString(),
+          telemetry: {
+            os: {
+              platform: os.platform(),
+              arch: os.arch(),
+              cpus: cpus.length,
+              cpu_model: cpus[0]?.model || 'Unknown',
+              load_avg: os.loadavg(),
+              mem_total: memTotal,
+              mem_free: memFree,
+              mem_used: memTotal - memFree,
+              uptime: os.uptime(),
+              disk,
+            }
+          }
         }));
       }
     }, interval);

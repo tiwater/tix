@@ -233,7 +233,7 @@ interface WarmSession {
  */
 interface ActiveHandler {
   onEvent: (event: any, elapsed: number) => Promise<void>;
-  onResult: (event: any) => void;
+  onResult: (event: any) => Promise<void>;
   startTime: number;
   textParts: string[];
   pendingFiles: Set<string>;
@@ -452,7 +452,7 @@ function startOutputLoop(key: string, warm: WarmSession): void {
         }
 
         if (event.type === 'result') {
-          handler.onResult(event);
+          await handler.onResult(event);
         }
       }
     } catch (err: any) {
@@ -611,7 +611,7 @@ export class AgentRunner {
           onEvent: async (event: any, elapsed: number) => {
             await this.handleExecutorEvent(event, elapsed);
           },
-          onResult: (event: any) => {
+          onResult: async (event: any) => {
             let finalText =
               event.result?.trim() ||
               handler.textParts.join('\n').trim() ||
@@ -669,7 +669,7 @@ export class AgentRunner {
               }
             }
 
-            this.events.onReply?.(finalText);
+            await this.events.onReply?.(finalText);
             this.consolidateMemory(paths.base, finalText);
             activeHandlers.delete(key);
             resolve();
