@@ -68,6 +68,7 @@ import {
   HTTP_PORT,
   SKILLS_CONFIG,
   agentPaths,
+  TICLAW_HOME,
   MODELS_REGISTRY,
   getAgentModelConfig,
   ALLOWED_ORIGINS,
