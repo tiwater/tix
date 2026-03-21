@@ -15,6 +15,7 @@
     Plus,
     Archive,
     Info,
+    BarChart3,
   } from 'lucide-svelte';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Collapsible from '$lib/components/ui/collapsible';
@@ -302,6 +303,17 @@
               <a href="/skills" {...props}>
                 <Puzzle size={15} />
                 <span>Skills</span>
+              </a>
+            {/snippet}
+          </Sidebar.MenuButton>
+        </Sidebar.MenuItem>
+
+        <Sidebar.MenuItem>
+          <Sidebar.MenuButton isActive={isActive('/usage')}>
+            {#snippet child({ props }: { props: Record<string, unknown> })}
+              <a href="/usage" {...props}>
+                <BarChart3 size={15} />
+                <span>Usage</span>
               </a>
             {/snippet}
           </Sidebar.MenuButton>

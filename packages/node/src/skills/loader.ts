@@ -29,6 +29,8 @@ const ENTRYPOINT_CANDIDATES = [
   'src/index.js',
   'scripts/run.sh',
   'dist/index.js',
+  'pyproject.toml',
+  'mcp.json',
 ] as const;
 
 const HASH_IGNORES = new Set(['.git', '.ticlaw-skill.json', 'node_modules']);
@@ -614,14 +616,6 @@ export function loadOpenClawSkillFromDirectory(
       severity: 'error',
       code: 'entrypoint_missing',
       message: `Declared entrypoint not found: ${entrypoint.path}`,
-    });
-  }
-  if (!parsed.metadata.entry && !entrypoint) {
-    diagnostics.push({
-      severity: 'info',
-      code: 'entrypoint_not_detected',
-      message:
-        'No entrypoint was declared or detected. This skill will be treated as metadata-only until enabled through another wrapper.',
     });
   }
 

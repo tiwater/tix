@@ -408,16 +408,30 @@ export function updateSessionUsage(
   // 3. Update Global Usage (Persistent Log)
   // This ensures deletion of agents/sessions does not impact the historical total.
   try {
-    const globalUsage = readJson<{
+    const today = now.split('T')[0];
+    const models = getAgentModelConfig(agentId, true);
+    const modelId = models.length > 0 ? models[0].id : 'unknown';
+
+    interface UsageEntry {
       tokens_in: number;
       tokens_out: number;
       estimated_cost_usd: number;
-      updated_at: string;
-    }>(GLOBAL_USAGE_PATH) || {
-      tokens_in: 0,
-      tokens_out: 0,
-      estimated_cost_usd: 0,
-      updated_at: now,
+    }
+
+    interface GlobalUsageLedger {
+      total: UsageEntry & { updated_at: string };
+      daily: Record<string, {
+        total: UsageEntry;
+        models: Record<string, {
+          total: UsageEntry;
+          sessions: Record<string, UsageEntry & { agent_id: string }>;
+        }>;
+      }>;
+    }
+
+    const ledger = readJson<GlobalUsageLedger>(GLOBAL_USAGE_PATH) || {
+      total: { tokens_in: 0, tokens_out: 0, estimated_cost_usd: 0, updated_at: now },
+      daily: {},
     };
 
     // Calculate incremental cost for this specific turn
@@ -427,14 +441,46 @@ export function updateSessionUsage(
       agent_id: agentId,
     });
 
-    globalUsage.tokens_in += tokensIn;
-    globalUsage.tokens_out += tokensOut;
-    globalUsage.estimated_cost_usd = Number(
-      (globalUsage.estimated_cost_usd + increment.estimated_cost_usd).toFixed(6),
-    );
-    globalUsage.updated_at = now;
+    // Initialize daily/model/session nested structures if missing
+    if (!ledger.daily) ledger.daily = {};
+    if (!ledger.daily[today]) {
+      ledger.daily[today] = {
+        total: { tokens_in: 0, tokens_out: 0, estimated_cost_usd: 0 },
+        models: {},
+      };
+    }
+    const day = ledger.daily[today];
+    if (!day.models[modelId]) {
+      day.models[modelId] = {
+        total: { tokens_in: 0, tokens_out: 0, estimated_cost_usd: 0 },
+        sessions: {},
+      };
+    }
+    const model = day.models[modelId];
+    if (!model.sessions[sessionId]) {
+      model.sessions[sessionId] = {
+        agent_id: agentId,
+        tokens_in: 0,
+        tokens_out: 0,
+        estimated_cost_usd: 0,
+      };
+    }
+    const sessionEntry = model.sessions[sessionId];
 
-    writeJson(GLOBAL_USAGE_PATH, globalUsage);
+    // Apply increments
+    const applyIncrement = (target: UsageEntry) => {
+      target.tokens_in += tokensIn;
+      target.tokens_out += tokensOut;
+      target.estimated_cost_usd = Number((target.estimated_cost_usd + increment.estimated_cost_usd).toFixed(6));
+    };
+
+    applyIncrement(ledger.total);
+    ledger.total.updated_at = now;
+    applyIncrement(day.total);
+    applyIncrement(model.total);
+    applyIncrement(sessionEntry);
+
+    writeJson(GLOBAL_USAGE_PATH, ledger);
   } catch (e) {
     logger.warn({ error: e }, 'Failed to update global usage file');
   }
@@ -465,19 +511,14 @@ export function getUsageStats(record: { tokens_in?: number; tokens_out?: number;
 
 /** Get global usage across all agents and sessions. */
 export function getGlobalUsage() {
-  const globalUsage = readJson<{
-    tokens_in: number;
-    tokens_out: number;
-    estimated_cost_usd: number;
-    updated_at: string;
-  }>(GLOBAL_USAGE_PATH);
+  const ledger = readJson<any>(GLOBAL_USAGE_PATH);
 
-  if (globalUsage) {
+  if (ledger && ledger.total) {
     return {
-      tokens_in: globalUsage.tokens_in,
-      tokens_out: globalUsage.tokens_out,
-      tokens_total: globalUsage.tokens_in + globalUsage.tokens_out,
-      estimated_cost_usd: globalUsage.estimated_cost_usd,
+      tokens_in: ledger.total.tokens_in,
+      tokens_out: ledger.total.tokens_out,
+      tokens_total: ledger.total.tokens_in + ledger.total.tokens_out,
+      estimated_cost_usd: ledger.total.estimated_cost_usd,
     };
   }
 
@@ -499,6 +540,12 @@ export function getGlobalUsage() {
     tokens_total: tokens_in + tokens_out,
     estimated_cost_usd: Number(total_cost.toFixed(6)),
   };
+}
+
+/** Get the full detailed daily usage ledger. */
+export function getDailyUsage() {
+  const ledger = readJson<any>(GLOBAL_USAGE_PATH);
+  return ledger?.daily || {};
 }
 
 /**

@@ -134,12 +134,33 @@ export interface NodeInfo {
   };
 }
 
+export interface UsageEntry {
+  tokens_in: number;
+  tokens_out: number;
+  tokens_total: number;
+  estimated_cost_usd: number;
+}
+
+export interface DailyUsageModel {
+  total: UsageEntry;
+  sessions: Record<string, UsageEntry & { agent_id: string; agent_name?: string }>;
+}
+
+export interface DailyUsageDay {
+  total: UsageEntry;
+  models: Record<string, DailyUsageModel>;
+}
+
+export type DailyUsageLedger = Record<string, DailyUsageDay>;
+
 // --- Shared app state (Svelte 5 runes) ---
 function createAppState() {
   let sseConnected = $state(false);
   let sseLog = $state<string[]>([]);
   let nodeInfo = $state<NodeInfo | null>(null);
   let nodeLoading = $state(false);
+  let dailyUsage = $state<DailyUsageLedger>({});
+  let dailyUsageLoading = $state(false);
 
   // Chat state
   let agentId = $state(isBrowser ? (localStorage.getItem('agentId') || 'web-agent') : 'web-agent');
@@ -558,6 +579,18 @@ function createAppState() {
     schedulesLoading = false;
   }
 
+  async function fetchDailyUsage() {
+    dailyUsageLoading = true;
+    try {
+      const res = await fetch('/api/v1/usage/daily');
+      if (res.ok) {
+        const data = await res.json();
+        dailyUsage = data.daily || {};
+      }
+    } catch { /* */ }
+    dailyUsageLoading = false;
+  }
+
   async function fetchNode() {
     nodeLoading = true;
     try { const res = await fetch('/api/v1/node'); if (res.ok) { nodeInfo = await res.json(); } } catch { /* */ }
@@ -825,6 +858,8 @@ function createAppState() {
     get skillsLoading() { return skillsLoading; },
     get agentsLoading() { return agentsLoading; },
     get schedulesLoading() { return schedulesLoading; },
+    get dailyUsage() { return dailyUsage; },
+    get dailyUsageLoading() { return dailyUsageLoading; },
     get showNewAgent() { return showNewAgent; },
     set showNewAgent(v: boolean) { showNewAgent = v; },
     get showNewSession() { return showNewSession; },
@@ -843,7 +878,7 @@ function createAppState() {
 
     // Methods
     connectSSE, disconnectSSE, addLog,
-    fetchMind, fetchMindFiles, fetchSkills, fetchAgents,
+    fetchMind, fetchMindFiles, fetchSkills, fetchAgents, fetchDailyUsage,
     fetchSchedules, fetchNode, trustNode, toggleSkill, fetchModels,
     createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession,
     send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent, updateAgentModel,

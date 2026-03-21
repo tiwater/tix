@@ -91,6 +91,7 @@ import {
   getAllSessions,
   getAgent,
   getGlobalUsage,
+  getDailyUsage,
   getUsageStats,
   getRecentMessages,
   getSession,
@@ -1411,6 +1412,39 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      if ((pathname === '/api/v1/usage/daily' || pathname === '/api/usage/daily') && req.method === 'GET') {
+        const daily = getDailyUsage();
+        const allAgents = getAllAgents();
+        const agentMap = Object.fromEntries(allAgents.map(a => [a.agent_id, a.name]));
+
+        // Optionally enrich sessions with agent names
+        const enriched: any = {};
+        for (const [date, dayData] of Object.entries(daily)) {
+          const day: any = dayData;
+          enriched[date] = {
+            total: day.total,
+            models: {}
+          };
+          for (const [modelId, modelData] of Object.entries(day.models)) {
+            const mod: any = modelData;
+            enriched[date].models[modelId] = {
+              total: mod.total,
+              sessions: {}
+            };
+            for (const [sessionId, sess] of Object.entries(mod.sessions)) {
+              const s: any = sess;
+              enriched[date].models[modelId].sessions[sessionId] = {
+                ...s,
+                agent_name: agentMap[s.agent_id] || s.agent_id
+              };
+            }
+          }
+        }
+
+        writeJson(res, 200, { daily: enriched });
+        return;
+      }
+
       // ── Web UI API: Usage ──
 
       if ((pathname === '/api/v1/usage' || pathname === '/api/usage') && req.method === 'GET') {
@@ -1504,6 +1538,78 @@ export class HttpChannel implements Channel {
           session_count: agentSessions.length,
           config,
         });
+        return;
+      }
+
+      // GET /api/v1/agents/:id/skills — list global skills with per-agent overrides
+      const agentSkillsMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/skills$/);
+      if (agentSkillsMatch && req.method === 'GET') {
+        const agentId = decodeURIComponent(agentSkillsMatch[1]);
+        try {
+          const paths = agentPaths(agentId);
+          const registry = new SkillsRegistry(SKILLS_CONFIG);
+          const available = registry.listAvailable();
+          const agentSkillsPath = path.join(paths.base, 'skills.json');
+
+          let agentAllowed: string[] | null = null;
+          if (fs.existsSync(agentSkillsPath)) {
+            try {
+              agentAllowed = JSON.parse(fs.readFileSync(agentSkillsPath, 'utf8'));
+            } catch { /* fallback to null = use global */ }
+          }
+
+          writeJson(res, 200, {
+            mode: agentAllowed ? 'custom' : 'global',
+            allowed: agentAllowed,
+            skills: available.map((s) => {
+              const globalEnabled = s.installed?.enabled ?? false;
+              const agentEnabled = agentAllowed
+                ? agentAllowed.includes(s.skill.name) && globalEnabled
+                : globalEnabled;
+              return {
+                name: s.skill.name,
+                description: s.skill.description,
+                version: s.skill.version,
+                source: s.skill.source,
+                permissionLevel: s.skill.permission.level,
+                globalEnabled,
+                agentEnabled,
+                installed: !!s.installed,
+                diagnostics: s.skill.diagnostics,
+              };
+            }),
+          });
+        } catch (err: any) {
+          writeProtocolError(res, 500, 'internal_error', 'agent_skills_read_failed', err.message);
+        }
+        return;
+      }
+
+      // PUT /api/v1/agents/:id/skills — set per-agent skills config
+      if (agentSkillsMatch && req.method === 'PUT') {
+        const agentId = decodeURIComponent(agentSkillsMatch[1]);
+        const body = await readJsonBody(req);
+        try {
+          const paths = agentPaths(agentId);
+          const agentSkillsPath = path.join(paths.base, 'skills.json');
+          fs.mkdirSync(paths.base, { recursive: true });
+
+          if (body.mode === 'global') {
+            // Remove the per-agent override — agent falls back to global config
+            if (fs.existsSync(agentSkillsPath)) {
+              fs.unlinkSync(agentSkillsPath);
+            }
+          } else if (Array.isArray(body.allowed)) {
+            // Write a whitelist of skill names
+            fs.writeFileSync(agentSkillsPath, JSON.stringify(body.allowed, null, 2));
+          } else {
+            writeProtocolError(res, 400, 'input_error', 'invalid_body', 'Provide { mode: "global" } or { mode: "custom", allowed: [...] }');
+            return;
+          }
+          writeJson(res, 200, { ok: true });
+        } catch (err: any) {
+          writeProtocolError(res, 500, 'internal_error', 'agent_skills_write_failed', err.message);
+        }
         return;
       }
 
