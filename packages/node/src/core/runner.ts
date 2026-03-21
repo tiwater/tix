@@ -1169,10 +1169,56 @@ When asked to list your capabilities, skills, or tools:
       const today = now.toISOString().split('T')[0];
       const journalPath = path.join(baseDir, 'memory', `${today}.md`);
 
-      const summary = truncateText(result.replace(/\s+/g, ' '), 200);
+      const summaryPrompt = `Extract any important new long-term facts, preferences, or project updates from the following task result. 
+Output ONLY a concise bulleted list of these facts (or 'No new facts' if none).
+Result:
+${result}`;
+
+      let summary = '';
+      try {
+        const { getAgentModelConfig } = await import('./config.js');
+        const models = getAgentModelConfig(this.state.agent_id);
+        const modelConfig = models.length > 0 ? models[0] : null;
+
+        const spawnOpts = buildQueryOptions(
+          'You are a concise summarizer. Do not use any tools.',
+          baseDir,
+          this.state.agent_id,
+          this.state.session_id,
+          this.state.task_id! + '_summary',
+          modelConfig || {}
+        );
+        spawnOpts.persistSession = false;
+        spawnOpts.allowedTools = [];
+
+        const q = query({ prompt: summaryPrompt, options: spawnOpts });
+
+        try {
+          for await (const msg of q) {
+            const event = msg as any;
+            if (event.type === 'assistant') {
+              const blocks = event.message?.content || [];
+              for (const block of blocks) {
+                if (block.type === 'text' && block.text) {
+                  summary += block.text;
+                }
+              }
+            }
+            if (event.type === 'result') {
+              break;
+            }
+          }
+        } finally {
+          if ((q as any).close) (q as any).close();
+        }
+        summary = summary.trim();
+      } catch (err: any) {
+        logger.debug({ err: err.message }, 'Claude standalone summarization query failed, relying on text truncation');
+        summary = `(summarization failed) ${truncateText(result.replace(/\\s+/g, ' '), 200)}`;
+      }
 
       if (summary && !summary.toLowerCase().includes('no new facts')) {
-        const entry = `\n- [${now.toISOString()}] Task: ${this.state.task_id}\n  Result: ${summary.replace(/\n/g, '\n    ')}\n`;
+        const entry = `\n- [${now.toISOString()}] Task: ${this.state.task_id}\n  Facts: ${summary.replace(/\\n/g, '\n    ')}\n`;
         fs.appendFileSync(journalPath, entry, 'utf-8');
       }
     } catch (err: any) {
