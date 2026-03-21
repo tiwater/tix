@@ -420,11 +420,11 @@ function startOutputLoop(key: string, warm: WarmSession): void {
 
         const handler = activeHandlers.get(key);
         if (!handler) {
-          // This should not happen (handler is registered before loop starts)
-          // but guard anyway to avoid silent drops.
           logger.warn({ key, eventType: event.type }, 'No handler for event — dropped');
           continue;
         }
+
+        logger.debug({ eventType: event.type }, 'AgentRunner Event Received');
 
         await handler.onEvent(event, Date.now() - handler.startTime);
 
@@ -1159,18 +1159,26 @@ When asked to list your capabilities, skills, or tools:
 
   /**
    * Consolidates task results into a per-day short-term memory journal.
-   * Uses an LLM-based summary to extract important facts rather than simple truncation.
+   * Categorizes facts and automatically escalates critical ones to MEMORY.md.
    */
   private async consolidateMemory(baseDir: string, result: string): Promise<void> {
     try {
-      if (!result || result.trim().length < 50) return; // Skip trivial results
+      if (!result || result.trim().length < 50) return;
 
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       const journalPath = path.join(baseDir, 'memory', `${today}.md`);
 
-      const summaryPrompt = `Extract any important new long-term facts, preferences, or project updates from the following task result. 
-Output ONLY a concise bulleted list of these facts (or 'No new facts' if none).
+      // 1. Extract and Categorize Facts
+      const summaryPrompt = `Analyze the following task result and extract any new information worth remembering.
+Classify each fact into one of these categories:
+- [CORE]: Permanent facts about the user, project rules, or fundamental environment settings.
+- [JOURNAL]: Task-specific progress, transient context, or intermediate status updates.
+
+Format your output as a bulleted list:
+- [CATEGORY] Fact description...
+
+If nothing is worth remembering, output ONLY 'No new facts'.
 Result:
 ${result}`;
 
@@ -1181,11 +1189,11 @@ ${result}`;
         const modelConfig = models.length > 0 ? models[0] : null;
 
         const spawnOpts = buildQueryOptions(
-          'You are a concise summarizer. Do not use any tools.',
+          'You are a memory assistant. Classify facts as [CORE] or [JOURNAL].',
           baseDir,
           this.state.agent_id,
           this.state.session_id,
-          this.state.task_id! + '_summary',
+          this.state.task_id! + '_memory_extraction',
           modelConfig || {}
         );
         spawnOpts.persistSession = false;
@@ -1204,22 +1212,34 @@ ${result}`;
                 }
               }
             }
-            if (event.type === 'result') {
-              break;
-            }
           }
         } finally {
           if ((q as any).close) (q as any).close();
         }
         summary = summary.trim();
       } catch (err: any) {
-        logger.debug({ err: err.message }, 'Claude standalone summarization query failed, relying on text truncation');
-        summary = `(summarization failed) ${truncateText(result.replace(/\\s+/g, ' '), 200)}`;
+        logger.debug({ err: err.message }, 'Standalone extraction query failed, relying on text truncation');
+        summary = `[JOURNAL] ${truncateText(result.replace(/\s+/g, ' '), 200)}`;
       }
 
       if (summary && !summary.toLowerCase().includes('no new facts')) {
-        const entry = `\n- [${now.toISOString()}] Task: ${this.state.task_id}\n  Facts: ${summary.replace(/\\n/g, '\n    ')}\n`;
+        // 2. Write to Daily Journal
+        const entry = `\n- [${now.toISOString()}] Task: ${this.state.task_id}\n  Facts: ${summary.replace(/\n/g, '\n    ')}\n`;
         fs.appendFileSync(journalPath, entry, 'utf-8');
+
+        // 3. Automatic Escalation to CORE (MEMORY.md)
+        if (summary.includes('[CORE]')) {
+          const coreFacts = summary
+            .split('\n')
+            .filter(line => line.includes('[CORE]'))
+            .map(line => line.replace(/^-?\s*\[CORE\]/, '').trim())
+            .filter(Boolean)
+            .join('\n');
+          
+          if (coreFacts) {
+            await this.escalateToCoreMemory(baseDir, coreFacts);
+          }
+        }
       }
     } catch (err: any) {
       logger.warn(
@@ -1231,6 +1251,77 @@ ${result}`;
         },
         'Failed to consolidate short-term memory journal',
       );
+    }
+  }
+
+  /**
+   * Integrates specific high-importance facts into the long-term MEMORY.md file.
+   */
+  private async escalateToCoreMemory(baseDir: string, newFacts: string): Promise<void> {
+    const memoryPath = path.join(baseDir, 'MEMORY.md');
+    try {
+      const currentMemory = fs.existsSync(memoryPath) ? fs.readFileSync(memoryPath, 'utf-8') : '';
+      
+      const mergePrompt = `You are a memory management engine. Your task is to integrate NEW CORE FACTS into the existing MEMORY.md content.
+      
+Rules:
+1. Maintain the existing Markdown structure and style.
+2. Merge new information into existing sections where appropriate.
+3. Remove or update any outdated information if the new facts contradict them.
+4. Do NOT duplicate information already present.
+5. Keep the output concise and highly organized.
+
+--- EXISTING MEMORY.md ---
+${currentMemory || '(Empty)'}
+
+--- NEW CORE FACTS TO INTEGRATE ---
+${newFacts}
+
+--- NEW ORGANIZED MEMORY.md CONTENT ---
+(Output ONLY the full content of the updated MEMORY.md file)`;
+
+      const { getAgentModelConfig } = await import('./config.js');
+      const models = getAgentModelConfig(this.state.agent_id);
+      const modelConfig = models.length > 0 ? models[0] : null;
+
+      const spawnOpts = buildQueryOptions(
+        'You are a memory management engine. Output only raw markdown.',
+        baseDir,
+        this.state.agent_id,
+        this.state.session_id,
+        this.state.task_id! + '_memory_sync',
+        modelConfig || {}
+      );
+      spawnOpts.persistSession = false;
+      spawnOpts.allowedTools = [];
+
+      const q = query({ prompt: mergePrompt, options: spawnOpts });
+      let updatedContent = '';
+      try {
+        for await (const msg of q) {
+          const event = msg as any;
+          if (event.type === 'assistant') {
+            const blocks = event.message?.content || [];
+            for (const block of blocks) {
+              if (block.type === 'text' && block.text) {
+                updatedContent += block.text;
+              }
+            }
+          }
+        }
+      } finally {
+        if ((q as any).close) (q as any).close();
+      }
+
+      updatedContent = updatedContent.trim();
+      
+      if (updatedContent && updatedContent.length > 10 && !updatedContent.includes('---')) {
+        updatedContent = updatedContent.replace(/^```markdown\n/, '').replace(/^```\n/, '').replace(/\n```$/, '');
+        fs.writeFileSync(memoryPath, updatedContent, 'utf-8');
+        logger.info({ agentId: this.state.agent_id }, 'Automatic memory escalation successful');
+      }
+    } catch (err: any) {
+      logger.warn({ agentId: this.state.agent_id, err: err.message }, 'Failed to escalate facts to core memory');
     }
   }
 

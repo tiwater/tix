@@ -997,6 +997,63 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      const memoryEditMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/memory\/([^/]+)$/) ?? pathname.match(/^\/api\/agents\/([^/]+)\/memory\/([^/]+)$/);
+      if (memoryEditMatch) {
+        const agentId = decodeURIComponent(memoryEditMatch[1]);
+        const dateId = decodeURIComponent(memoryEditMatch[2]);
+        const baseDir = agentPaths(agentId).base;
+
+        if (req.method === 'PUT') {
+          try {
+            const body = await readJsonBody(req);
+            if (typeof body.content !== 'string') {
+              writeProtocolError(res, 400, 'invalid_request', 'bad_request', 'content must be a string');
+              return;
+            }
+
+            let targetPath = '';
+            if (dateId === 'core') {
+              targetPath = path.join(baseDir, 'MEMORY.md');
+            } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateId)) {
+              const memoryDir = path.join(baseDir, 'memory');
+              if (!fs.existsSync(memoryDir)) fs.mkdirSync(memoryDir, { recursive: true });
+              targetPath = path.join(memoryDir, `${dateId}.md`);
+            } else {
+              writeProtocolError(res, 400, 'invalid_request', 'bad_request', 'invalid date identifier');
+              return;
+            }
+
+            fs.writeFileSync(targetPath, body.content, 'utf-8');
+            writeJson(res, 200, { success: true });
+          } catch (err: any) {
+            writeProtocolError(res, 500, 'server_error', 'internal_error', err.message);
+          }
+          return;
+        }
+
+        if (req.method === 'DELETE') {
+          try {
+            let targetPath = '';
+            if (dateId === 'core') {
+              targetPath = path.join(baseDir, 'MEMORY.md');
+            } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateId)) {
+              targetPath = path.join(baseDir, 'memory', `${dateId}.md`);
+            } else {
+              writeProtocolError(res, 400, 'invalid_request', 'bad_request', 'invalid date identifier');
+              return;
+            }
+
+            if (fs.existsSync(targetPath)) {
+              fs.unlinkSync(targetPath);
+            }
+            writeJson(res, 200, { success: true });
+          } catch (err: any) {
+            writeProtocolError(res, 500, 'server_error', 'internal_error', err.message);
+          }
+          return;
+        }
+      }
+
       if (pathname === '/agents' && req.method === 'GET') {
         writeJson(res, 200, {
           name: 'TiClaw',
@@ -1422,13 +1479,13 @@ export class HttpChannel implements Channel {
         for (const [date, dayData] of Object.entries(daily)) {
           const day: any = dayData;
           enriched[date] = {
-            total: day.total,
+            total: { ...day.total, tokens_total: (day.total.tokens_in || 0) + (day.total.tokens_out || 0) },
             models: {}
           };
           for (const [modelId, modelData] of Object.entries(day.models)) {
             const mod: any = modelData;
             enriched[date].models[modelId] = {
-              total: mod.total,
+              total: { ...mod.total, tokens_total: (mod.total.tokens_in || 0) + (mod.total.tokens_out || 0) },
               sessions: {}
             };
             for (const [sessionId, sess] of Object.entries(mod.sessions)) {
