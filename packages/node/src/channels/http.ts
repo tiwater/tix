@@ -237,22 +237,22 @@ export function broadcastToChat(chatJid: string, event: object): void {
   }
 }
 
+export function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return false;
+  if (!ALLOWED_ORIGINS.trim()) return false;
+  try {
+    const regex = new RegExp(ALLOWED_ORIGINS);
+    return regex.test(origin);
+  } catch {
+    return false;
+  }
+}
+
 function setCorsHeaders(req: http.IncomingMessage, res: http.ServerResponse): void {
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS && origin) {
-    try {
-      const regex = new RegExp(ALLOWED_ORIGINS);
-      if (regex.test(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-      } else {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-      }
-    } catch {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    }
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = readSingleHeaderValue(req.headers.origin);
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
@@ -318,7 +318,7 @@ function isLoopbackAddress(remote: string | undefined): boolean {
   );
 }
 
-function requiresAdminApiAccess(pathname: string, method: string): boolean {
+export function requiresAdminApiAccess(pathname: string, method: string): boolean {
   // Legacy run endpoint
   if (pathname === '/runs' && method === 'POST') return true;
   // All new v1 api endpoints require admin access
@@ -334,17 +334,18 @@ function requiresAdminApiAccess(pathname: string, method: string): boolean {
   return false;
 }
 
-type HttpAdminContext = {
+export type HttpAdminContext = {
   actor: string;
   isAdmin: true;
   approveLevel3: true;
 };
 
-function resolveHttpAdminContextFromInput(
+export function resolveHttpAdminContextFromInput(
   providedApiKey: string | null,
   isLoopback: boolean,
+  configuredApiKeyOverride?: string,
 ): HttpAdminContext | null {
-  const configuredApiKey = HTTP_API_KEY.trim();
+  const configuredApiKey = (configuredApiKeyOverride ?? HTTP_API_KEY).trim();
   if (configuredApiKey) {
     if (providedApiKey && safeEquals(providedApiKey, configuredApiKey)) {
       return {
@@ -374,6 +375,12 @@ function resolveHttpAdminContext(
     extractApiKey(req),
     isLoopbackAddress(req.socket.remoteAddress),
   );
+}
+
+export function deriveHttpSenderIdentity(context: HttpAdminContext): { sender: string; sender_name: string } {
+  return context.actor === 'http-loopback'
+    ? { sender: 'http-loopback', sender_name: 'Local HTTP Admin' }
+    : { sender: 'http-api-key', sender_name: 'HTTP API Client' };
 }
 
 function requireHttpAdminContext(
@@ -564,13 +571,13 @@ export class HttpChannel implements Channel {
 
   private handleWebSocket(ws: WebSocket, req: http.IncomingMessage): void {
     let chatJid: string | null = null;
+    let wsAdminContext: HttpAdminContext | null = null;
     const remoteAddress = req.socket.remoteAddress;
 
     ws.on('message', async (data) => {
       try {
         const payload = JSON.parse(data.toString());
-        const { type, agent_id, session_id, content, sender, sender_name } =
-          payload;
+        const { type, agent_id, session_id, content } = payload;
 
         if (type === 'auth') {
           const wsApiKey =
@@ -593,6 +600,8 @@ export class HttpChannel implements Channel {
             ws.close();
             return;
           }
+
+          wsAdminContext = wsContext;
 
           if (!agent_id || !session_id) {
             ws.send(
@@ -647,11 +656,14 @@ export class HttpChannel implements Channel {
             agent_name: authedAgentId,
           });
 
+          const senderIdentity = deriveHttpSenderIdentity(
+            wsAdminContext ?? { actor: 'http-api-key', isAdmin: true, approveLevel3: true },
+          );
           const msg: NewMessage = {
             id: `ws-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             chat_jid: chatJid,
-            sender: sender || 'ws-user',
-            sender_name: sender_name || 'WS User',
+            sender: senderIdentity.sender,
+            sender_name: senderIdentity.sender_name,
             content,
             timestamp,
             is_from_me: false,
@@ -1240,8 +1252,6 @@ export class HttpChannel implements Channel {
           agent_id: rawAgentId,
           session_id: rawSessionId,
           task_id: rawTaskId,
-          sender,
-          sender_name,
           content,
         } = parsed;
         // v1: override agent_id and session_id from path params
@@ -1286,8 +1296,9 @@ export class HttpChannel implements Channel {
         }
 
         const chatJid = buildHttpSessionId(agentId, sessionId);
-        const senderId = sender || 'web-user';
-        const senderName = sender_name || sender || 'Web User';
+        const senderIdentity = adminContext
+          ? deriveHttpSenderIdentity(adminContext)
+          : { sender: 'web-user', sender_name: 'Web User' };
         const timestamp = new Date().toISOString();
 
         const enrollState = readEnrollmentState(NODE_HOSTNAME || undefined);
@@ -1329,8 +1340,8 @@ export class HttpChannel implements Channel {
         const msg: NewMessage = {
           id: `web-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           chat_jid: chatJid,
-          sender: senderId,
-          sender_name: senderName,
+          sender: senderIdentity.sender,
+          sender_name: senderIdentity.sender_name,
           content,
           timestamp,
           is_from_me: false,
@@ -2064,19 +2075,13 @@ export class HttpChannel implements Channel {
       // ── Web UI API: Trust Claw ──
 
       if ((pathname === '/api/v1/node/trust' || pathname === '/api/node/trust') && req.method === 'POST') {
-        // Admin-only endpoint - require admin authentication
-        const ctx = resolveHttpAdminContext(req);
-        if (!ctx?.isAdmin) {
-          writeJson(res, 403, { ok: false, error: 'admin_required' });
-          return;
-        }
-        const result = setTrustState('trusted', {
-          nodeId: NODE_HOSTNAME || undefined,
-        });
-        writeJson(res, 200, {
-          ok: true,
-          trust_state: result.trust_state,
-        });
+        writeProtocolError(
+          res,
+          410,
+          'auth_error',
+          'trust_endpoint_removed',
+          'Direct trust elevation is disabled. Use the enrollment flow (/api/enroll/token + /api/enroll/verify) to transition a node to trusted state.',
+        );
         return;
       }
 
