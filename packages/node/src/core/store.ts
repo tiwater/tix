@@ -429,10 +429,21 @@ export function updateSessionUsage(
       }>;
     }
 
-    const ledger = readJson<GlobalUsageLedger>(GLOBAL_USAGE_PATH) || {
-      total: { tokens_in: 0, tokens_out: 0, estimated_cost_usd: 0, updated_at: now },
-      daily: {},
-    };
+    const rawLedger = readJson<any>(GLOBAL_USAGE_PATH);
+    let ledger: GlobalUsageLedger;
+    if (!rawLedger || typeof rawLedger.total !== 'object') {
+      ledger = {
+        total: {
+          tokens_in: rawLedger?.tokens_in || 0,
+          tokens_out: rawLedger?.tokens_out || 0,
+          estimated_cost_usd: rawLedger?.estimated_cost_usd || 0,
+          updated_at: rawLedger?.updated_at || now
+        },
+        daily: {},
+      };
+    } else {
+      ledger = rawLedger as GlobalUsageLedger;
+    }
 
     // Calculate incremental cost for this specific turn
     const increment = getUsageStats({
@@ -471,6 +482,7 @@ export function updateSessionUsage(
     const applyIncrement = (target: UsageEntry) => {
       target.tokens_in += tokensIn;
       target.tokens_out += tokensOut;
+      (target as any).tokens_total = (target.tokens_in || 0) + (target.tokens_out || 0);
       target.estimated_cost_usd = Number((target.estimated_cost_usd + increment.estimated_cost_usd).toFixed(6));
     };
 
@@ -496,8 +508,8 @@ export function getUsageStats(record: { tokens_in?: number; tokens_out?: number;
     const model = models.length > 0 ? models[0] : null;
     if (model?.pricing) {
       estimated_cost_usd =
-        (tokens_in / 1_000_000) * model.pricing.input_usd_per_1m +
-        (tokens_out / 1_000_000) * model.pricing.output_usd_per_1m;
+        (tokens_in / 1_000_000) * (model.pricing.input_usd_per_1m || 0) +
+        (tokens_out / 1_000_000) * (model.pricing.output_usd_per_1m || 0);
     }
   }
 

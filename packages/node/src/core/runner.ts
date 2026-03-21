@@ -670,7 +670,7 @@ export class AgentRunner {
             }
 
             await this.events.onReply?.(finalText);
-            this.consolidateMemory(paths.base, finalText);
+            await this.consolidateMemory(paths.base, finalText);
             activeHandlers.delete(key);
             resolve();
           },
@@ -1001,8 +1001,8 @@ export class AgentRunner {
     if (!hasHeartbeat) {
       createSchedule({
         agent_id: this.state.agent_id,
-        cron: '0 3 * * *', // Daily at 3 AM
-        prompt: '[SYSTEM_MEMORY_HEARTBEAT] Read your daily memory logs from the past two days, consolidate any important new long-term facts, and update your MEMORY.md. Ensure you do not lose information. Only output a brief summary of what was consolidated.',
+        cron: '0 */4 * * *', // Every 4 hours
+        prompt: '[SYSTEM_MEMORY_HEARTBEAT] Act as a memory consolidation processor. Review your short-term memory journals in the "memory/" directory. Extract any persistent long-term facts, user preferences, or environmental knowledge that is not already in MEMORY.md. Update MEMORY.md with these new insights while keeping it concise and organized. If no new long-term information is found, do nothing. Output ONLY a one-sentence confirmation of what was updated.',
         type: 'cron',
         session: 'isolated'
       });
@@ -1159,18 +1159,22 @@ When asked to list your capabilities, skills, or tools:
 
   /**
    * Consolidates task results into a per-day short-term memory journal.
+   * Uses an LLM-based summary to extract important facts rather than simple truncation.
    */
-  private consolidateMemory(baseDir: string, result: string): void {
+  private async consolidateMemory(baseDir: string, result: string): Promise<void> {
     try {
+      if (!result || result.trim().length < 50) return; // Skip trivial results
+
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       const journalPath = path.join(baseDir, 'memory', `${today}.md`);
-      const compactResult = result.replace(/\s+/g, ' ').trim();
-      const preview = compactResult
-        ? truncateText(compactResult, 240)
-        : '(empty result)';
-      const entry = `\n- [${now.toISOString()}] Task: ${this.state.task_id}\n  Result: ${preview}\n`;
-      fs.appendFileSync(journalPath, entry, 'utf-8');
+
+      const summary = truncateText(result.replace(/\s+/g, ' '), 200);
+
+      if (summary && !summary.toLowerCase().includes('no new facts')) {
+        const entry = `\n- [${now.toISOString()}] Task: ${this.state.task_id}\n  Result: ${summary.replace(/\n/g, '\n    ')}\n`;
+        fs.appendFileSync(journalPath, entry, 'utf-8');
+      }
     } catch (err: any) {
       logger.warn(
         {
