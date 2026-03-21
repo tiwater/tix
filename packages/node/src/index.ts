@@ -188,7 +188,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
     ? 'discord'
     : chatJid.startsWith('web:')
       ? 'http'
-      : chatJid.startsWith('feishu:')
+      : chatJid.startsWith('feishu:') || chatJid.startsWith('fs:')
         ? 'feishu'
         : 'unknown';
   const session = ensureSession({

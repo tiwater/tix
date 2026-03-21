@@ -35,6 +35,10 @@ export class FeishuChannel extends AbstractChannel<
 > {
   name = 'feishu';
 
+  ownsJid(jid: string): boolean {
+    return jid.startsWith('feishu:') || jid.startsWith('fs:');
+  }
+
   constructor(accounts: FeishuAccount[], opts: ChannelOpts) {
     super(opts);
     this.initInstances(accounts);
@@ -150,6 +154,20 @@ export class FeishuChannel extends AbstractChannel<
 
   protected async disconnectInstance(inst: FeishuInstance): Promise<void> {
     inst.wsClient.close({ force: true });
+  }
+
+  protected parseJid(jid: string): {
+    channel: string;
+    appId: string;
+    chatId: string;
+  } {
+    const parts = jid.split(':');
+    // Support both feishu:appId:chatId and fs:appId:chatId
+    return {
+      channel: parts[0],
+      appId: parts[1] || 'default',
+      chatId: parts[2] || '',
+    };
   }
 
   async sendMessage(jid: string, text: string, options?: any): Promise<void> {

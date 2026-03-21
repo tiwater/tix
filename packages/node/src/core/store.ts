@@ -691,6 +691,14 @@ export function resolveFromChatJid(chatJid: string): {
   const acpMatch = chatJid.match(/^acp:(.+?):(.+)$/);
   if (acpMatch) return { agentId: acpMatch[1], sessionId: acpMatch[2] };
 
+  // feishu:app_id:chat_id
+  const feishuMatch = chatJid.match(/^feishu:(.+?):(.+)$/);
+  if (feishuMatch) return { agentId: feishuMatch[1], sessionId: feishuMatch[2] };
+
+  // fs:app_id:chat_id (legacy/short prefix)
+  const fsMatch = chatJid.match(/^fs:(.+?):(.+)$/);
+  if (fsMatch) return { agentId: fsMatch[1], sessionId: fsMatch[2] };
+
   // For other channels, try to find the session across agents
   for (const agentId of listDirs(AGENTS_DIR)) {
     const sessionsBase = path.join(agentDir(agentId), 'sessions');
