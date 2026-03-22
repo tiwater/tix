@@ -390,6 +390,67 @@ export function deriveHttpSenderIdentity(context: HttpAdminContext): { sender: s
     : { sender: 'http-api-key', sender_name: 'HTTP API Client' };
 }
 
+export function getHttpSecurityPosture(config: {
+  httpEnabled: boolean;
+  httpApiKey: string;
+  allowedOrigins: string;
+}): {
+  mode: 'disabled' | 'dev_loopback_only' | 'protected';
+  warnings: string[];
+} {
+  if (!config.httpEnabled) {
+    return { mode: 'disabled', warnings: [] };
+  }
+
+  const warnings: string[] = [];
+  const hasApiKey = Boolean(config.httpApiKey.trim());
+  const hasAllowedOrigins = Boolean(config.allowedOrigins.trim());
+
+  if (!hasApiKey) {
+    warnings.push(
+      'HTTP_API_KEY is not configured; admin/API access falls back to loopback-only local development mode.',
+    );
+    warnings.push(
+      'Do not expose this node beyond localhost without setting HTTP_API_KEY.',
+    );
+  }
+
+  if (!hasAllowedOrigins) {
+    warnings.push(
+      'ALLOWED_ORIGINS is not configured; browser origins are denied by default.',
+    );
+  }
+
+  return {
+    mode: hasApiKey ? 'protected' : 'dev_loopback_only',
+    warnings,
+  };
+}
+
+function logHttpSecurityPosture(): void {
+  const posture = getHttpSecurityPosture({
+    httpEnabled: HTTP_ENABLED,
+    httpApiKey: HTTP_API_KEY,
+    allowedOrigins: ALLOWED_ORIGINS,
+  });
+
+  if (posture.mode === 'disabled') return;
+
+  logger.info(
+    {
+      port: HTTP_PORT,
+      mode: posture.mode,
+      has_api_key: Boolean(HTTP_API_KEY.trim()),
+      has_allowed_origins: Boolean(ALLOWED_ORIGINS.trim()),
+    },
+    'HTTP security posture',
+  );
+
+  for (const warning of posture.warnings) {
+    logger.warn({ port: HTTP_PORT, mode: posture.mode }, warning);
+  }
+}
+
 function requireHttpAdminContext(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -571,6 +632,7 @@ export class HttpChannel implements Channel {
 
     this._connected = true;
     logger.info({ port: HTTP_PORT }, 'HTTP/WS channel listening');
+    logHttpSecurityPosture();
     console.log(
       `\n  HTTP SSE: http://localhost:${HTTP_PORT}/runs/{id}/stream\n  WebSocket: ws://localhost:${HTTP_PORT}/\n`,
     );

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   deriveHttpSenderIdentity,
+  getHttpSecurityPosture,
   isOriginAllowed,
   requiresAdminApiAccess,
   resolveHttpAdminContextFromInput,
@@ -55,5 +56,35 @@ describe('HTTP security guards', () => {
     } finally {
       if (prev !== undefined) process.env.ALLOWED_ORIGINS = prev;
     }
+  });
+
+  it('reports dev-loopback posture warnings when HTTP API key is missing', () => {
+    expect(
+      getHttpSecurityPosture({
+        httpEnabled: true,
+        httpApiKey: '',
+        allowedOrigins: '',
+      }),
+    ).toEqual({
+      mode: 'dev_loopback_only',
+      warnings: [
+        'HTTP_API_KEY is not configured; admin/API access falls back to loopback-only local development mode.',
+        'Do not expose this node beyond localhost without setting HTTP_API_KEY.',
+        'ALLOWED_ORIGINS is not configured; browser origins are denied by default.',
+      ],
+    });
+  });
+
+  it('reports protected posture when HTTP API key is configured', () => {
+    expect(
+      getHttpSecurityPosture({
+        httpEnabled: true,
+        httpApiKey: 'secret-123',
+        allowedOrigins: '^https://app\\.example\\.com$',
+      }),
+    ).toEqual({
+      mode: 'protected',
+      warnings: [],
+    });
   });
 });
