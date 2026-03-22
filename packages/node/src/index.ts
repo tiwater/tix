@@ -45,6 +45,12 @@ import {
   verifyEnrollmentToken,
 } from './core/enrollment.js';
 import {
+  approvePairing,
+  ensurePendingPairing,
+  getBinding,
+  upsertBinding,
+} from './core/pairing.js';
+import {
   routeOutbound,
   routeOutboundFile,
   routeSetTyping,
@@ -170,7 +176,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
   // IMPORTANT: always resolve agentId + sessionId from the JID — never use
   // chatJid itself as session_id, or the full JID gets stored and re-prefixed
   // on every subsequent call, making the key grow indefinitely.
-  let agentId = (group as any).agent_id || group.folder;
+  let agentId = getBinding(chatJid)?.agent_id || (group as any).agent_id || group.folder;
   let sessionId: string;
   const resolved = resolveFromChatJid(chatJid);
   if (resolved) {
@@ -236,6 +242,66 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
     // Enrollment control plane: /enroll status | /enroll verify <token>
     const latestText = messages[messages.length - 1]?.content?.trim() || '';
+    const existingBinding = getBinding(chatJid);
+    if (!existingBinding) {
+      if (latestText.startsWith('/pair')) {
+        const parts = latestText.split(/\s+/);
+        const sub = (parts[1] || 'status').toLowerCase();
+        if (sub === 'status') {
+          const pending = ensurePendingPairing(chatJid);
+          await sendFn(
+            chatJid,
+            `🔐 This identity is not paired yet. Pair code: ${pending.pair_code}\nAsk an admin to approve it with /pair approve ${pending.pair_code}${pending.requested_agent_id ? ` ${pending.requested_agent_id}` : ''}\nExpires at: ${pending.expires_at}`,
+          );
+          return true;
+        }
+
+        if (sub === 'approve') {
+          const code = parts[2];
+          const targetAgentId = parts[3];
+          if (!isAdminActor(latestMsg?.sender)) {
+            await sendFn(chatJid, 'Only configured admins can approve pair codes.');
+            return true;
+          }
+          if (!code) {
+            await sendFn(chatJid, 'Usage: /pair approve <code> [agent_id]');
+            return true;
+          }
+          const approved = approvePairing(code, latestMsg?.sender || 'unknown-admin', targetAgentId);
+          if (!approved) {
+            await sendFn(chatJid, `Unknown pair code: ${code}`);
+            return true;
+          }
+          if (approved.status === 'expired') {
+            await sendFn(chatJid, `Pair code ${code.toUpperCase()} has expired.`);
+            return true;
+          }
+          const boundAgentId = approved.bound_agent_id || approved.requested_agent_id;
+          upsertBinding({
+            chatJid: approved.chat_jid,
+            agentId: boundAgentId,
+            approvedBy: latestMsg?.sender || 'unknown-admin',
+            pairCode: approved.pair_code,
+          });
+          await sendFn(
+            chatJid,
+            `✅ Pairing approved for ${approved.chat_jid} -> ${boundAgentId} (code ${approved.pair_code})`,
+          );
+          return true;
+        }
+
+        await sendFn(chatJid, 'Supported pairing commands: /pair status, /pair approve <code> [agent_id]');
+        return true;
+      }
+
+      const pending = ensurePendingPairing(chatJid);
+      await sendFn(
+        chatJid,
+        `🔐 This identity is not paired with an agent yet. Pair code: ${pending.pair_code}\nReply with /pair status to see the code again. An admin must approve it before normal conversation is enabled.`,
+      );
+      return true;
+    }
+
     if (latestText.startsWith('/enroll')) {
       const parts = latestText.split(/\s+/);
       const sub = parts[1] || 'status';

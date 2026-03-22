@@ -78,9 +78,11 @@ export class FeishuChannel extends AbstractChannel<
         if (data.sender?.sender_type === 'app') return;
 
         const chatId = data.message?.chat_id ?? '';
-        const chatJid = `feishu:${appId}:${chatId}`;
         const msgId = data.message?.message_id ?? `msg-${Date.now()}`;
         const senderId = data.sender?.sender_id?.open_id ?? 'unknown';
+        const chatType = data.message?.chat_type ?? 'p2p';
+        const sessionKey = chatType === 'p2p' ? senderId : chatId;
+        const chatJid = `feishu:${appId}:${sessionKey}`;
         const msgType = data.message?.message_type ?? 'text';
         const content = parseMessageContent(
           data.message?.content || '{}',
