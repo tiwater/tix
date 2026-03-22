@@ -98,6 +98,16 @@ Authorization: Bearer key  # required if GATEWAY_API_KEY is set
 | `POST` | `/api/v1/agents/:id/sessions/:sid/messages` | Send message |
 | `GET` | `/api/v1/agents/:id/sessions/:sid/stream` | **SSE stream** |
 
+### Pairing
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/pairings` | List bindings and pending pairings |
+| `POST` | `/api/v1/pairings/approve` | Approve pair code and create/update binding |
+| `DELETE` | `/api/v1/pairings` | Remove binding by `chat_jid` |
+
+See also: `docs/PAIRING_API.md` for request/response examples and UI-oriented integration notes.
+
 ### Node / System
 
 | Method | Path | Description |
