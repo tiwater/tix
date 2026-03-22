@@ -62,6 +62,18 @@ Authorization: Bearer <GATEWAY_API_KEY>
 If `GATEWAY_API_KEY` is not set, the gateway is in **open mode** — fine for
 local development, not for production.
 
+### Node-side security posture
+
+Even when you primarily integrate through the gateway, the node should still be
+run in a secure posture:
+
+- set `HTTP_API_KEY` for node admin/API protection
+- set `ALLOWED_ORIGINS` if a browser-based UI may call the node directly
+- rely on loopback-only fallback only for local development
+
+In other words: reverse proxies, private networking, or Render private services
+are defense-in-depth — not substitutes for built-in auth.
+
 ---
 
 ## Core API (via gateway relay)

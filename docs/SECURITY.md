@@ -301,6 +301,29 @@ At minimum, configure:
 - `CHILD_ENV_ALLOWLIST` (minimal, explicit)
 - `HUB_ALLOWED_NODE_IDS` and/or `HUB_ALLOWED_NODE_FINGERPRINTS` when Hub is used
 
+## Secure-by-Default Operator Guidance
+
+Use this rule of thumb:
+
+- **local-only development**: loopback fallback is acceptable
+- **anything reachable by another machine, browser, tunnel, reverse proxy, or public network**: set `HTTP_API_KEY` and explicit `ALLOWED_ORIGINS`
+
+Unsafe operator assumption to avoid:
+- “the node is behind some other layer, so built-in auth is optional”
+
+Recommended stance:
+- built-in node auth is the primary protection
+- private networking / reverse proxies / VPN / gateway auth are defense-in-depth
+
+### Intentional dev/unsafe mode
+
+TiClaw currently allows a local-development fallback when `HTTP_API_KEY` is unset:
+- admin/API endpoints are restricted to loopback clients only
+- this is intended only for same-machine development workflows
+
+This should be treated as an explicit **dev-only** mode, not a production deployment strategy.
+If an operator chooses to expose the node beyond localhost without `HTTP_API_KEY`, that is an unsafe configuration.
+
 Recommended examples:
 
 ```bash

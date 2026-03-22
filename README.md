@@ -68,7 +68,21 @@ cp ./config.example.yaml ~/.ticlaw/config.yaml
 
 Then edit `~/.ticlaw/config.yaml` with your channel + LLM credentials.
 
-### 3. Launch
+### 3. Secure the HTTP/Web UI surface
+
+Before exposing TiClaw beyond localhost, set a real admin token and explicit browser allowlist:
+
+```bash
+export HTTP_API_KEY="replace-with-a-long-random-secret"
+export ALLOWED_ORIGINS='^https://app\.example\.com$'
+```
+
+- `HTTP_API_KEY` protects node admin/API surfaces
+- `ALLOWED_ORIGINS` prevents arbitrary browser origins from calling the node API
+- if `HTTP_API_KEY` is unset, TiClaw falls back to **loopback-only admin access** for local development
+- this loopback fallback is a development convenience, **not** a production mode
+
+### 4. Launch
 
 ```bash
 ticlaw start

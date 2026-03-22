@@ -21,6 +21,18 @@ channels:
 # Proxy (required for China; LLM calls, Discord, Feishu all use it)
 # proxy: "http://127.0.0.1:7890"
 
+# Security note:
+# TiClaw HTTP admin/API surfaces should be protected with environment variables,
+# especially whenever you expose the node beyond localhost.
+#
+# Recommended:
+#   export HTTP_API_KEY="replace-with-a-long-random-secret"
+#   export ALLOWED_ORIGINS='^https://app\.example\.com$'
+#
+# Development fallback:
+# - if HTTP_API_KEY is unset, admin endpoints are loopback-only
+# - this is for local development only, not production
+
 # llm:
 #   api_key: "your-bigmodel-key"        # BigModel API key
 #   model: "google/gemini-2.5-flash"
