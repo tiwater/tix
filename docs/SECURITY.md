@@ -319,6 +319,7 @@ Recommended stance:
 
 TiClaw currently allows a local-development fallback when `HTTP_API_KEY` is unset:
 - admin/API endpoints are restricted to loopback clients only
+- the HTTP listener binds to `127.0.0.1` in that mode
 - this is intended only for same-machine development workflows
 
 This should be treated as an explicit **dev-only** mode, not a production deployment strategy.

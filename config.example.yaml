@@ -31,6 +31,7 @@ channels:
 #
 # Development fallback:
 # - if HTTP_API_KEY is unset, admin endpoints are loopback-only
+# - the HTTP listener is also restricted to 127.0.0.1 in that mode
 # - this is for local development only, not production
 
 # llm:

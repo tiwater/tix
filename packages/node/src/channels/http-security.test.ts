@@ -69,9 +69,11 @@ describe('HTTP security guards', () => {
       mode: 'dev_loopback_only',
       warnings: [
         'HTTP_API_KEY is not configured; admin/API access falls back to loopback-only local development mode.',
+        'HTTP listener is restricted to 127.0.0.1 until HTTP_API_KEY is configured.',
         'Do not expose this node beyond localhost without setting HTTP_API_KEY.',
         'ALLOWED_ORIGINS is not configured; browser origins are denied by default.',
       ],
+      bindHost: '127.0.0.1',
     });
   });
 
@@ -85,6 +87,7 @@ describe('HTTP security guards', () => {
     ).toEqual({
       mode: 'protected',
       warnings: [],
+      bindHost: undefined,
     });
   });
 });

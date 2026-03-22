@@ -80,6 +80,7 @@ export ALLOWED_ORIGINS='^https://app\.example\.com$'
 - `HTTP_API_KEY` protects node admin/API surfaces
 - `ALLOWED_ORIGINS` prevents arbitrary browser origins from calling the node API
 - if `HTTP_API_KEY` is unset, TiClaw falls back to **loopback-only admin access** for local development
+- in that mode, the HTTP listener binds to `127.0.0.1` instead of a wider interface
 - this loopback fallback is a development convenience, **not** a production mode
 
 ### 4. Launch

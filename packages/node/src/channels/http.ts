@@ -397,9 +397,10 @@ export function getHttpSecurityPosture(config: {
 }): {
   mode: 'disabled' | 'dev_loopback_only' | 'protected';
   warnings: string[];
+  bindHost: string | undefined;
 } {
   if (!config.httpEnabled) {
-    return { mode: 'disabled', warnings: [] };
+    return { mode: 'disabled', warnings: [], bindHost: undefined };
   }
 
   const warnings: string[] = [];
@@ -409,6 +410,9 @@ export function getHttpSecurityPosture(config: {
   if (!hasApiKey) {
     warnings.push(
       'HTTP_API_KEY is not configured; admin/API access falls back to loopback-only local development mode.',
+    );
+    warnings.push(
+      'HTTP listener is restricted to 127.0.0.1 until HTTP_API_KEY is configured.',
     );
     warnings.push(
       'Do not expose this node beyond localhost without setting HTTP_API_KEY.',
@@ -424,30 +428,32 @@ export function getHttpSecurityPosture(config: {
   return {
     mode: hasApiKey ? 'protected' : 'dev_loopback_only',
     warnings,
+    bindHost: hasApiKey ? undefined : '127.0.0.1',
   };
 }
 
-function logHttpSecurityPosture(): void {
-  const posture = getHttpSecurityPosture({
+function logHttpSecurityPosture(posture?: ReturnType<typeof getHttpSecurityPosture>): void {
+  const resolved = posture ?? getHttpSecurityPosture({
     httpEnabled: HTTP_ENABLED,
     httpApiKey: HTTP_API_KEY,
     allowedOrigins: ALLOWED_ORIGINS,
   });
 
-  if (posture.mode === 'disabled') return;
+  if (resolved.mode === 'disabled') return;
 
   logger.info(
     {
       port: HTTP_PORT,
-      mode: posture.mode,
+      mode: resolved.mode,
+      bind_host: resolved.bindHost ?? '0.0.0.0',
       has_api_key: Boolean(HTTP_API_KEY.trim()),
       has_allowed_origins: Boolean(ALLOWED_ORIGINS.trim()),
     },
     'HTTP security posture',
   );
 
-  for (const warning of posture.warnings) {
-    logger.warn({ port: HTTP_PORT, mode: posture.mode }, warning);
+  for (const warning of resolved.warnings) {
+    logger.warn({ port: HTTP_PORT, mode: resolved.mode, bind_host: resolved.bindHost ?? '0.0.0.0' }, warning);
   }
 }
 
@@ -616,6 +622,12 @@ export class HttpChannel implements Channel {
   }
 
   async connect(): Promise<void> {
+    const posture = getHttpSecurityPosture({
+      httpEnabled: HTTP_ENABLED,
+      httpApiKey: HTTP_API_KEY,
+      allowedOrigins: ALLOWED_ORIGINS,
+    });
+
     this.server = http.createServer((req, res) => {
       void this.handleRequest(req, res);
     });
@@ -626,13 +638,13 @@ export class HttpChannel implements Channel {
     });
 
     await new Promise<void>((resolve, reject) => {
-      this.server!.listen(HTTP_PORT, () => resolve());
+      this.server!.listen(HTTP_PORT, posture.bindHost, () => resolve());
       this.server!.on('error', reject);
     });
 
     this._connected = true;
-    logger.info({ port: HTTP_PORT }, 'HTTP/WS channel listening');
-    logHttpSecurityPosture();
+    logger.info({ port: HTTP_PORT, bind_host: posture.bindHost ?? '0.0.0.0' }, 'HTTP/WS channel listening');
+    logHttpSecurityPosture(posture);
     console.log(
       `\n  HTTP SSE: http://localhost:${HTTP_PORT}/runs/{id}/stream\n  WebSocket: ws://localhost:${HTTP_PORT}/\n`,
     );
