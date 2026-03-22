@@ -140,12 +140,14 @@ export class Gateway {
         const memTotal = os.totalmem();
         const memFree = os.freemem();
         
-        let disk = undefined;
+        let disk_total: number | undefined;
+        let disk_free: number | undefined;
+        let disk_used: number | undefined;
         try {
           const stats = fs.statfsSync(TICLAW_HOME);
-          const total = stats.bsize * stats.blocks;
-          const free = stats.bsize * stats.bfree;
-          disk = { total, free, used: total - free };
+          disk_total = stats.bsize * stats.blocks;
+          disk_free = stats.bsize * stats.bavail;
+          disk_used = disk_total - disk_free;
         } catch { /* ignore */ }
 
         this.ws.send(JSON.stringify({
@@ -164,7 +166,9 @@ export class Gateway {
               mem_free: memFree,
               mem_used: memTotal - memFree,
               uptime: os.uptime(),
-              disk,
+              disk_total,
+              disk_free,
+              disk_used,
             }
           }
         }));

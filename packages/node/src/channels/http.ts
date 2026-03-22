@@ -2149,16 +2149,14 @@ export class HttpChannel implements Channel {
         const uptime = os.uptime();
 
         // Disk Telemetry (TiClaw Home)
-        let disk = undefined;
+        let disk_total: number | undefined;
+        let disk_free: number | undefined;
+        let disk_used: number | undefined;
         try {
-          const stats = fs.statfsSync(TICLAW_HOME);
-          const total = stats.bsize * stats.blocks;
-          const free = stats.bsize * stats.bfree;
-          disk = {
-            total,
-            free,
-            used: total - free,
-          };
+          const diskStats = fs.statfsSync(TICLAW_HOME);
+          disk_total = diskStats.bsize * diskStats.blocks;
+          disk_free = diskStats.bsize * diskStats.bavail;
+          disk_used = disk_total - disk_free;
         } catch {
           /* ignore */
         }
@@ -2185,7 +2183,9 @@ export class HttpChannel implements Channel {
             mem_free: memFree,
             mem_used: memTotal - memFree,
             uptime: uptime,
-            disk,
+            disk_total,
+            disk_free,
+            disk_used,
           }
         });
         return;
