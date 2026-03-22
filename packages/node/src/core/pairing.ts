@@ -117,6 +117,22 @@ export function listBindings(): AgentBindingRecord[] {
   );
 }
 
+export function listPendingPairings(): PendingPairingRecord[] {
+  const pairings = loadPendingPairings();
+  let changed = false;
+  for (const item of Object.values(pairings)) {
+    if (item.status === 'pending' && new Date(item.expires_at).getTime() <= Date.now()) {
+      item.status = 'expired';
+      pairings[item.pair_code] = item;
+      changed = true;
+    }
+  }
+  if (changed) savePendingPairings(pairings);
+  return Object.values(pairings).sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  );
+}
+
 export function upsertBinding(input: {
   chatJid: string;
   agentId: string;
@@ -177,6 +193,14 @@ export function ensurePendingPairing(chatJid: string): PendingPairingRecord {
   pairings[code] = record;
   savePendingPairings(pairings);
   return record;
+}
+
+export function removeBinding(chatJid: string): boolean {
+  const bindings = loadBindings();
+  if (!bindings[chatJid]) return false;
+  delete bindings[chatJid];
+  saveBindings(bindings);
+  return true;
 }
 
 export function approvePairing(code: string, approvedBy: string, agentId?: string): PendingPairingRecord | null {

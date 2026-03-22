@@ -95,6 +95,13 @@ export const ROUTES: RouteDef[] = [
   { method: 'GET',    path: '/api/v1/enroll/status',                       tag: 'Enrollment', summary: 'Enrollment status' },
   { method: 'POST',   path: '/api/v1/enroll/token',                        tag: 'Enrollment', summary: 'Issue enrollment token' },
   { method: 'POST',   path: '/api/v1/enroll/verify',                       tag: 'Enrollment', summary: 'Verify enrollment token' },
+
+  // ── Pairing ──────────────────────────────────────────────────────────────
+  { method: 'GET',    path: '/api/v1/pairings',                            tag: 'Pairing', summary: 'List bindings and pending pairings' },
+  { method: 'POST',   path: '/api/v1/pairings/approve',                    tag: 'Pairing', summary: 'Approve pair code',
+    body: { required: true, schema: { type: 'object', required: ['code'], properties: { code: { type: 'string' }, agent_id: { type: 'string' } } } } },
+  { method: 'DELETE', path: '/api/v1/pairings',                            tag: 'Pairing', summary: 'Remove a binding',
+    body: { required: true, schema: { type: 'object', required: ['chat_jid'], properties: { chat_jid: { type: 'string' } } } } },
 ];
 
 /** Build an OpenAPI 3.0 paths object from ROUTES. */

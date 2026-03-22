@@ -117,6 +117,13 @@ import {
   setTrustState,
   verifyEnrollmentToken,
 } from '../core/enrollment.js';
+import {
+  approvePairing,
+  listBindings,
+  listPendingPairings,
+  removeBinding,
+  upsertBinding,
+} from '../core/pairing.js';
 import { logger } from '../core/logger.js';
 import { getTaskLogPath } from '../core/utils.js';
 import { isPathWithin } from '../core/security.js';
@@ -1186,6 +1193,72 @@ export class HttpChannel implements Channel {
           nodeId: NODE_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
+        return;
+      }
+
+      // ── Pairing endpoints ──
+
+      if (pathname === '/api/v1/pairings' && req.method === 'GET') {
+        const ctx = resolveHttpAdminContext(req);
+        if (!ctx?.isAdmin) {
+          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          return;
+        }
+        writeJson(res, 200, {
+          ok: true,
+          bindings: listBindings(),
+          pending: listPendingPairings(),
+        });
+        return;
+      }
+
+      if (pathname === '/api/v1/pairings/approve' && req.method === 'POST') {
+        const ctx = resolveHttpAdminContext(req);
+        if (!ctx?.isAdmin) {
+          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          return;
+        }
+        const parsed = await readJsonBody(req);
+        const code = typeof parsed.code === 'string' ? parsed.code.trim() : '';
+        const agentId = typeof parsed.agent_id === 'string' ? parsed.agent_id.trim() : undefined;
+        if (!code) {
+          writeJson(res, 400, { ok: false, error: 'code_required' });
+          return;
+        }
+        const approved = approvePairing(code, ctx.actor || 'http-admin', agentId);
+        if (!approved) {
+          writeJson(res, 404, { ok: false, error: 'pair_code_not_found' });
+          return;
+        }
+        if (approved.status === 'expired') {
+          writeJson(res, 410, { ok: false, error: 'pair_code_expired' });
+          return;
+        }
+        const boundAgentId = approved.bound_agent_id || approved.requested_agent_id;
+        const binding = upsertBinding({
+          chatJid: approved.chat_jid,
+          agentId: boundAgentId,
+          approvedBy: ctx.actor || 'http-admin',
+          pairCode: approved.pair_code,
+        });
+        writeJson(res, 200, { ok: true, pairing: approved, binding });
+        return;
+      }
+
+      if (pathname === '/api/v1/pairings' && req.method === 'DELETE') {
+        const ctx = resolveHttpAdminContext(req);
+        if (!ctx?.isAdmin) {
+          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          return;
+        }
+        const parsed = await readJsonBody(req);
+        const chatJid = typeof parsed.chat_jid === 'string' ? parsed.chat_jid.trim() : '';
+        if (!chatJid) {
+          writeJson(res, 400, { ok: false, error: 'chat_jid_required' });
+          return;
+        }
+        const removed = removeBinding(chatJid);
+        writeJson(res, 200, { ok: true, removed, chat_jid: chatJid });
         return;
       }
 

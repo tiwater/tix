@@ -48,6 +48,9 @@ import {
   approvePairing,
   ensurePendingPairing,
   getBinding,
+  listBindings,
+  listPendingPairings,
+  removeBinding,
   upsertBinding,
 } from './core/pairing.js';
 import {
@@ -299,6 +302,53 @@ async function processMessages(chatJid: string): Promise<boolean> {
         chatJid,
         `🔐 This identity is not paired with an agent yet. Pair code: ${pending.pair_code}\nReply with /pair status to see the code again. An admin must approve it before normal conversation is enabled.`,
       );
+      return true;
+    }
+
+    if (latestText.startsWith('/pair')) {
+      const parts = latestText.split(/\s+/);
+      const sub = (parts[1] || 'status').toLowerCase();
+      if (sub === 'status') {
+        await sendFn(
+          chatJid,
+          `✅ Paired with agent ${existingBinding.agent_id}\nBinding kind: ${existingBinding.kind}\nUpdated at: ${existingBinding.updated_at}`,
+        );
+        return true;
+      }
+
+      if (sub === 'list') {
+        if (!isAdminActor(latestMsg?.sender)) {
+          await sendFn(chatJid, 'Only configured admins can list bindings.');
+          return true;
+        }
+        const bindings = listBindings();
+        const pending = listPendingPairings().filter((item) => item.status === 'pending');
+        const lines = [
+          `Bindings (${bindings.length})`,
+          ...bindings.slice(0, 20).map((item) => `- ${item.chat_jid} -> ${item.agent_id} (${item.kind})`),
+          ``,
+          `Pending pairings (${pending.length})`,
+          ...pending.slice(0, 20).map((item) => `- ${item.pair_code} :: ${item.chat_jid} -> ${item.requested_agent_id} (exp ${item.expires_at})`),
+        ];
+        await sendFn(chatJid, lines.join('\n'));
+        return true;
+      }
+
+      if (sub === 'unbind') {
+        if (!isAdminActor(latestMsg?.sender)) {
+          await sendFn(chatJid, 'Only configured admins can remove bindings.');
+          return true;
+        }
+        const targetChatJid = parts[2] || chatJid;
+        const removed = removeBinding(targetChatJid);
+        await sendFn(
+          chatJid,
+          removed ? `🧹 Removed binding for ${targetChatJid}` : `No binding found for ${targetChatJid}`,
+        );
+        return true;
+      }
+
+      await sendFn(chatJid, 'Supported pairing commands: /pair status, /pair list, /pair unbind [chat_jid]');
       return true;
     }
 

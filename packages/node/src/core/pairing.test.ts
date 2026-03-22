@@ -35,4 +35,18 @@ describe('pairing store', () => {
     expect(binding?.agent_id).toBe('agent-security');
     expect(binding?.approved_by).toBe('admin-user');
   });
+
+  it('lists pending pairings and supports unbind', () => {
+    const pending = mod.ensurePendingPairing('feishu:app123:userC');
+    const list = mod.listPendingPairings();
+    expect(list.some((item: any) => item.pair_code === pending.pair_code)).toBe(true);
+
+    mod.upsertBinding({
+      chatJid: 'feishu:app123:userC',
+      agentId: 'agent-c',
+      approvedBy: 'admin-user',
+    });
+    expect(mod.removeBinding('feishu:app123:userC')).toBe(true);
+    expect(mod.getBinding('feishu:app123:userC')).toBeUndefined();
+  });
 });
