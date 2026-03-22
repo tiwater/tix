@@ -33,6 +33,8 @@ export interface RouteDef {
   body?: RouteBody;
   /** Simplified response description. */
   response?: string;
+  /** Optional success response schema override for application/json. */
+  responseSchema?: Record<string, unknown>;
 }
 
 // Common reusable params
@@ -97,11 +99,102 @@ export const ROUTES: RouteDef[] = [
   { method: 'POST',   path: '/api/v1/enroll/verify',                       tag: 'Enrollment', summary: 'Verify enrollment token' },
 
   // ── Pairing ──────────────────────────────────────────────────────────────
-  { method: 'GET',    path: '/api/v1/pairings',                            tag: 'Pairing', summary: 'List bindings and pending pairings' },
+  { method: 'GET',    path: '/api/v1/pairings',                            tag: 'Pairing', summary: 'List bindings and pending pairings',
+    responseSchema: {
+      type: 'object',
+      required: ['ok', 'bindings', 'pending'],
+      properties: {
+        ok: { type: 'boolean' },
+        bindings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['chat_jid', 'agent_id', 'kind', 'channel', 'created_at', 'updated_at'],
+            properties: {
+              chat_jid: { type: 'string' },
+              agent_id: { type: 'string' },
+              kind: { type: 'string', enum: ['user', 'chat'] },
+              channel: { type: 'string' },
+              pair_code: { type: 'string' },
+              approved_by: { type: 'string' },
+              created_at: { type: 'string', format: 'date-time' },
+              updated_at: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+        pending: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['pair_code', 'chat_jid', 'requested_agent_id', 'kind', 'channel', 'status', 'created_at', 'expires_at'],
+            properties: {
+              pair_code: { type: 'string' },
+              chat_jid: { type: 'string' },
+              requested_agent_id: { type: 'string' },
+              kind: { type: 'string', enum: ['user', 'chat'] },
+              channel: { type: 'string' },
+              status: { type: 'string', enum: ['pending', 'approved', 'expired'] },
+              created_at: { type: 'string', format: 'date-time' },
+              expires_at: { type: 'string', format: 'date-time' },
+              approved_at: { type: 'string', format: 'date-time' },
+              approved_by: { type: 'string' },
+              bound_agent_id: { type: 'string' },
+            },
+          },
+        },
+      },
+    } },
   { method: 'POST',   path: '/api/v1/pairings/approve',                    tag: 'Pairing', summary: 'Approve pair code',
-    body: { required: true, schema: { type: 'object', required: ['code'], properties: { code: { type: 'string' }, agent_id: { type: 'string' } } } } },
+    body: { required: true, schema: { type: 'object', required: ['code'], properties: { code: { type: 'string' }, agent_id: { type: 'string' } } } },
+    responseSchema: {
+      type: 'object',
+      required: ['ok', 'pairing', 'binding'],
+      properties: {
+        ok: { type: 'boolean' },
+        pairing: {
+          type: 'object',
+          required: ['pair_code', 'chat_jid', 'requested_agent_id', 'kind', 'channel', 'status', 'created_at', 'expires_at'],
+          properties: {
+            pair_code: { type: 'string' },
+            chat_jid: { type: 'string' },
+            requested_agent_id: { type: 'string' },
+            kind: { type: 'string', enum: ['user', 'chat'] },
+            channel: { type: 'string' },
+            status: { type: 'string', enum: ['pending', 'approved', 'expired'] },
+            created_at: { type: 'string', format: 'date-time' },
+            expires_at: { type: 'string', format: 'date-time' },
+            approved_at: { type: 'string', format: 'date-time' },
+            approved_by: { type: 'string' },
+            bound_agent_id: { type: 'string' },
+          },
+        },
+        binding: {
+          type: 'object',
+          required: ['chat_jid', 'agent_id', 'kind', 'channel', 'created_at', 'updated_at'],
+          properties: {
+            chat_jid: { type: 'string' },
+            agent_id: { type: 'string' },
+            kind: { type: 'string', enum: ['user', 'chat'] },
+            channel: { type: 'string' },
+            pair_code: { type: 'string' },
+            approved_by: { type: 'string' },
+            created_at: { type: 'string', format: 'date-time' },
+            updated_at: { type: 'string', format: 'date-time' },
+          },
+        },
+      },
+    } },
   { method: 'DELETE', path: '/api/v1/pairings',                            tag: 'Pairing', summary: 'Remove a binding',
-    body: { required: true, schema: { type: 'object', required: ['chat_jid'], properties: { chat_jid: { type: 'string' } } } } },
+    body: { required: true, schema: { type: 'object', required: ['chat_jid'], properties: { chat_jid: { type: 'string' } } } },
+    responseSchema: {
+      type: 'object',
+      required: ['ok', 'removed', 'chat_jid'],
+      properties: {
+        ok: { type: 'boolean' },
+        removed: { type: 'boolean' },
+        chat_jid: { type: 'string' },
+      },
+    } },
 ];
 
 /** Build an OpenAPI 3.0 paths object from ROUTES. */
@@ -135,7 +228,11 @@ export function buildNodePaths(): Record<string, unknown> {
 
     const responseContent = route.response === 'text/event-stream'
       ? { 'text/event-stream': { schema: { type: 'string' } } }
-      : { 'application/json': { schema: { type: 'object' } } };
+      : {
+          'application/json': {
+            schema: route.responseSchema ?? { type: 'object' },
+          },
+        };
 
     op.responses = { '200': { description: 'OK', content: responseContent } };
 

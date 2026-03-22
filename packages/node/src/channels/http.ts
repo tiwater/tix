@@ -1201,7 +1201,13 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/v1/pairings' && req.method === 'GET') {
         const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {
-          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          writeProtocolError(
+            res,
+            403,
+            'auth_error',
+            'admin_required',
+            'Admin access required for pairing management.',
+          );
           return;
         }
         writeJson(res, 200, {
@@ -1215,23 +1221,51 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/v1/pairings/approve' && req.method === 'POST') {
         const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {
-          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          writeProtocolError(
+            res,
+            403,
+            'auth_error',
+            'admin_required',
+            'Admin access required for pairing approval.',
+          );
           return;
         }
         const parsed = await readJsonBody(req);
         const code = typeof parsed.code === 'string' ? parsed.code.trim() : '';
         const agentId = typeof parsed.agent_id === 'string' ? parsed.agent_id.trim() : undefined;
         if (!code) {
-          writeJson(res, 400, { ok: false, error: 'code_required' });
+          writeProtocolError(
+            res,
+            400,
+            'input_error',
+            'code_required',
+            'Pair code is required.',
+          );
           return;
         }
         const approved = approvePairing(code, ctx.actor || 'http-admin', agentId);
         if (!approved) {
-          writeJson(res, 404, { ok: false, error: 'pair_code_not_found' });
+          writeProtocolError(
+            res,
+            404,
+            'input_error',
+            'pair_code_not_found',
+            `Pair code not found: ${code.toUpperCase()}`,
+          );
           return;
         }
         if (approved.status === 'expired') {
-          writeJson(res, 410, { ok: false, error: 'pair_code_expired' });
+          writeProtocolError(
+            res,
+            410,
+            'input_error',
+            'pair_code_expired',
+            `Pair code has expired: ${approved.pair_code}`,
+            {
+              pair_code: approved.pair_code,
+              expires_at: approved.expires_at,
+            },
+          );
           return;
         }
         const boundAgentId = approved.bound_agent_id || approved.requested_agent_id;
@@ -1248,13 +1282,25 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/v1/pairings' && req.method === 'DELETE') {
         const ctx = resolveHttpAdminContext(req);
         if (!ctx?.isAdmin) {
-          writeJson(res, 403, { ok: false, error: 'admin_required' });
+          writeProtocolError(
+            res,
+            403,
+            'auth_error',
+            'admin_required',
+            'Admin access required for binding removal.',
+          );
           return;
         }
         const parsed = await readJsonBody(req);
         const chatJid = typeof parsed.chat_jid === 'string' ? parsed.chat_jid.trim() : '';
         if (!chatJid) {
-          writeJson(res, 400, { ok: false, error: 'chat_jid_required' });
+          writeProtocolError(
+            res,
+            400,
+            'input_error',
+            'chat_jid_required',
+            'chat_jid is required.',
+          );
           return;
         }
         const removed = removeBinding(chatJid);

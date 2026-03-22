@@ -221,12 +221,27 @@ curl -X POST "$BASE_URL/api/v1/pairings/approve" \
 
 ### Error responses
 
+Pairing endpoints now use the standard protocol error envelope:
+
+```json
+{
+  "error": {
+    "classification": "input_error",
+    "code": "code_required",
+    "message": "Pair code is required."
+  }
+}
+```
+
 #### 400 — missing code
 
 ```json
 {
-  "ok": false,
-  "error": "code_required"
+  "error": {
+    "classification": "input_error",
+    "code": "code_required",
+    "message": "Pair code is required."
+  }
 }
 ```
 
@@ -234,8 +249,11 @@ curl -X POST "$BASE_URL/api/v1/pairings/approve" \
 
 ```json
 {
-  "ok": false,
-  "error": "pair_code_not_found"
+  "error": {
+    "classification": "input_error",
+    "code": "pair_code_not_found",
+    "message": "Pair code not found: AB12CD"
+  }
 }
 ```
 
@@ -243,8 +261,15 @@ curl -X POST "$BASE_URL/api/v1/pairings/approve" \
 
 ```json
 {
-  "ok": false,
-  "error": "pair_code_expired"
+  "error": {
+    "classification": "input_error",
+    "code": "pair_code_expired",
+    "message": "Pair code has expired: AB12CD",
+    "details": {
+      "pair_code": "AB12CD",
+      "expires_at": "2026-03-22T00:21:02.000Z"
+    }
+  }
 }
 ```
 
@@ -252,8 +277,11 @@ curl -X POST "$BASE_URL/api/v1/pairings/approve" \
 
 ```json
 {
-  "ok": false,
-  "error": "admin_required"
+  "error": {
+    "classification": "auth_error",
+    "code": "admin_required",
+    "message": "Admin access required for pairing approval."
+  }
 }
 ```
 
@@ -319,8 +347,11 @@ The current backend still returns HTTP 200, with:
 
 ```json
 {
-  "ok": false,
-  "error": "chat_jid_required"
+  "error": {
+    "classification": "input_error",
+    "code": "chat_jid_required",
+    "message": "chat_jid is required."
+  }
 }
 ```
 
@@ -328,8 +359,11 @@ The current backend still returns HTTP 200, with:
 
 ```json
 {
-  "ok": false,
-  "error": "admin_required"
+  "error": {
+    "classification": "auth_error",
+    "code": "admin_required",
+    "message": "Admin access required for binding removal."
+  }
 }
 ```
 
@@ -371,8 +405,8 @@ This is the first backend iteration, so consumers should be aware of the followi
 2. **No separate reject endpoint yet**
    - Current HTTP API supports approve and unbind, but not an explicit “reject pending pairing” action.
 
-3. **Error shape is intentionally simple for pairing endpoints**
-   - Current pairing endpoints mostly return `{ ok, error }` instead of the richer protocol error envelope used by some other APIs.
+3. **Success shape is documented, but error schemas are not yet fully emitted in OpenAPI**
+   - Runtime now uses the standard protocol error envelope, but the lightweight route registry still focuses mainly on 200-response schemas.
 
 4. **No pagination/filtering yet**
    - `GET /api/v1/pairings` returns full arrays.
