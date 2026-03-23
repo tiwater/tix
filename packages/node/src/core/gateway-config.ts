@@ -50,7 +50,7 @@ export function readGatewayConfig(): GatewayConfig {
   if (!config.gateway_url) {
     config.gateway_url =
       process.env.NODE_ENV === 'production'
-        ? 'wss://ticlaw.onrender.com'
+        ? 'wss://ticlaw-gateway.onrender.com'
         : 'ws://localhost:2755';
   }
 

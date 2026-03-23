@@ -121,6 +121,9 @@ public gateway and the private node service on Render:
 Deploy the Blueprint, then point your consumer app to the gateway service URL
 and send `Authorization: Bearer <GATEWAY_API_KEY>` on every request. The node
 service should stay private. See `docs/integrating.md` for the end-to-end flow.
+If you configure Render services manually instead of syncing the Blueprint, set
+the public web service Dockerfile path to `packages/gateway/Dockerfile` and the
+private worker service Dockerfile path to `packages/node/Dockerfile`.
 
 ---
 

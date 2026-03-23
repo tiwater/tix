@@ -1,6 +1,6 @@
-# Dockerfile for TiClaw with Built-in Chrome 146
-# This Dockerfile provides a "clean" environment for browser automation with MCP support.
-# Usage: Set runtime to 'docker' in render.yaml and reference this file.
+# Legacy single-container TiClaw node image with built-in Chrome 146.
+# This is useful for private/local node deployments that need browser automation.
+# For the Render Blueprint public web service, use packages/gateway/Dockerfile instead.
 
 FROM node:22-slim AS base
 
