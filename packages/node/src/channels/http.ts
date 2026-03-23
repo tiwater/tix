@@ -926,6 +926,99 @@ export class HttpChannel implements Channel {
         return;
       }
 
+      // ── Workspace: delete file/folder ──
+      const deleteWsMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/workspace\/(.+)$/);
+      if (deleteWsMatch && req.method === 'DELETE') {
+        const agentId = decodeURIComponent(deleteWsMatch[1]);
+        const relPath = decodeURIComponent(deleteWsMatch[2]);
+        const normalized = path.normalize(relPath);
+        if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
+          writeJson(res, 400, { error: 'Invalid path' });
+          return;
+        }
+        const workspace = agentPaths(agentId).workspace;
+        const target = path.join(workspace, normalized);
+        if (!target.startsWith(workspace + path.sep) && target !== workspace) {
+          writeJson(res, 403, { error: 'Path outside workspace' });
+          return;
+        }
+        if (!fs.existsSync(target)) {
+          writeJson(res, 404, { error: 'Not found' });
+          return;
+        }
+        fs.rmSync(target, { recursive: true, force: true });
+        logger.info({ agentId, path: relPath }, 'Workspace file deleted');
+        writeJson(res, 200, { ok: true });
+        return;
+      }
+
+      // ── Workspace: rename ──
+      const renameWsMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/workspace\/rename$/);
+      if (renameWsMatch && req.method === 'POST') {
+        const agentId = decodeURIComponent(renameWsMatch[1]);
+        const body = (req as any)._body || await new Promise<any>((resolve) => {
+          let raw = '';
+          req.on('data', (chunk: Buffer) => { raw += chunk; });
+          req.on('end', () => { try { resolve(JSON.parse(raw)); } catch { resolve(null); } });
+        });
+        if (!body?.from || !body?.to) {
+          writeJson(res, 400, { error: 'from and to required' });
+          return;
+        }
+        const fromNorm = path.normalize(body.from);
+        const toNorm = path.normalize(body.to);
+        if (fromNorm.startsWith('..') || toNorm.startsWith('..') || path.isAbsolute(fromNorm) || path.isAbsolute(toNorm)) {
+          writeJson(res, 400, { error: 'Invalid path' });
+          return;
+        }
+        const workspace = agentPaths(agentId).workspace;
+        const fromPath = path.join(workspace, fromNorm);
+        const toPath = path.join(workspace, toNorm);
+        if (!fromPath.startsWith(workspace + path.sep) || !toPath.startsWith(workspace + path.sep)) {
+          writeJson(res, 403, { error: 'Path outside workspace' });
+          return;
+        }
+        if (!fs.existsSync(fromPath)) {
+          writeJson(res, 404, { error: 'Source not found' });
+          return;
+        }
+        fs.mkdirSync(path.dirname(toPath), { recursive: true });
+        fs.renameSync(fromPath, toPath);
+        logger.info({ agentId, from: body.from, to: body.to }, 'Workspace file renamed');
+        writeJson(res, 200, { ok: true });
+        return;
+      }
+
+      // ── Workspace: create folder ──
+      const mkdirWsMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/workspace\/mkdir$/);
+      if (mkdirWsMatch && req.method === 'POST') {
+        const agentId = decodeURIComponent(mkdirWsMatch[1]);
+        const body = (req as any)._body || await new Promise<any>((resolve) => {
+          let raw = '';
+          req.on('data', (chunk: Buffer) => { raw += chunk; });
+          req.on('end', () => { try { resolve(JSON.parse(raw)); } catch { resolve(null); } });
+        });
+        if (!body?.path) {
+          writeJson(res, 400, { error: 'path required' });
+          return;
+        }
+        const normalized = path.normalize(body.path);
+        if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
+          writeJson(res, 400, { error: 'Invalid path' });
+          return;
+        }
+        const workspace = agentPaths(agentId).workspace;
+        const target = path.join(workspace, normalized);
+        if (!target.startsWith(workspace + path.sep)) {
+          writeJson(res, 403, { error: 'Path outside workspace' });
+          return;
+        }
+        fs.mkdirSync(target, { recursive: true });
+        logger.info({ agentId, path: body.path }, 'Workspace folder created');
+        writeJson(res, 200, { ok: true });
+        return;
+      }
+
       // Legacy /api/mind — also served at /api/v1/agents/:id/mind (handled below)
       if (pathname === '/api/mind' && req.method === 'GET') {
         // Long-term mind view (root files only): SOUL + MEMORY

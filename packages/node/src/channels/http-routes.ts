@@ -63,6 +63,9 @@ export const ROUTES: RouteDef[] = [
   { method: 'GET',    path: '/api/v1/agents/{agent_id}/artifacts',         tag: 'Agents',    summary: 'List agent artifacts', params: [agentId] },
   { method: 'GET',    path: '/api/v1/agents/{agent_id}/memory',            tag: 'Agents',    summary: 'Get agent memory roll', params: [agentId] },
   { method: 'POST',   path: '/api/v1/agents/{agent_id}/workspace/upload',  tag: 'Agents',    summary: 'Upload file to workspace', params: [agentId] },
+  { method: 'DELETE', path: '/api/v1/agents/{agent_id}/workspace/{path}',   tag: 'Agents',    summary: 'Delete workspace file or folder', params: [agentId] },
+  { method: 'POST',   path: '/api/v1/agents/{agent_id}/workspace/rename',   tag: 'Agents',    summary: 'Rename workspace file or folder', params: [agentId] },
+  { method: 'POST',   path: '/api/v1/agents/{agent_id}/workspace/mkdir',    tag: 'Agents',    summary: 'Create workspace folder', params: [agentId] },
 
   // ── Sessions ─────────────────────────────────────────────────────────────
   { method: 'GET',    path: '/api/v1/agents/{agent_id}/sessions',                              tag: 'Sessions', summary: 'List sessions', params: [agentId] },
