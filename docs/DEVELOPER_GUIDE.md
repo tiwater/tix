@@ -1,66 +1,66 @@
 # TiClaw Developer Guide
 
-How to integrate TiClaw as an AI backend via hub relay and node APIs.
+How to integrate TiClaw as an AI backend via the gateway relay and node APIs.
 
 ---
 
 ## Overview
 
 Topology:
-- **Hub** (`@ticlaw/hub`): WebSocket node gateway + HTTP relay + SSE relay
+- **Gateway** (`@ticlaw/gateway`): WebSocket node gateway + HTTP relay + SSE relay
 - **Node** (TiClaw): actual runtime (channels, storage, runner, scheduler)
 
-Your app usually talks only to hub HTTP endpoints; hub relays to the active node.
+Your app usually talks only to gateway HTTP endpoints; gateway relays to the active node.
 
 ---
 
-## 1. Install the Hub
+## 1. Install the Gateway
 
 ```bash
-npm install @ticlaw/hub
+npm install @ticlaw/gateway
 # or
-pnpm add @ticlaw/hub
+pnpm add @ticlaw/gateway
 ```
 
 ---
 
-## 2. Embed the Hub
+## 2. Embed the Gateway
 
 ### Attach to existing server
 
 ```ts
 import http from 'node:http';
-import { attachHub, handleHubRequest } from '@ticlaw/hub';
+import { attachGateway, handleGatewayRequest } from '@ticlaw/gateway';
 
 const server = http.createServer((req, res) => {
-  if (handleHubRequest(req, res)) return;
+  if (handleGatewayRequest(req, res)) return;
   res.writeHead(404);
   res.end('not found');
 });
 
-attachHub(server);
+attachGateway(server);
 server.listen(3000);
 ```
 
 ### Standalone
 
 ```ts
-import { startHub } from '@ticlaw/hub';
+import { startGateway } from '@ticlaw/gateway';
 
-await startHub({ port: 3000 });
+await startGateway({ port: 3000 });
 ```
 
 ---
 
-## 3. Hub API Surface
+## 3. Gateway API Surface
 
-### Hub-native endpoint
+### Gateway-native endpoint
 
-- `GET /api/hub/nodes`
+- `GET /api/gateway/nodes`
 
 ### Relayed endpoint prefixes
 
-Hub relays these to node:
+Gateway relays these to node:
 - `/api/*`
 - `/runs*`
 - `/health`
@@ -191,16 +191,16 @@ Common events from `/runs/.../stream`:
 
 ---
 
-## 6. Hub Exports
+## 6. Gateway Exports
 
-`@ticlaw/hub` exports:
-- `attachHub(server, opts?)`
-- `handleHubRequest(req, res)`
-- `startHub(opts?)`
+`@ticlaw/gateway` exports:
+- `attachGateway(server, opts?)`
+- `handleGatewayRequest(req, res)`
+- `startGateway(opts?)`
 - `listNodes()`
 - `getActiveNode()`
 - `relayToNode(method, path, body?, timeout?)`
-- `NodeInfo`, `HubOptions`, `StartHubOptions`, `RelayResult`
+- `NodeInfo`, `GatewayOptions`, `StartGatewayOptions`, `RelayResult`
 
 ---
 
@@ -228,8 +228,8 @@ Typical node-level errors:
 Common node env:
 
 ```env
-HUB_URL=wss://your-hub.example.com
-HUB_TRUST_TOKEN=your-token
+GATEWAY_URL=wss://your-gateway.example.com
+GATEWAY_TRUST_TOKEN=your-token
 TC_NODE_NAME=my-node
 LLM_API_KEY=your-llm-key
 LLM_BASE_URL=https://api.anthropic.com
@@ -239,18 +239,18 @@ LLM_BASE_URL=https://api.anthropic.com
 
 ## 9. Security Caveat (Current)
 
-Current hub handshake marks `enroll`/`auth` connections as trusted in-memory without strong verification.
+Current gateway handshake marks `enroll`/`auth` connections as trusted in-memory without strong verification.
 
 For production today:
-1. Keep hub behind controlled network access.
+1. Keep gateway behind controlled network access.
 2. Treat node-side enrollment trust checks as required.
-3. Plan hub-side auth hardening before zero-trust/public deployments.
+3. Plan gateway-side auth hardening before zero-trust/public deployments.
 
 ---
 
 ## 10. Planned API Evolution
 
-1. Hub-side strong auth verification for node enrollment/auth handshakes.
+1. Gateway-side strong auth verification for node enrollment/auth handshakes.
 2. Schedule API parity improvements (full update endpoint, optional agent-scoped aliases).
 3. Stronger task/executor telemetry endpoints beyond stub-like responses.
 4. Stream replay/recovery APIs keyed by sequence cursor.
@@ -263,4 +263,4 @@ For production today:
 
 ---
 
-*Last Updated: March 17, 2026*
+*Last Updated: March 23, 2026*

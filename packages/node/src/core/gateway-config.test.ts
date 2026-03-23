@@ -11,7 +11,6 @@ describe('gateway config defaults', () => {
       NODE_ENV: process.env.NODE_ENV,
       TICLAW_HOME: process.env.TICLAW_HOME,
       GATEWAY_URL: process.env.GATEWAY_URL,
-      HUB_URL: process.env.HUB_URL,
       GATEWAY_HOSTPORT: process.env.GATEWAY_HOSTPORT,
       GATEWAY_HOST: process.env.GATEWAY_HOST,
       GATEWAY_PORT: process.env.GATEWAY_PORT,
@@ -19,7 +18,6 @@ describe('gateway config defaults', () => {
     };
 
     delete process.env.GATEWAY_URL;
-    delete process.env.HUB_URL;
     delete process.env.GATEWAY_HOSTPORT;
     delete process.env.GATEWAY_HOST;
     delete process.env.GATEWAY_PORT;
@@ -39,8 +37,6 @@ describe('gateway config defaults', () => {
       else process.env.TICLAW_HOME = previousEnv.TICLAW_HOME;
       if (previousEnv.GATEWAY_URL === undefined) delete process.env.GATEWAY_URL;
       else process.env.GATEWAY_URL = previousEnv.GATEWAY_URL;
-      if (previousEnv.HUB_URL === undefined) delete process.env.HUB_URL;
-      else process.env.HUB_URL = previousEnv.HUB_URL;
       if (previousEnv.GATEWAY_HOSTPORT === undefined) delete process.env.GATEWAY_HOSTPORT;
       else process.env.GATEWAY_HOSTPORT = previousEnv.GATEWAY_HOSTPORT;
       if (previousEnv.GATEWAY_HOST === undefined) delete process.env.GATEWAY_HOST;

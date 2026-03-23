@@ -1,4 +1,5 @@
 import { AgentRunner } from './runner.js';
+import { isUrgentInterruptMessage } from './interrupts.js';
 import { logger } from './logger.js';
 import { getSession, ensureSession } from './store.js';
 import type { NewMessage, RunnerState } from './types.js';
@@ -168,16 +169,7 @@ export class Dispatcher {
    * Determine if a message content should preempt a running task.
    */
   private isUrgentInterrupt(content: string): boolean {
-    const patterns = [
-      /stop/i,
-      /interrupt/i,
-      /cancel/i,
-      /wait/i,
-      /打断/,
-      /停止/,
-      /取消/,
-    ];
-    return patterns.some((p) => p.test(content));
+    return isUrgentInterruptMessage(content);
   }
 
   /**

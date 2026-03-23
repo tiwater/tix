@@ -3,7 +3,7 @@ import http from 'http';
 import path from 'path';
 import { randomUUID } from 'crypto';
 
-import { ACP_ENABLED, ACP_HUB_URL } from '../core/config.js';
+import { ACP_ENABLED, ACP_RELAY_URL } from '../core/config.js';
 import { ensureSession } from '../core/store.js';
 import { logger } from '../core/logger.js';
 import { validateOutboundEndpoint } from '../core/security.js';
@@ -30,9 +30,9 @@ interface ACPSessionState extends ACPSessionDescriptor {
   messages: ACPMessageEnvelope[];
   clients: Set<http.ServerResponse>;
   last_task_id?: string;
-  hub_session_id?: string;
-  hub_sync_started?: boolean;
-  hub_abort?: AbortController;
+  relay_session_id?: string;
+  relay_sync_started?: boolean;
+  relay_abort?: AbortController;
 }
 
 let runtimeOpts: ChannelOpts | null = null;
@@ -449,9 +449,9 @@ function ensureRegisteredProject(
   opts.onChatMetadata(chatJid, timestamp, undefined, 'acp', false);
 }
 
-function ensureHubMirror(session: ACPSessionState): void {
-  if (!defaultClient || session.hub_sync_started) return;
-  session.hub_sync_started = true;
+function ensureRelayMirror(session: ACPSessionState): void {
+  if (!defaultClient || session.relay_sync_started) return;
+  session.relay_sync_started = true;
 
   void defaultClient
     .createSession({
@@ -464,33 +464,33 @@ function ensureHubMirror(session: ACPSessionState): void {
       },
     })
     .then(({ session: remoteSession }) => {
-      session.hub_session_id = remoteSession.id;
-      session.hub_abort = new AbortController();
+      session.relay_session_id = remoteSession.id;
+      session.relay_abort = new AbortController();
       return defaultClient!.streamSession(
         remoteSession.id,
         {
           onEvent: async (event) => {
-            await handleHubEvent(session, event);
+            await handleRelayEvent(session, event);
           },
         },
-        session.hub_abort.signal,
+        session.relay_abort.signal,
       );
     })
     .catch((err) => {
       logger.warn(
-        { err, session_id: session.id, hub_url: ACP_HUB_URL },
-        'ACP hub mirror unavailable',
+        { err, session_id: session.id, relay_url: ACP_RELAY_URL },
+        'ACP relay mirror unavailable',
       );
     });
 }
 
-async function mirrorEnvelopeToHub(
+async function mirrorEnvelopeToRelay(
   session: ACPSessionState,
   envelope: ACPMessageEnvelope,
 ): Promise<void> {
-  if (!defaultClient || !session.hub_session_id) return;
+  if (!defaultClient || !session.relay_session_id) return;
   try {
-    await defaultClient.sendMessage(session.hub_session_id, {
+    await defaultClient.sendMessage(session.relay_session_id, {
       message: {
         ...envelope,
         metadata: {
@@ -508,14 +508,14 @@ async function mirrorEnvelopeToHub(
   }
 }
 
-async function mirrorToolCallsToHub(
+async function mirrorToolCallsToRelay(
   session: ACPSessionState,
   toolCalls: ACPToolCall[],
 ): Promise<void> {
-  if (!defaultClient || !session.hub_session_id || toolCalls.length === 0)
+  if (!defaultClient || !session.relay_session_id || toolCalls.length === 0)
     return;
   try {
-    await defaultClient.sendToolCalls(session.hub_session_id, {
+    await defaultClient.sendToolCalls(session.relay_session_id, {
       tool_calls: toolCalls,
       metadata: {
         origin: 'ticlaw',
@@ -530,7 +530,7 @@ async function mirrorToolCallsToHub(
   }
 }
 
-async function handleHubEvent(
+async function handleRelayEvent(
   session: ACPSessionState,
   event: ACPStreamEvent,
 ): Promise<void> {
@@ -553,7 +553,7 @@ async function handleHubEvent(
       event.message.role !== 'assistant' ||
       event.message.tool_calls?.length
     ) {
-      await submitEnvelope(session, event.message, 'acp-hub', 'message', false);
+      await submitEnvelope(session, event.message, 'acp-relay', 'message', false);
     }
     return;
   }
@@ -565,9 +565,9 @@ async function handleHubEvent(
       content: [],
       tool_calls: event.tool_calls,
       created_at: nowIso(),
-      metadata: { origin: 'acp-hub' },
+      metadata: { origin: 'acp-relay' },
     };
-    await submitEnvelope(session, envelope, 'acp-hub', 'tools', false);
+    await submitEnvelope(session, envelope, 'acp-relay', 'tools', false);
     return;
   }
 
@@ -578,7 +578,7 @@ async function handleHubEvent(
       content: [],
       tool_results: event.tool_results,
       created_at: nowIso(),
-      metadata: { origin: 'acp-hub' },
+      metadata: { origin: 'acp-relay' },
     };
     appendMessage(session, envelope);
     broadcastSessionEvent(session, {
@@ -647,7 +647,7 @@ function ensureAcpSessionState(input: {
 
   sessionsById.set(threadId, session);
   sessionIdByChatJid.set(chatJid, threadId);
-  ensureHubMirror(session);
+  ensureRelayMirror(session);
   return session;
 }
 
@@ -680,7 +680,7 @@ async function submitEnvelope(
   });
 
   if (mirrorToHub) {
-    await mirrorEnvelopeToHub(session, envelope);
+    await mirrorEnvelopeToRelay(session, envelope);
   }
 
   if (!isExecutableEnvelope(envelope)) {
@@ -757,7 +757,7 @@ export async function publishAcpTaskEvent(
       tool_calls: toolCalls,
       data: event,
     });
-    await mirrorToolCallsToHub(session, toolCalls);
+    await mirrorToolCallsToRelay(session, toolCalls);
     return;
   }
 
@@ -1015,18 +1015,18 @@ export class AcpChannel implements Channel {
   constructor(opts: ChannelOpts) {
     this.opts = opts;
     runtimeOpts = opts;
-    if (ACP_HUB_URL) {
+    if (ACP_RELAY_URL) {
       try {
-        const trustedEndpoint = validateOutboundEndpoint(ACP_HUB_URL, {
+        const trustedEndpoint = validateOutboundEndpoint(ACP_RELAY_URL, {
           allowedProtocols: ['http:', 'https:'],
-          label: 'ACP_HUB_URL',
+          label: 'ACP_RELAY_URL',
         });
         defaultClient = new ACPClient({
           baseUrl: trustedEndpoint.toString(),
         });
       } catch (err: any) {
         logger.error(
-          { err: err.message, acp_hub_url: ACP_HUB_URL },
+          { err: err.message, acp_relay_url: ACP_RELAY_URL },
           'ACP channel disabled remote sync due to endpoint security policy',
         );
         defaultClient = null;
@@ -1038,7 +1038,7 @@ export class AcpChannel implements Channel {
     this.connected = true;
     logger.info(
       {
-        hub_url: ACP_HUB_URL || null,
+        relay_url: ACP_RELAY_URL || null,
       },
       'ACP channel ready',
     );
@@ -1068,7 +1068,7 @@ export class AcpChannel implements Channel {
       task_id: session.last_task_id,
       message: envelope,
     });
-    await mirrorEnvelopeToHub(session, envelope);
+    await mirrorEnvelopeToRelay(session, envelope);
   }
 
   async sendFile(
@@ -1110,7 +1110,7 @@ export class AcpChannel implements Channel {
       task_id: session.last_task_id,
       message: envelope,
     });
-    await mirrorEnvelopeToHub(session, envelope);
+    await mirrorEnvelopeToRelay(session, envelope);
   }
 
   isConnected(): boolean {
@@ -1124,7 +1124,7 @@ export class AcpChannel implements Channel {
   async disconnect(): Promise<void> {
     this.connected = false;
     for (const session of sessionsById.values()) {
-      session.hub_abort?.abort();
+      session.relay_abort?.abort();
       for (const client of session.clients) {
         try {
           client.end();

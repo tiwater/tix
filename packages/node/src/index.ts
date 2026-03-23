@@ -74,6 +74,10 @@ import { Gateway } from './core/gateway.js';
 import { broadcastToChat } from './channels/http.js';
 import { getEnabledChannelsFromConfig, readEnvFile } from './core/env.js';
 import {
+  findLatestInterruptIndex,
+  trimMessagesAfterInterrupt,
+} from './core/interrupts.js';
+import {
   isSupabaseConfigured,
   pullFromSupabase,
   scheduleSupabasePush,
@@ -104,6 +108,7 @@ let registeredProjects: Record<string, RegisteredProject> = {};
 const sessions: Record<string, string> = {}; // folder -> sessionId
 const lastAgentTimestamp: Record<string, string> = {}; // chatJid -> iso
 const channels: Channel[] = [];
+const activeRunners = new Map<string, AgentRunner>();
 
 function isAdminActor(actor?: string): boolean {
   if (!actor) return false;
@@ -140,8 +145,37 @@ function scheduleRun(chatJid: string): void {
     const agentPromise = runAndDrain(chatJid);
     activeAgentLocks.set(chatJid, agentPromise);
   } else {
-    // Mark that we need another run after the current one finishes
-    pendingRuns.add(chatJid);
+    const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
+    const pending = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+    if (pending.length === 0) return;
+
+    const latestInterruptIndex = findLatestInterruptIndex(pending);
+    if (latestInterruptIndex >= 0) {
+      const interruptMsg = pending[latestInterruptIndex];
+      lastAgentTimestamp[chatJid] = interruptMsg.timestamp;
+      setRouterState(chatJid, interruptMsg.timestamp);
+
+      logger.info(
+        {
+          chatJid,
+          interruptTimestamp: interruptMsg.timestamp,
+          hasActiveRunner: activeRunners.has(chatJid),
+        },
+        'Interrupt control message received while run is active',
+      );
+
+      activeRunners.get(chatJid)?.interrupt();
+    }
+
+    const hasMessagesAfterInterrupt =
+      latestInterruptIndex >= 0
+        ? latestInterruptIndex < pending.length - 1
+        : pending.length > 0;
+
+    if (hasMessagesAfterInterrupt) {
+      // Mark that we need another run after the current one finishes
+      pendingRuns.add(chatJid);
+    }
   }
 }
 
@@ -219,21 +253,31 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
   if (messages.length === 0) return true;
 
-  // Transform messages to the format expected by runner.run
-  // is_from_me=true means the message is from the assistant (role: assistant)
-  // is_from_me=false means the message is from the user (role: user)
-  const aiMessages = messages.map((m) => ({
-    role: m.is_from_me ? 'assistant' : 'user',
-    content: m.content,
-  }));
-
-  // Update last timestamp BEFORE running to avoid loops on failure
+  // Update last timestamp BEFORE handling control messages to avoid loops on failure
   const newest = messages[messages.length - 1].timestamp;
   lastAgentTimestamp[chatJid] = newest;
   setRouterState(chatJid, newest);
 
+  // Transform messages to the format expected by runner.run
+  const runnableMessages = trimMessagesAfterInterrupt(messages);
+  if (runnableMessages.length === 0) {
+    logger.info(
+      { chatJid, messageCount: messages.length },
+      'processMessages: consumed interrupt control message without dispatching to agent',
+    );
+    return true;
+  }
+
+  // Transform messages to the format expected by runner.run
+  // is_from_me=true means the message is from the assistant (role: assistant)
+  // is_from_me=false means the message is from the user (role: user)
+  const aiMessages = runnableMessages.map((m) => ({
+    role: m.is_from_me ? 'assistant' : 'user',
+    content: m.content,
+  }));
+
   // Extract latest message for processing
-  const latestMsg = messages[messages.length - 1];
+  const latestMsg = runnableMessages[runnableMessages.length - 1];
 
   logger.info(
     { chatJid, messageCount: messages.length },
@@ -601,7 +645,14 @@ async function processMessages(chatJid: string): Promise<boolean> {
           },
         );
 
-        await runner.run(aiMessages, taskId);
+        activeRunners.set(chatJid, runner);
+        try {
+          await runner.run(aiMessages, taskId);
+        } finally {
+          if (activeRunners.get(chatJid) === runner) {
+            activeRunners.delete(chatJid);
+          }
+        }
       } finally {
         if (heartbeatTimer) {
           clearInterval(heartbeatTimer);

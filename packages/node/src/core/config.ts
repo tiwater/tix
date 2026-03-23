@@ -31,7 +31,7 @@ const envConfig = readEnvFile([
   'CONTROL_PLANE_URL',
   'CONTROL_PLANE_ENROLLMENT_MODE',
   'ACP_ENABLED',
-  'ACP_HUB_URL',
+  'ACP_RELAY_URL',
   'SECURITY_TRUSTED_REMOTE_HOSTS',
   'SECURITY_ALLOW_INSECURE_REMOTE_ENDPOINTS',
   'WORKSPACE_ALLOWED_ROOTS',
@@ -380,8 +380,8 @@ export const NODE_HOSTNAME =
 // ACP (Agent Communication Protocol) configuration
 export const ACP_ENABLED =
   (process.env.ACP_ENABLED ?? envConfig.ACP_ENABLED ?? 'false') === 'true';
-export const ACP_HUB_URL =
-  process.env.ACP_HUB_URL || envConfig.ACP_HUB_URL || '';
+export const ACP_RELAY_URL =
+  process.env.ACP_RELAY_URL || envConfig.ACP_RELAY_URL || '';
 
 // Concurrency limits
 export const CONCURRENCY_LIMIT = Math.max(

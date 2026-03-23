@@ -5,7 +5,7 @@ channels:
   # Config-driven: only channels with a block and enabled !== false are started.
   # acp:
   #   enabled: true
-  #   hub_url: "https://acp-relay.example.com"
+  #   relay_url: "https://acp-relay.example.com"
   #
   # discord:
   #   enabled: true

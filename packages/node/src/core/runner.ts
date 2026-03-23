@@ -682,13 +682,20 @@ export class AgentRunner {
       const abortHandler = () => {
         const handler = activeHandlers.get(key);
         if (handler) {
+          handler.reject(new Error("aborted"));
+          const currentWarm = warmSessions.get(key);
+          if (currentWarm) {
+            try { currentWarm.query.close(); } catch {}
+            currentWarm.alive = false;
+            warmSessions.delete(key);
+          }
           activeHandlers.delete(key);
-          handler.reject(new Error('aborted'));
         }
       };
-      this.controller.signal.addEventListener('abort', abortHandler, {
+      this.controller.signal.addEventListener("abort", abortHandler, {
         once: true,
       });
+
 
       let usedWarm = false;
 
