@@ -851,13 +851,17 @@ export class HttpChannel implements Channel {
           return;
         }
         const mime = inferMimeType(filePath);
+        const basename = path.basename(filePath);
+        const asciiName = basename.replace(/[^\x20-\x7E]/g, '_');
+        const encodedName = encodeURIComponent(basename).replace(/'/g, '%27');
+        const disposition = mime === 'application/octet-stream'
+          ? `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`
+          : 'inline';
         res.writeHead(200, {
           'Content-Type': mime,
           'Content-Length': stat.size,
           'Cache-Control': 'public, max-age=60',
-          'Content-Disposition': mime === 'application/octet-stream'
-            ? `attachment; filename="${path.basename(filePath)}"`
-            : 'inline',
+          'Content-Disposition': disposition,
         });
         fs.createReadStream(filePath).pipe(res);
         return;
