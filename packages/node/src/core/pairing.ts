@@ -87,6 +87,26 @@ function inferBindingKind(chatJid: string): BindingKind {
   return 'user';
 }
 
+/**
+ * Derive the identity key used for pairing/binding lookups.
+ *
+ * For the web (HTTP) channel the full chat_jid has the shape
+ * `web:<agentId>:<sessionId>`.  We strip the session suffix so the
+ * binding granularity is `web:<agentId>` — once a web user is paired
+ * to an agent, every session under that agent is automatically trusted.
+ *
+ * Other channels (Feishu, Discord…) already carry per-user identity in
+ * the JID, so we return them unchanged.
+ */
+export function pairingIdentity(chatJid: string): string {
+  if (chatJid.startsWith('web:')) {
+    // web:<agentId>:<sessionId>  →  web:<agentId>
+    const parts = chatJid.split(':');
+    return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : chatJid;
+  }
+  return chatJid;
+}
+
 function makePairCode(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
