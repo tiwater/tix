@@ -583,8 +583,19 @@ async function processMessages(chatJid: string): Promise<boolean> {
                 }
               }
 
-              // Deliver the final message through the channel
-              await sendFn(chatJid, text);
+              // Deliver the final message through the channel.
+              // For web channels, include stream_id as a stable message ID
+              // so the frontend can correlate it with the streaming placeholder.
+              if (chatJid.startsWith('web:')) {
+                broadcastToChat(chatJid, {
+                  type: 'message',
+                  id: streamState.streamId,
+                  chat_jid: chatJid,
+                  text,
+                });
+              } else {
+                await sendFn(chatJid, text);
+              }
             },
           },
         );
