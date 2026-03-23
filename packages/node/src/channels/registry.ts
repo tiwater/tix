@@ -10,6 +10,16 @@ export interface ChannelOpts {
   onChatMetadata: OnChatMetadata;
   registeredProjects: () => Record<string, RegisteredProject>;
   onGroupRegistered?: (jid: string, group: RegisteredProject) => void;
+  onSessionStop?: (
+    agentId: string,
+    sessionId: string,
+    actor?: string,
+  ) => {
+    ok: boolean;
+    code: string;
+    message: string;
+    chatJid?: string;
+  };
 }
 
 export type ChannelFactory = (opts: ChannelOpts) => Channel | null;

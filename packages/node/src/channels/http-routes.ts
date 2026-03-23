@@ -75,6 +75,7 @@ export const ROUTES: RouteDef[] = [
   { method: 'PATCH',  path: '/api/v1/agents/{agent_id}/sessions/{session_id}',                 tag: 'Sessions', summary: 'Update session title', params: [agentId, sessionId],
     body: { required: true, schema: { type: 'object', properties: { title: { type: 'string' } } } } },
   { method: 'DELETE', path: '/api/v1/agents/{agent_id}/sessions/{session_id}',                 tag: 'Sessions', summary: 'Delete session', params: [agentId, sessionId] },
+  { method: 'POST',   path: '/api/v1/agents/{agent_id}/sessions/{session_id}/stop',            tag: 'Sessions', summary: 'Stop active session run', params: [agentId, sessionId] },
   { method: 'GET',    path: '/api/v1/agents/{agent_id}/sessions/{session_id}/messages',        tag: 'Sessions', summary: 'Chat history', params: [agentId, sessionId] },
   { method: 'POST',   path: '/api/v1/agents/{agent_id}/sessions/{session_id}/messages',        tag: 'Sessions', summary: 'Send message', params: [agentId, sessionId],
     body: { required: true, schema: { type: 'object', required: ['content'], properties: { content: { type: 'string' } } } } },

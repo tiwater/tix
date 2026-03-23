@@ -29,6 +29,7 @@ import {
   getNewMessages,
   getRouterState,
   getSession,
+  getSessionForAgent,
   initStore,
   cleanupStaleSessions,
   setRegisteredProject,
@@ -101,6 +102,16 @@ export interface ChannelOpts {
   ) => void;
   registeredProjects: () => Record<string, RegisteredProject>;
   onGroupRegistered: (jid: string, group: RegisteredProject) => void;
+  onSessionStop?: (
+    agentId: string,
+    sessionId: string,
+    actor?: string,
+  ) => {
+    ok: boolean;
+    code: string;
+    message: string;
+    chatJid?: string;
+  };
 }
 
 // Global state
@@ -133,6 +144,44 @@ const activeAgentLocks = new Map<string, Promise<any>>();
 // Pending-run flags: if a second message arrives while the lock is held,
 // set the flag so the run drains immediately after the current one finishes.
 const pendingRuns = new Set<string>();
+
+function requestSessionStop(
+  agentId: string,
+  sessionId: string,
+  actor = 'unknown',
+): {
+  ok: boolean;
+  code: string;
+  message: string;
+  chatJid?: string;
+} {
+  const session = getSessionForAgent(agentId, sessionId);
+  const chatJid =
+    session?.source_ref?.trim() || `web:${agentId}:${sessionId}`;
+  const runner = activeRunners.get(chatJid);
+
+  if (!runner) {
+    return {
+      ok: false,
+      code: 'session_not_running',
+      message: `Session "${sessionId}" is not currently running.`,
+      chatJid,
+    };
+  }
+
+  logger.info(
+    { agentId, sessionId, chatJid, actor },
+    'Stop requested for active session',
+  );
+  runner.interrupt();
+
+  return {
+    ok: true,
+    code: 'stop_requested',
+    message: `Stop requested for session "${sessionId}".`,
+    chatJid,
+  };
+}
 
 /**
  * Schedule a processMessages run for a chatJid.
@@ -555,6 +604,19 @@ async function processMessages(chatJid: string): Promise<boolean> {
                 });
               }
 
+              if (
+                chatJid.startsWith('web:') &&
+                (state.status === 'interrupted' || state.status === 'error')
+              ) {
+                if (streamState.nextSeq > 1) {
+                  broadcastToChat(chatJid, {
+                    type: 'stream_end',
+                    stream_id: streamState.streamId,
+                  });
+                }
+                broadcastToChat(chatJid, { type: 'progress_end' });
+              }
+
               // Forward streaming text deltas to SSE clients
               if (
                 eventData.phase === 'stream_event' &&
@@ -852,6 +914,8 @@ async function main(): Promise<void> {
         scheduleRun(chatJid);
       }
     },
+    onSessionStop: (agentId: string, sessionId: string, actor?: string) =>
+      requestSessionStop(agentId, sessionId, actor),
     onChatMetadata: (
       chatJid: string,
       timestamp: string,

@@ -407,7 +407,36 @@ function createAppState() {
         }
 
         if (data.type === 'runner_state') {
+          if (data.agent_id && data.session_id) {
+            const nextStatus =
+              data.status === 'busy'
+                ? 'running'
+                : data.status === 'error'
+                  ? 'error'
+                  : 'idle';
+            updateSessionLocal(data.agent_id, data.session_id, { status: nextStatus });
+          }
+
+          if (data.status === 'interrupted') {
+            if (streamingMessageId) {
+              messages = messages.map((m) =>
+                m.id === streamingMessageId ? { ...m, streaming: false } : m,
+              );
+              resetStreamingState();
+            }
+            if (isThinking) { isThinking = false; progressCategory = ''; }
+            addLog('⏹️ Task stopped');
+            lastLoggedCategory = '';
+            return;
+          }
+
           if (data.status === 'idle' || data.activity?.phase === 'done' || data.status === 'error') {
+            if (streamingMessageId && data.status === 'error') {
+              messages = messages.map((m) =>
+                m.id === streamingMessageId ? { ...m, streaming: false } : m,
+              );
+              resetStreamingState();
+            }
             if (isThinking) { isThinking = false; progressCategory = ''; }
             addLog(data.status === 'error' ? '❌ Task failed' : '✅ Task completed');
             lastLoggedCategory = '';
@@ -563,6 +592,24 @@ function createAppState() {
 
   function sessionsForAgent(agentId: string): SessionInfo[] {
     return agentSessions[agentId] || [];
+  }
+
+  function updateSessionLocal(
+    agentIdValue: string,
+    sessionIdValue: string,
+    patch: Partial<SessionInfo>,
+  ) {
+    const sessions = agentSessions[agentIdValue];
+    if (!sessions || sessions.length === 0) return;
+    let changed = false;
+    const next = sessions.map((session) => {
+      if (session.session_id !== sessionIdValue) return session;
+      changed = true;
+      return { ...session, ...patch };
+    });
+    if (changed) {
+      agentSessions = { ...agentSessions, [agentIdValue]: next };
+    }
   }
 
   function findSession(id: string) {
@@ -728,6 +775,40 @@ function createAppState() {
     } catch { /* */ }
   }
 
+  async function stopSession() {
+    try {
+      const res = await fetch(
+        `/api/v1/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(bareSessionId(sessionId))}/stop`,
+        { method: 'POST' },
+      );
+      if (res.ok) {
+        addLog('Stop requested');
+        return true;
+      }
+      const err = await res.json().catch(() => null);
+      messages = [
+        ...messages,
+        {
+          id: `err-${Date.now()}`,
+          role: 'system',
+          text: `⚠️ Stop failed: ${err?.message || err?.error || res.status}`,
+          time: '',
+        },
+      ];
+    } catch (e: any) {
+      messages = [
+        ...messages,
+        {
+          id: `err-${Date.now()}`,
+          role: 'system',
+          text: `⚠️ ${e.message}`,
+          time: '',
+        },
+      ];
+    }
+    return false;
+  }
+
   async function send() {
     const content = inputText.trim();
     if ((!content && pendingFiles.length === 0) || sending) return;
@@ -880,7 +961,7 @@ function createAppState() {
     connectSSE, disconnectSSE, addLog,
     fetchMind, fetchMindFiles, fetchSkills, fetchAgents, fetchDailyUsage,
     fetchSchedules, fetchNode, trustNode, toggleSkill, fetchModels,
-    createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession,
+    createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession, stopSession,
     send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent, updateAgentModel,
     addFiles, removeFile,
     formatDate, formatShortDate,

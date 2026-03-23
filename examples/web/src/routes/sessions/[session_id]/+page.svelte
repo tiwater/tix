@@ -39,6 +39,7 @@
   }
   import {
     Send,
+    Square,
     RefreshCw,
     Brain,
     Puzzle,
@@ -121,6 +122,12 @@
     await tick();
     inputEl?.focus();
     if (wasScrolledUp) scrollToBottom('smooth');
+  }
+
+  async function handleStop() {
+    await appState.stopSession();
+    await tick();
+    inputEl?.focus();
   }
 
 
@@ -369,18 +376,28 @@
             rows="1"
             disabled={appState.sending}
           ></textarea>
-          <button
-            class="w-[42px] h-[42px] rounded-full bg-foreground border-none text-background flex items-center justify-center cursor-pointer shrink-0 transition-all hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed mb-1 mr-1"
-            onclick={handleSend}
-            disabled={appState.sending || (!appState.inputText.trim() && appState.pendingFiles.length === 0)}
-            title="Send"
-          >
-            {#if appState.sending}
-              <Loader size={18} class="animate-spin" />
-            {:else}
-              <Send size={18} class="mr-0.5 mt-0.5" />
-            {/if}
-          </button>
+          {#if appState.isThinking}
+            <button
+              class="w-[42px] h-[42px] rounded-full bg-destructive border-none text-destructive-foreground flex items-center justify-center cursor-pointer shrink-0 transition-all hover:opacity-90 active:scale-95 mb-1 mr-1"
+              onclick={handleStop}
+              title="Stop"
+            >
+              <Square size={16} class="fill-current" />
+            </button>
+          {:else}
+            <button
+              class="w-[42px] h-[42px] rounded-full bg-foreground border-none text-background flex items-center justify-center cursor-pointer shrink-0 transition-all hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed mb-1 mr-1"
+              onclick={handleSend}
+              disabled={appState.sending || (!appState.inputText.trim() && appState.pendingFiles.length === 0)}
+              title="Send"
+            >
+              {#if appState.sending}
+                <Loader size={18} class="animate-spin" />
+              {:else}
+                <Send size={18} class="mr-0.5 mt-0.5" />
+              {/if}
+            </button>
+          {/if}
         </div>
       </div>
     </div>
@@ -569,4 +586,3 @@
     </div>
   </div>
 {/if}
-

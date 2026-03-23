@@ -23,6 +23,7 @@
  *   GET    /api/v1/agents/:agent_id/sessions/:session_id   — get session
  *   PATCH  /api/v1/agents/:agent_id/sessions/:session_id   — update session (title)
  *   DELETE /api/v1/agents/:agent_id/sessions/:session_id   — delete session
+ *   POST   /api/v1/agents/:agent_id/sessions/:session_id/stop — stop active run
  *   GET    /api/v1/agents/:agent_id/sessions/:session_id/messages — chat history
  *   POST   /api/v1/agents/:agent_id/sessions/:session_id/messages — send message
  *   GET    /api/v1/agents/:agent_id/sessions/:session_id/stream   — SSE stream
@@ -2093,7 +2094,61 @@ export class HttpChannel implements Channel {
 
       // /api/v1/agents/:agent_id/sessions/:session_id  or  legacy /api/sessions/:id
       const sessionV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)$/);
+      const sessionStopV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)\/stop$/);
       const sessionDeleteMatch = sessionV1Match ?? pathname.match(/^\/api\/sessions\/([^/]+)$/);
+      if (sessionStopV1Match && req.method === 'POST') {
+        const agentId = decodeURIComponent(sessionStopV1Match[1]);
+        const sessionId = decodeURIComponent(sessionStopV1Match[2]);
+        const session = getSessionForAgent(agentId, sessionId);
+        if (!session) {
+          writeProtocolError(
+            res,
+            404,
+            'input_error',
+            'session_not_found',
+            `Session "${sessionId}" not found for agent "${agentId}"`,
+          );
+          return;
+        }
+
+        const result = this.opts.onSessionStop?.(
+          agentId,
+          sessionId,
+          adminContext?.actor,
+        );
+
+        if (!result) {
+          writeProtocolError(
+            res,
+            501,
+            'internal_error',
+            'session_stop_unavailable',
+            'Session stop is not available in this runtime.',
+          );
+          return;
+        }
+
+        if (!result.ok) {
+          writeProtocolError(
+            res,
+            409,
+            'input_error',
+            result.code,
+            result.message,
+          );
+          return;
+        }
+
+        writeJson(res, 200, {
+          ok: true,
+          code: result.code,
+          message: result.message,
+          agent_id: agentId,
+          session_id: sessionId,
+        });
+        return;
+      }
+
       if (sessionDeleteMatch && req.method === 'DELETE') {
         const id = sessionV1Match ? decodeURIComponent(sessionV1Match[2]) : decodeURIComponent(sessionDeleteMatch[1]);
         const agentIdRaw = sessionV1Match ? decodeURIComponent(sessionV1Match[1]) : url.searchParams.get('agent_id');
