@@ -180,7 +180,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
   // IMPORTANT: always resolve agentId + sessionId from the JID — never use
   // chatJid itself as session_id, or the full JID gets stored and re-prefixed
   // on every subsequent call, making the key grow indefinitely.
-  let agentId = getBinding(pairingIdentity(chatJid))?.agent_id || (group as any).agent_id || group.folder;
+  let agentId = getBinding(chatJid)?.agent_id || (group as any).agent_id || group.folder;
   let sessionId: string;
   const resolved = resolveFromChatJid(chatJid);
   if (resolved) {
@@ -246,14 +246,20 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
     // Enrollment control plane: /enroll status | /enroll verify <token>
     const latestText = messages[messages.length - 1]?.content?.trim() || '';
-    const pairKey = pairingIdentity(chatJid);
-    const existingBinding = getBinding(pairKey);
+
+    // Web channel is already API-key authenticated — skip pairing gate.
+    // Pairing is only required for external channels (Feishu, Discord, etc.)
+    // where untrusted users may connect.
+    const isWebChannel = chatJid.startsWith('web:');
+    const existingBinding = isWebChannel
+      ? { agent_id: agentId, kind: 'user' as const, updated_at: new Date().toISOString() }
+      : getBinding(chatJid);
     if (!existingBinding) {
       if (latestText.startsWith('/pair')) {
         const parts = latestText.split(/\s+/);
         const sub = (parts[1] || 'status').toLowerCase();
         if (sub === 'status') {
-          const pending = ensurePendingPairing(pairKey);
+          const pending = ensurePendingPairing(chatJid);
           await sendFn(
             chatJid,
             `🔐 This identity is not paired yet. Pair code: ${pending.pair_code}\nAsk an admin to approve it with /pair approve ${pending.pair_code}${pending.requested_agent_id ? ` ${pending.requested_agent_id}` : ''}\nExpires at: ${pending.expires_at}`,
@@ -299,7 +305,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
         return true;
       }
 
-      const pending = ensurePendingPairing(pairKey);
+      const pending = ensurePendingPairing(chatJid);
       await sendFn(
         chatJid,
         `🔐 This identity is not paired with an agent yet. Pair code: ${pending.pair_code}\nReply with /pair status to see the code again. An admin must approve it before normal conversation is enabled.`,
