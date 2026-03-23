@@ -558,6 +558,14 @@ async function processMessages(chatJid: string): Promise<boolean> {
               }
             },
             onReply: async (text) => {
+              // Stop heartbeat immediately — the run is complete and
+              // we don't want stale progress events re-triggering the
+              // "thinking" state on the frontend after stream_end.
+              if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+              }
+
               // Finalize streaming: emit stream_end so consumers
               // know the streaming phase is complete.
               if (chatJid.startsWith('web:') && streamState.nextSeq > 1) {
