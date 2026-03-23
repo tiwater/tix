@@ -526,11 +526,18 @@ export async function handleGatewayRequest(
 
       if (result.encoding === 'base64' && typeof result.body === 'string') {
         const buffer = Buffer.from(result.body, 'base64');
-        res.writeHead(result.status, { 'Access-Control-Allow-Origin': '*', ...result.headers, 'Content-Length': String(buffer.length) });
+        const headers = { ...result.headers };
+        delete headers['content-length'];
+        delete headers['Content-Length'];
+        res.writeHead(result.status, { 'Access-Control-Allow-Origin': '*', ...headers, 'Content-Length': String(buffer.length) });
         res.end(buffer);
       } else {
-        res.writeHead(result.status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', ...result.headers });
-        res.end(typeof result.body === 'string' ? result.body : JSON.stringify(result.body));
+        const headers = { ...result.headers };
+        delete headers['content-length'];
+        delete headers['Content-Length'];
+        const responseBody = typeof result.body === 'string' ? result.body : JSON.stringify(result.body);
+        res.writeHead(result.status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', ...headers, 'Content-Length': String(Buffer.byteLength(responseBody)) });
+        res.end(responseBody);
       }
     });
     return true;
