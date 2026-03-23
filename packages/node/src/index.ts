@@ -584,18 +584,11 @@ async function processMessages(chatJid: string): Promise<boolean> {
               }
 
               // Deliver the final message through the channel.
-              // For web channels, include stream_id as a stable message ID
-              // so the frontend can correlate it with the streaming placeholder.
-              if (chatJid.startsWith('web:')) {
-                broadcastToChat(chatJid, {
-                  type: 'message',
-                  id: streamState.streamId,
-                  chat_jid: chatJid,
-                  text,
-                });
-              } else {
-                await sendFn(chatJid, text);
-              }
+              // Pass stream_id as message_id so the frontend can correlate
+              // the final message with the streaming placeholder.
+              await sendFn(chatJid, text, {
+                message_id: streamState.streamId,
+              });
             },
           },
         );
@@ -766,7 +759,7 @@ function recoverPendingMessages(): void {
 let sendFn: (
   jid: string,
   text: string,
-  options?: { embeds?: any[] },
+  options?: { embeds?: any[]; message_id?: string },
 ) => Promise<void>;
 let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 
