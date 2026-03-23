@@ -171,18 +171,18 @@ Without `X-Node-Id`, the gateway routes to the **first connected trusted node**.
 
 ---
 
-## Render deployment (separate gateway + node containers)
+## Render deployment (gateway web service + node background worker)
 
 The repository includes a `render.yaml` Blueprint that deploys the TiClaw
 gateway and the TiClaw node as **two separate Docker services**:
 
 - `ticlaw-gateway` (`type: web`) is the public HTTPS/WebSocket entrypoint for your consumer app.
-- `ticlaw-node` (`type: pserv`) stays private on Render's internal network and connects outward to the gateway.
+- `ticlaw-node` (`type: worker`) runs as a background worker and connects outward to the gateway.
 
 ### How the Render wiring works
 
 1. Render assigns `ticlaw-gateway` an internal `host:port`.
-2. The Blueprint injects that value into the node as `GATEWAY_HOSTPORT`.
+2. The Blueprint injects that value into the node worker as `GATEWAY_HOSTPORT`.
 3. The node turns `GATEWAY_HOSTPORT` into `ws://<host:port>` automatically at startup.
 4. Your consumer app should call the public gateway URL and never call the node directly.
 
@@ -191,6 +191,10 @@ gateway and the TiClaw node as **two separate Docker services**:
 - `GATEWAY_API_KEY`: bearer token your consumer app sends to the gateway.
 - `LLM_API_KEY`: model provider key for the node runtime.
 - `LLM_BASE_URL`: optional override for the model endpoint used by the node.
+
+The Blueprint also generates `HTTP_API_KEY` on the node service so the node can
+bind `0.0.0.0` on Render while keeping its HTTP admin surface protected. The
+node's internal gateway relay automatically sends that key on loopback requests.
 
 `GATEWAY_SECRET` is generated once on the gateway and shared to the node via a
 Blueprint service reference so the node can authenticate with HMAC.
@@ -209,7 +213,7 @@ Use that base URL for both REST and SSE traffic, and include:
 Authorization: Bearer <GATEWAY_API_KEY>
 ```
 
-The node service remains private and should not be exposed publicly.
+The node runs as a background worker and should not be exposed publicly.
 
 ---
 

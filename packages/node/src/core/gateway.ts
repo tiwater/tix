@@ -7,7 +7,7 @@ import { logger } from './logger.js';
 import { readGatewayConfig, GatewayConfig } from './gateway-config.js';
 import { validateOutboundEndpoint } from './security.js';
 import { readEnrollmentState, verifyEnrollmentToken } from './enrollment.js';
-import { NODE_HOSTNAME, HTTP_PORT, TICLAW_HOME } from './config.js';
+import { NODE_HOSTNAME, HTTP_API_KEY, HTTP_PORT, TICLAW_HOME } from './config.js';
 import { NewMessage } from './types.js';
 
 const GATEWAY_JID_PREFIX = 'gateway:';
@@ -234,7 +234,17 @@ export class Gateway {
   }): Promise<void> {
     const localUrl = `http://127.0.0.1:${HTTP_PORT}${payload.path}`;
     try {
-      const fetchOpts: RequestInit = { method: payload.method || 'GET', headers: { 'Content-Type': 'application/json' } };
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (HTTP_API_KEY.trim()) {
+        headers['X-API-Key'] = HTTP_API_KEY.trim();
+      }
+
+      const fetchOpts: RequestInit = {
+        method: payload.method || 'GET',
+        headers,
+      };
       if (payload.body && payload.method !== 'GET') fetchOpts.body = JSON.stringify(payload.body);
 
       const res = await fetch(localUrl, fetchOpts);
@@ -267,7 +277,12 @@ export class Gateway {
     const localUrl = `http://127.0.0.1:${HTTP_PORT}${streamKey}`;
     logger.info({ path: streamKey }, 'SSE relay: subscribing to local stream');
 
-    const req = http.get(localUrl, (res) => {
+    const headers: Record<string, string> = {};
+    if (HTTP_API_KEY.trim()) {
+      headers['X-API-Key'] = HTTP_API_KEY.trim();
+    }
+
+    const req = http.get(localUrl, { headers }, (res) => {
       let buf = '';
       res.on('data', (chunk: Buffer) => {
         buf += chunk.toString();

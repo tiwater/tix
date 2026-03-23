@@ -1,7 +1,7 @@
 # Render Blueprint Specification
-# Deploy the public gateway and the private worker node as separate containers.
+# Deploy the public gateway and the background worker node as separate containers.
 # The consumer application should call the gateway over HTTPS; the node connects
-# to the gateway over Render's private network via GATEWAY_HOSTPORT.
+# outbound to the gateway over Render's private network via GATEWAY_HOSTPORT.
 
 services:
   - type: web
@@ -23,7 +23,7 @@ services:
       - key: GATEWAY_ALLOWED_NODE_IDS
         sync: false
 
-  - type: pserv
+  - type: worker
     name: ticlaw-node
     runtime: docker
     plan: starter
@@ -36,12 +36,12 @@ services:
         value: "/usr/bin/google-chrome-stable"
       - key: NODE_ENV
         value: "production"
-      - key: PORT
-        value: "10000"
       - key: HTTP_PORT
         value: "10000"
       - key: NODE_HOSTNAME
         value: "render-node"
+      - key: HTTP_API_KEY
+        generateValue: true
       - key: LLM_API_KEY
         sync: false
       - key: LLM_BASE_URL
