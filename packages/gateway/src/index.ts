@@ -8,6 +8,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
+import { listCloudNodes, launchCloudNode, deleteCloudNode, getCloudNodeMeta } from './cloud-nodes.js';
 
 export interface NodeInfo {
   node_id: string;
@@ -506,6 +507,59 @@ export async function handleGatewayRequest(
       res.end(JSON.stringify({ error: 'unauthorized', message: 'Missing or invalid API key' }));
       return true;
     }
+  }
+
+  // ── Gateway-native: cloud node provisioning ──
+  if (url.pathname === '/api/gateway/cloud-nodes' && req.method === 'GET') {
+    try {
+      const [nodes, meta] = await Promise.all([listCloudNodes(), getCloudNodeMeta()]);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ nodes, meta }));
+    } catch (err: any) {
+      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: err?.message || 'Failed to list cloud nodes' }));
+    }
+    return true;
+  }
+
+  if (url.pathname === '/api/gateway/cloud-nodes' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const input = JSON.parse(body);
+        if (!input.name || !input.tier || !input.region) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'name, tier, and region are required' }));
+          return;
+        }
+        const result = await launchCloudNode(input);
+        res.writeHead(201, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: err?.message || 'Failed to launch cloud node' }));
+      }
+    });
+    return true;
+  }
+
+  if (url.pathname.startsWith('/api/gateway/cloud-nodes/') && req.method === 'DELETE') {
+    const serviceId = url.pathname.split('/').pop();
+    if (!serviceId) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'Missing service ID' }));
+      return true;
+    }
+    try {
+      await deleteCloudNode(serviceId);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err: any) {
+      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: err?.message || 'Failed to delete cloud node' }));
+    }
+    return true;
   }
 
   // ── SSE stream relay — any path ending in /stream ──
