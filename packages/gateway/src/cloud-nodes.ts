@@ -129,7 +129,24 @@ function mapRenderService(service: any): CloudNodeRecord {
   const plan = service.plan || service.servicePlan || serviceDetails.plan || null;
   const tier = (Object.entries(tierPlanMap).find(([, meta]) => meta.plan === plan)?.[0] ?? null) as CloudNodeTier | null;
   const url = serviceDetails.url || service.url || service.service?.url || null;
-  const deploymentStatus = serviceDetails.deployStatus || service.service?.serviceDetails?.deployStatus;
+  // Derive a user-friendly status
+  const isSuspended = service.suspended === 'suspended' || service.suspended === true;
+  const deployStatus = serviceDetails.deployStatus || service.service?.serviceDetails?.deployStatus || '';
+  let status: string;
+  if (isSuspended) {
+    status = 'suspended';
+  } else if (deployStatus === 'live') {
+    status = 'live';
+  } else if (deployStatus === 'deactivated' || deployStatus === 'failed') {
+    status = deployStatus;
+  } else if (deployStatus === 'suspended') {
+    // Render uses 'suspended' as initial deployStatus before first build — treat as deploying
+    status = 'deploying';
+  } else if (deployStatus) {
+    status = deployStatus;
+  } else {
+    status = 'unknown';
+  }
 
   return {
     id: service.id,
@@ -137,12 +154,12 @@ function mapRenderService(service: any): CloudNodeRecord {
     name: service.name || nodeId,
     slug: service.slug || service.name || nodeId,
     url,
-    status: deploymentStatus || service.status || (service.suspended ? 'suspended' : 'active'),
+    status,
     region: service.region || serviceDetails.region || null,
     plan,
     tier,
     imageUrl: serviceDetails.image?.url || null,
-    suspended: service.suspended === 'suspended' || service.suspended === true,
+    suspended: isSuspended,
     createdAt: service.createdAt || null,
   };
 }
