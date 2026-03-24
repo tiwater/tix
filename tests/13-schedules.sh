@@ -15,6 +15,11 @@ HTTP_PORT=$TEST_PORT npx tsx packages/node/src/index.ts > /tmp/ticlaw-schedules.
 SERVER_PID=$!
 
 cleanup() {
+  echo -e "\n${YELLOW}▶ Cleaning up schedules...${NC}"
+  [ -n "${SCHED_ID:-}" ] && curl --max-time 8 -sX DELETE "http://localhost:${TEST_PORT}/api/schedules/$SCHED_ID" > /dev/null || true
+  [ -n "${SCHED2_ID:-}" ] && curl --max-time 8 -sX DELETE "http://localhost:${TEST_PORT}/api/schedules/$SCHED2_ID" > /dev/null || true
+  [ -n "${SCHED3_ID:-}" ] && curl --max-time 8 -sX DELETE "http://localhost:${TEST_PORT}/api/schedules/$SCHED3_ID" > /dev/null || true
+
   echo -e "${YELLOW}Stopping server (PID $SERVER_PID)...${NC}"
   kill $SERVER_PID 2>/dev/null || true
   wait $SERVER_PID 2>/dev/null || true
@@ -77,9 +82,10 @@ assert_contains "Feishu schedule result" "$LAST_FEISHU" "FEISHU_TICK"
 
 echo -e "\n${YELLOW}▶ Creating an INTERRUPTING schedule for $AGENT_ID...${NC}"
 # This tests dispatcher preempting functionality
-curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
+CREATE_INTERRUPT=$(curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules" \
   -H "Content-Type: application/json" \
-  -d "{\"agent_id\":\"$AGENT_ID\",\"prompt\":\"STOP everything right now.\",\"cron\":\"* * * * *\"}" > /dev/null
+  -d "{\"agent_id\":\"$AGENT_ID\",\"prompt\":\"STOP everything right now.\",\"cron\":\"* * * * *\"}")
+SCHED3_ID=$(echo "$CREATE_INTERRUPT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('schedule',{}).get('id',''))")
 
 echo -e "\n${YELLOW}▶ Forcing scheduler tick...${NC}"
 curl --max-time 8 -sX POST "http://localhost:${TEST_PORT}/api/schedules/refresh"
