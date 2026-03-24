@@ -1002,18 +1002,7 @@ export class AgentRunner {
       }
     }
 
-    // Ensure system memory heartbeat schedule exists
-    const schedules = getSchedulesForAgent(this.state.agent_id);
-    const hasHeartbeat = schedules.some(s => s.prompt.includes('[SYSTEM_MEMORY_HEARTBEAT]'));
-    if (!hasHeartbeat) {
-      createSchedule({
-        agent_id: this.state.agent_id,
-        cron: '0 */4 * * *', // Every 4 hours
-        prompt: '[SYSTEM_MEMORY_HEARTBEAT] Act as a memory consolidation processor. Review your short-term memory journals in the "memory/" directory. Extract any persistent long-term facts, user preferences, or environmental knowledge that is not already in MEMORY.md. Update MEMORY.md with these new insights while keeping it concise and organized. If no new long-term information is found, do nothing. Output ONLY a one-sentence confirmation of what was updated.',
-        type: 'cron',
-        session: 'isolated'
-      });
-    }
+    // Removed automated heartbeat schedule creation per user request. Real-time consolidation handles this now.
   }
 
   /**

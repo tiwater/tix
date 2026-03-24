@@ -181,12 +181,21 @@ function sessionDir(agentId: string, sessionId: string): string {
   return resolveWithin(agentDir(agentId), 'sessions', safeSessionId);
 }
 
+function resolveSessionDir(agentId: string, sessionId: string): string {
+  const safeSessionId = assertSafePathSegment(sessionId, 'session_id');
+  const archivedPath = resolveWithin(agentDir(agentId), 'archived_sessions', safeSessionId);
+  if (fs.existsSync(archivedPath)) {
+    return archivedPath;
+  }
+  return sessionDir(agentId, sessionId);
+}
+
 function sessionJsonPath(agentId: string, sessionId: string): string {
-  return path.join(sessionDir(agentId, sessionId), 'session.json');
+  return path.join(resolveSessionDir(agentId, sessionId), 'session.json');
 }
 
 function messagesPath(agentId: string, sessionId: string): string {
-  return path.join(sessionDir(agentId, sessionId), 'messages.jsonl');
+  return path.join(resolveSessionDir(agentId, sessionId), 'messages.jsonl');
 }
 
 function schedulesDir(agentId: string): string {
@@ -606,9 +615,23 @@ export function archiveSessionForAgent(
   
   const targetDir = path.join(archiveDir, sessionId);
   if (fs.existsSync(targetDir)) return false; // already archived
-  
   fs.renameSync(dir, targetDir);
+  
+  deleteSchedulesForSession(agentId, sessionId);
   return true;
+}
+
+function deleteSchedulesForSession(agentId: string, sessionId: string) {
+  if (sessionId.startsWith('sched-')) {
+    deleteSchedule(sessionId.slice(6));
+  } else {
+    const schedules = getSchedulesForAgent(agentId);
+    for (const s of schedules) {
+      if (s.target_jid && s.target_jid.endsWith(':' + sessionId)) {
+        deleteSchedule(s.id);
+      }
+    }
+  }
 }
 
 export function restoreSessionForAgent(
@@ -645,6 +668,7 @@ export function deleteSessionForAgent(
     
   if (!fs.existsSync(dir)) return false;
   fs.rmSync(dir, { recursive: true, force: true });
+  deleteSchedulesForSession(agentId, sessionId);
   return true;
 }
 
@@ -958,6 +982,17 @@ export function deleteSchedule(id: string): void {
     const yamlPath = scheduleYamlPath(agentId, id);
     if (fs.existsSync(yamlPath)) {
       fs.unlinkSync(yamlPath);
+      
+      const sessionId = 'sched-' + id;
+      const sDir = sessionDir(agentId, sessionId);
+      if (fs.existsSync(sDir)) {
+        fs.rmSync(sDir, { recursive: true, force: true });
+      } else {
+        const archivedDir = path.join(agentDir(agentId), 'archived_sessions', sessionId);
+        if (fs.existsSync(archivedDir)) {
+          fs.rmSync(archivedDir, { recursive: true, force: true });
+        }
+      }
       return;
     }
   }
