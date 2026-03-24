@@ -108,6 +108,10 @@ async function renderRequest<T>(path: string, init: RequestInit, apiKey: string)
     throw new Error(message);
   }
 
+  if (response.status === 204) {
+    return undefined as unknown as T;
+  }
+
   return response.json() as Promise<T>;
 }
 
