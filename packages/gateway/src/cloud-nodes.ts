@@ -200,7 +200,6 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
   const nodeRoute = `${gatewayUrl}/api/gateway/nodes/${nodeId}`;
 
   const envVars = Object.entries({
-    PORT: '3000',
     SUPEN_MANAGED_BY: MANAGED_BY,
     SUPEN_NODE_ID: nodeId,
     TICLAW_NODE_ID: nodeId,
@@ -226,13 +225,13 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
     type: 'web_service',
     name: buildServiceName(nodeId),
     image: imageBlock,
+    envVars,
     serviceDetails: {
       runtime: 'image',
       plan,
       region: input.region.trim(),
       numInstances: 1,
       healthCheckPath: '/health',
-      envVars,
       autoDeploy: 'no',
     },
   };
