@@ -20,6 +20,11 @@ import {
   agentPaths,
   TICLAW_HOME,
 } from './config.js';
+import {
+  classifyManagedArtifact,
+  ensureManagedWorkspaceLayout,
+  stageManagedWorkspaceArtifact,
+} from './workspace-layout.js';
 import { getSessionForAgent } from './store.js';
 import { createRequire } from 'module';
 import { SkillsRegistry } from '../skills/registry.js';
@@ -637,14 +642,26 @@ export class AgentRunner {
             finalText = finalText.replace(/ticlaw:\/\/image\/([^\\s)"\`]+)/g, `ticlaw://workspace/${agentId}/$1`);
             finalText = finalText.replace(/ticlaw:\/\/file\/([^\\s)"\`]+)/g, `ticlaw://workspace/${agentId}/$1`);
 
-            // Deliver files detected from tool_use commands (e.g., screenshots)
-            if (this.events.onFile && handler.pendingFiles.size > 0) {
+            // Normalize and deliver files detected from tool_use commands (e.g., screenshots)
+            if (handler.pendingFiles.size > 0) {
               for (const rawPath of handler.pendingFiles) {
                 const absPath = path.isAbsolute(rawPath)
                   ? rawPath
                   : path.join(workspace, rawPath);
-                if (fs.existsSync(absPath)) {
-                  this.events.onFile(absPath, path.basename(absPath));
+                if (!fs.existsSync(absPath)) continue;
+
+                const staged = stageManagedWorkspaceArtifact(
+                  workspace,
+                  absPath,
+                  classifyManagedArtifact(absPath),
+                );
+                const ticlawUrl = `ticlaw://workspace/${agentId}/${staged.relPath}`;
+
+                finalText = finalText.split(absPath).join(ticlawUrl);
+                finalText = finalText.split(rawPath).join(ticlawUrl);
+
+                if (this.events.onFile) {
+                  this.events.onFile(staged.absPath, path.basename(staged.absPath));
                 }
               }
             }
@@ -973,6 +990,7 @@ export class AgentRunner {
     if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
     if (!fs.existsSync(workspaceDir))
       fs.mkdirSync(workspaceDir, { recursive: true });
+    ensureManagedWorkspaceLayout(workspaceDir);
 
     const memoryDir = path.join(baseDir, 'memory');
     if (!fs.existsSync(memoryDir)) fs.mkdirSync(memoryDir, { recursive: true });
@@ -1087,8 +1105,10 @@ export class AgentRunner {
 ## Multimedia & TICLAW Protocol
 CRITICAL MANDATORY INSTRUCTION: Whenever you capture a screenshot, create an image, or interact with a file the user should see, YOU MUST output a markdown link or image tag referencing it in your reply!
 The frontend relies on these links to render images and files. Do NOT just describe that you saved something; you MUST show it.
-- For images/screenshots: \`![description](ticlaw://workspace/${this.state.agent_id}/<filename>)\`
-- For other files: \`[filename](ticlaw://workspace/${this.state.agent_id}/<filename>)\`
+- For images/screenshots: \`![description](ticlaw://workspace/${this.state.agent_id}/artifacts/screenshots/<filename>)\`
+- For other generated files shared with the user: \`[filename](ticlaw://workspace/${this.state.agent_id}/artifacts/generated/<filename>)\`
+- For temporary or intermediate files, prefer \`scratch/\` instead of the workspace root.
+- Only write files into the repo/project root when the user explicitly asks you to create or modify project files there.
 If you used a tool that took a screenshot, your very next response MUST include the image link!
 ` + `
 When asked to list your capabilities, skills, or tools:

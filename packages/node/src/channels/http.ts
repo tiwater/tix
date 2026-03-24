@@ -67,11 +67,17 @@ import {
   HTTP_ENABLED,
   HTTP_PORT,
   SKILLS_CONFIG,
+  TICLAW_HOME,
   agentPaths,
   MODELS_REGISTRY,
   getAgentModelConfig,
   ALLOWED_ORIGINS,
 } from '../core/config.js';
+import {
+  classifyManagedArtifact,
+  ensureManagedWorkspaceLayout,
+  stageManagedWorkspaceArtifact,
+} from '../core/workspace-layout.js';
 
 function inferMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
@@ -794,8 +800,7 @@ export class HttpChannel implements Channel {
         }
 
         const workspace = agentPaths(agentId).workspace;
-        const uploadDir = path.join(workspace, '.uploads');
-        fs.mkdirSync(uploadDir, { recursive: true });
+        const uploadDir = ensureManagedWorkspaceLayout(workspace).uploads;
 
         const uploadedFiles: { name: string; path: string; ticlawUrl: string; size: number }[] = [];
 
@@ -812,7 +817,7 @@ export class HttpChannel implements Channel {
           const destPath = path.join(uploadDir, destName);
           fs.writeFileSync(destPath, content);
 
-          const relPath = `.uploads/${destName}`;
+          const relPath = `uploads/${destName}`;
           uploadedFiles.push({
             name: originalName,
             path: relPath,
@@ -1984,12 +1989,13 @@ export class HttpChannel implements Channel {
       const relPath = path.relative(workspace, filePath);
       ticlawUrl = `ticlaw://workspace/${agentId}/${relPath}`;
     } else {
-      // File outside workspace — copy to workspace first
-      const destName = `${randomUUID()}${path.extname(filePath)}`;
-      const destPath = path.join(workspace, '.files', destName);
-      fs.mkdirSync(path.join(workspace, '.files'), { recursive: true });
-      fs.copyFileSync(filePath, destPath);
-      ticlawUrl = `ticlaw://workspace/${agentId}/.files/${destName}`;
+      // File outside workspace — copy to managed shared artifacts first
+      const staged = stageManagedWorkspaceArtifact(
+        workspace,
+        filePath,
+        classifyManagedArtifact(filePath),
+      );
+      ticlawUrl = `ticlaw://workspace/${agentId}/${staged.relPath}`;
     }
 
     const text = mime.startsWith('image/')

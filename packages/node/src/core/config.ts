@@ -347,13 +347,19 @@ export function getModelPricing(modelName: string) {
 
 export const MODELS_REGISTRY: ModelEntry[] = (() => {
   const fromYaml = readModelsConfig();
-  const entries = fromYaml.length > 0 ? fromYaml : (() => {
+  const entries: ModelEntry[] = fromYaml.length > 0 ? fromYaml : (() => {
     // Env-var fallback: build a single synthetic entry
     const apiKey = ANTHROPIC_API_KEY || LLM_API_KEY;
     const baseUrl = LLM_BASE_URL;
     const model = process.env.LLM_MODEL || envConfig.LLM_MODEL || '';
     if (!apiKey) return [];
-    return [{ id: 'default', api_key: apiKey, base_url: baseUrl, model, default: true }];
+    return [{
+      id: 'default',
+      api_key: apiKey,
+      base_url: baseUrl,
+      model,
+      default: true,
+    }];
   })();
 
   // Enrich with pricing

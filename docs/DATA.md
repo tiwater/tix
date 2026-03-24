@@ -122,6 +122,28 @@ TiClaw 采用“文件即数据库”的模型：
 1. 默认：`~/workspace-{agent_id}`
 2. 若存在 `agents/{agent_id}/agent-config.json` 且含 `workspace`，则覆盖默认值
 
+为了避免 Agent 生成的截图、上传文件、临时文件直接污染业务仓库根目录，TiClaw 现在会直接在 workspace 根目录下预置清晰的托管文件夹：
+
+```text
+{workspace}/
+├── artifacts/
+│   ├── README.md
+│   ├── screenshots/
+│   ├── generated/
+│   └── shared/
+├── uploads/
+└── scratch/
+```
+
+约定：
+- `artifacts/screenshots/`：浏览器截图、页面抓图、图片/PDF 产物。
+- `artifacts/generated/`：需要分享给用户的生成文件。
+- `artifacts/shared/`：从 workspace 外部复制进来的文件。
+- `uploads/`：通过 workspace upload API 上传的用户文件。
+- `scratch/`：中间产物和临时文件。
+
+只有当用户明确要求修改项目源码或指定某个业务路径时，Agent 才应直接把文件写到项目目录。
+
 `~/.ticlaw/` 保存状态，不建议作为业务工程产物目录。
 
 ## 6. 交互与并发 (Interaction & Concurrency)
