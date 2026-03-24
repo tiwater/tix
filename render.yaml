@@ -1,7 +1,6 @@
 # Render Blueprint Specification
-# Deploy the public gateway and the background worker node as separate containers.
-# The consumer application should call the gateway over HTTPS; the node connects
-# outbound to the gateway over Render's private network via GATEWAY_HOSTPORT.
+# Deploy the public gateway. Worker nodes are launched dynamically via the
+# Supen UI using the Render API (ghcr.io/tiwater/ticlaw:latest image).
 
 services:
   - type: web
@@ -23,42 +22,3 @@ services:
       - key: GATEWAY_ALLOWED_NODE_IDS
         sync: false
 
-  - type: worker
-    name: ticlaw-node
-    runtime: docker
-    plan: starter
-    dockerfilePath: ./packages/node/Dockerfile
-    dockerContext: .
-    envVars:
-      - key: TICLAW_HOME
-        value: "/root/.ticlaw"
-      - key: CHROME_PATH
-        value: "/usr/bin/google-chrome-stable"
-      - key: NODE_ENV
-        value: "production"
-      - key: HTTP_PORT
-        value: "10000"
-      - key: NODE_HOSTNAME
-        value: "render-node"
-      - key: HTTP_API_KEY
-        generateValue: true
-      - key: LLM_API_KEY
-        sync: false
-      - key: LLM_BASE_URL
-        sync: false
-      - key: GATEWAY_HOSTPORT
-        fromService:
-          type: web
-          name: ticlaw-gateway
-          property: hostport
-      - key: GATEWAY_SECRET
-        fromService:
-          type: web
-          name: ticlaw-gateway
-          envVarKey: GATEWAY_SECRET
-      - key: GATEWAY_REPORTING_INTERVAL
-        value: "60000"
-    disk:
-      name: ticlaw-data
-      mountPath: /root/.ticlaw
-      sizeGB: 1
