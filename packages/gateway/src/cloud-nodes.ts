@@ -149,7 +149,7 @@ function mapRenderService(service: any): CloudNodeRecord {
   } else if (deployStatus) {
     status = deployStatus;
   } else {
-    status = 'unknown';
+    status = 'active';
   }
 
   return {
