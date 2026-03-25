@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 /**
  * Cloud Node Provisioning — Render API integration.
  *
@@ -84,6 +86,10 @@ function createNodeId(name: string): string {
 
 function buildServiceName(nodeId: string): string {
   return `${NODE_NAME_PREFIX}${nodeId}`;
+}
+
+function createHttpApiKey(): string {
+  return crypto.randomBytes(24).toString('hex');
 }
 
 async function renderRequest<T>(path: string, init: RequestInit, apiKey: string): Promise<T> {
@@ -202,6 +208,10 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
   const imageUrl = normalizeUrl(config.imageUrl);
   const gatewayUrl = normalizeUrl(config.gatewayUrl);
   const nodeRoute = `${gatewayUrl}/api/gateway/nodes/${nodeId}`;
+  const httpApiKey =
+    typeof input.extraEnv?.HTTP_API_KEY === 'string' && input.extraEnv.HTTP_API_KEY.trim()
+      ? input.extraEnv.HTTP_API_KEY.trim()
+      : createHttpApiKey();
 
   const envVars = Object.entries({
     SUPEN_MANAGED_BY: MANAGED_BY,
@@ -214,6 +224,7 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
     SUPEN_GATEWAY_NODE_URL: nodeRoute,
     SUPEN_NODE_NAME: input.name,
     TICLAW_NODE_NAME: input.name,
+    HTTP_API_KEY: httpApiKey,
     ...(config.gatewaySecret ? { GATEWAY_SECRET: config.gatewaySecret } : {}),
     ...(input.extraEnv || {}),
   }).map(([key, value]) => ({ key, value, sync: false }));
