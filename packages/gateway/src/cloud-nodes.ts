@@ -143,15 +143,15 @@ function mapRenderService(service: any): CloudNodeRecord {
   const isSuspended = service.suspended === 'suspended' || service.suspended === true;
   const deployStatus = serviceDetails.deployStatus || service.service?.serviceDetails?.deployStatus || '';
   let status: string;
-  if (isSuspended) {
+  if (deployStatus === 'suspended') {
+    // Render uses 'suspended' as initial deployStatus before first build — treat as deploying
+    status = 'deploying';
+  } else if (isSuspended) {
     status = 'suspended';
   } else if (deployStatus === 'live') {
     status = 'live';
   } else if (deployStatus === 'deactivated' || deployStatus === 'failed') {
     status = deployStatus;
-  } else if (deployStatus === 'suspended') {
-    // Render uses 'suspended' as initial deployStatus before first build — treat as deploying
-    status = 'deploying';
   } else if (deployStatus) {
     status = deployStatus;
   } else {
