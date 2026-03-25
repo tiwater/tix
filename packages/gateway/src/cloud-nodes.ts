@@ -189,7 +189,7 @@ export function getCloudNodeMeta() {
 export async function listCloudNodes(): Promise<CloudNodeRecord[]> {
   if (!isConfigured()) return [];
   const config = getConfig();
-  const raw = await renderRequest<any>('/services', { method: 'GET' }, config.apiKey);
+  const raw = await renderRequest<any>('/services?limit=100', { method: 'GET' }, config.apiKey);
   const items: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.services) ? raw.services : [];
   const services = items.map((item: any) => item.service || item);
 

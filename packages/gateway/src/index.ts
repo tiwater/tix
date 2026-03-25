@@ -519,6 +519,8 @@ export async function handleGatewayRequest(
         const isOnline = connectedNodes.some((n) => n.node_id === node.nodeId && n.online);
         if (isOnline) {
           node.status = 'online';
+        } else if (node.status === 'live') {
+          node.status = 'offline';
         }
       }
 
