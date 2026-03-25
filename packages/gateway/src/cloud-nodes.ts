@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 /**
  * Cloud Node Provisioning — Render API integration.
  *
@@ -86,6 +88,10 @@ function buildServiceName(nodeId: string): string {
   return `${NODE_NAME_PREFIX}${nodeId}`;
 }
 
+function createHttpApiKey(): string {
+  return crypto.randomBytes(24).toString('hex');
+}
+
 async function renderRequest<T>(path: string, init: RequestInit, apiKey: string): Promise<T> {
   const response = await fetch(`${RENDER_API_BASE}${path}`, {
     ...init,
@@ -137,15 +143,20 @@ function mapRenderService(service: any): CloudNodeRecord {
   const isSuspended = service.suspended === 'suspended' || service.suspended === true;
   const deployStatus = serviceDetails.deployStatus || service.service?.serviceDetails?.deployStatus || '';
   let status: string;
-  if (isSuspended) {
+  if (
+    deployStatus === 'suspended' ||
+    deployStatus === 'created' ||
+    deployStatus === 'build_in_progress' ||
+    deployStatus === 'update_in_progress'
+  ) {
+    // Render uses 'suspended' before first build, and others during deploys — treat as deploying
+    status = 'deploying';
+  } else if (isSuspended) {
     status = 'suspended';
   } else if (deployStatus === 'live') {
     status = 'live';
-  } else if (deployStatus === 'deactivated' || deployStatus === 'failed') {
+  } else if (deployStatus === 'deactivated' || deployStatus === 'failed' || deployStatus === 'canceled') {
     status = deployStatus;
-  } else if (deployStatus === 'suspended') {
-    // Render uses 'suspended' as initial deployStatus before first build — treat as deploying
-    status = 'deploying';
   } else if (deployStatus) {
     status = deployStatus;
   } else {
@@ -183,7 +194,7 @@ export function getCloudNodeMeta() {
 export async function listCloudNodes(): Promise<CloudNodeRecord[]> {
   if (!isConfigured()) return [];
   const config = getConfig();
-  const raw = await renderRequest<any>('/services', { method: 'GET' }, config.apiKey);
+  const raw = await renderRequest<any>('/services?limit=100', { method: 'GET' }, config.apiKey);
   const items: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.services) ? raw.services : [];
   const services = items.map((item: any) => item.service || item);
 
@@ -202,6 +213,10 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
   const imageUrl = normalizeUrl(config.imageUrl);
   const gatewayUrl = normalizeUrl(config.gatewayUrl);
   const nodeRoute = `${gatewayUrl}/api/gateway/nodes/${nodeId}`;
+  const httpApiKey =
+    typeof input.extraEnv?.HTTP_API_KEY === 'string' && input.extraEnv.HTTP_API_KEY.trim()
+      ? input.extraEnv.HTTP_API_KEY.trim()
+      : createHttpApiKey();
 
   const envVars = Object.entries({
     SUPEN_MANAGED_BY: MANAGED_BY,
@@ -214,6 +229,7 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
     SUPEN_GATEWAY_NODE_URL: nodeRoute,
     SUPEN_NODE_NAME: input.name,
     TICLAW_NODE_NAME: input.name,
+    HTTP_API_KEY: httpApiKey,
     ...(config.gatewaySecret ? { GATEWAY_SECRET: config.gatewaySecret } : {}),
     ...(input.extraEnv || {}),
   }).map(([key, value]) => ({ key, value, sync: false }));

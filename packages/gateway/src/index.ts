@@ -513,6 +513,17 @@ export async function handleGatewayRequest(
   if (url.pathname === '/api/gateway/cloud-nodes' && req.method === 'GET') {
     try {
       const [nodes, meta] = await Promise.all([listCloudNodes(), getCloudNodeMeta()]);
+      
+      const connectedNodes = listNodes();
+      for (const node of nodes) {
+        const isOnline = connectedNodes.some((n) => n.node_id === node.nodeId && n.online);
+        if (isOnline) {
+          node.status = 'online';
+        } else if (node.status === 'live') {
+          node.status = 'offline';
+        }
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ nodes, meta }));
     } catch (err: any) {
