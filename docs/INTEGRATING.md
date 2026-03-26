@@ -25,17 +25,17 @@ Node(s)  :2756, :2757 …  ← worker machines running agents
 pnpm --filter @ticlaw/gateway dev
 
 # With auth enabled (production)
-GATEWAY_API_KEY=your-secret pnpm --filter @ticlaw/gateway start
+TICLAW_GATEWAY_API_KEY=your-secret pnpm --filter @ticlaw/gateway start
 ```
 
 ### 2. Start one or more nodes
 
 ```bash
 # Node 1 (connects to gateway automatically)
-GATEWAY_URL=ws://localhost:2755 pnpm --filter @ticlaw/node dev
+TICLAW_GATEWAY_URL=ws://localhost:2755 pnpm --filter @ticlaw/node dev
 
 # Node 2 (different HTTP port)
-HTTP_PORT=2757 GATEWAY_URL=ws://localhost:2755 pnpm --filter @ticlaw/node dev
+HTTP_PORT=2757 TICLAW_GATEWAY_URL=ws://localhost:2755 pnpm --filter @ticlaw/node dev
 ```
 
 ### 3. Verify connectivity
@@ -52,14 +52,14 @@ curl http://localhost:2755/api/gateway/nodes
 
 ## Authentication
 
-Set `GATEWAY_API_KEY` on the gateway. All HTTP requests (except `/health` and
+Set `TICLAW_GATEWAY_API_KEY` on the gateway. All HTTP requests (except `/health` and
 `OPTIONS` preflight) must carry the header:
 
 ```
-Authorization: Bearer <GATEWAY_API_KEY>
+Authorization: Bearer <TICLAW_GATEWAY_API_KEY>
 ```
 
-If `GATEWAY_API_KEY` is not set, the gateway is in **open mode** — fine for
+If `TICLAW_GATEWAY_API_KEY` is not set, the gateway is in **open mode** — fine for
 local development, not for production.
 
 ### Node-side security posture
@@ -83,8 +83,8 @@ you need no special headers. With multiple nodes, use `X-Node-Id` to target a
 specific one.
 
 ```
-X-Node-Id: my-machine      # optional — omit to use first connected node
-Authorization: Bearer key  # required if GATEWAY_API_KEY is set
+X-Node-Id: my-machine                     # optional — omit to use first connected node
+Authorization: Bearer key                 # required if TICLAW_GATEWAY_API_KEY is set
 ```
 
 ### Agents
@@ -181,23 +181,16 @@ gateway and the TiClaw node as **two separate Docker services**:
 
 ### How the Render wiring works
 
-1. Render assigns `ticlaw-gateway` an internal `host:port`.
-2. The Blueprint injects that value into the node worker as `GATEWAY_HOSTPORT`.
-3. The node turns `GATEWAY_HOSTPORT` into `ws://<host:port>` automatically at startup.
-4. Your consumer app should call the public gateway URL and never call the node directly.
+1. Set `TICLAW_GATEWAY_EXTERNAL_URL` on the gateway service to its public URL.
+2. The provisioner injects `TICLAW_GATEWAY_URL`, `TICLAW_GATEWAY_SECRET`, and `TICLAW_NODE_NAME` into each cloud node.
+3. Your consumer app calls the public gateway URL and never calls nodes directly.
 
 ### Required secrets on Render
 
-- `GATEWAY_API_KEY`: bearer token your consumer app sends to the gateway.
+- `TICLAW_GATEWAY_API_KEY`: bearer token your consumer app sends to the gateway.
+- `TICLAW_GATEWAY_SECRET`: auto-generated HMAC secret; shared to nodes at provision time.
+- `TICLAW_GATEWAY_EXTERNAL_URL`: the gateway's own public `wss://` URL (needed to inject into cloud nodes).
 - `LLM_API_KEY`: model provider key for the node runtime.
-- `LLM_BASE_URL`: optional override for the model endpoint used by the node.
-
-The Blueprint also generates `HTTP_API_KEY` on the node service so the node can
-bind `0.0.0.0` on Render while keeping its HTTP admin surface protected. The
-node's internal gateway relay automatically sends that key on loopback requests.
-
-`GATEWAY_SECRET` is generated once on the gateway and shared to the node via a
-Blueprint service reference so the node can authenticate with HMAC.
 
 ### Consumer app connection
 
@@ -210,7 +203,7 @@ https://ticlaw-gateway.onrender.com
 Use that base URL for both REST and SSE traffic, and include:
 
 ```
-Authorization: Bearer <GATEWAY_API_KEY>
+Authorization: Bearer <TICLAW_GATEWAY_API_KEY>
 ```
 
 The node runs as a background worker and should not be exposed publicly.
@@ -224,31 +217,31 @@ The node runs as a background worker and should not be exposed publicly.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | *(platform-managed)* | Preferred HTTP port in containers/platforms like Render |
-| `GATEWAY_PORT` | `2755` | Port the gateway listens on outside platform-managed environments |
-| `GATEWAY_API_KEY` | *(none)* | Controller auth key. Empty = open mode |
-| `GATEWAY_SECRET` | *(none)* | HMAC secret for node authentication |
-| `GATEWAY_ALLOWED_NODE_IDS` | *(all)* | CSV allowlist of permitted node IDs |
+| `TICLAW_GATEWAY_API_KEY` | *(none)* | Controller auth key. Empty = open mode |
+| `TICLAW_GATEWAY_SECRET` | *(none)* | HMAC secret for node authentication |
+| `TICLAW_GATEWAY_ALLOWED_NODE_IDS` | *(all)* | CSV allowlist of permitted node IDs |
+| `TICLAW_GATEWAY_EXTERNAL_URL` | *(none)* | Gateway's own public WS URL (used by provisioner) |
 
 ### Node
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GATEWAY_URL` | `ws://localhost:2755` | Full WebSocket URL for the gateway |
-| `GATEWAY_HOSTPORT` | *(none)* | Internal `<host>:<port>` pair; node converts it to `ws://...` automatically |
+| `TICLAW_GATEWAY_URL` | *(none — required)* | WebSocket URL of the gateway |
+| `TICLAW_NODE_NAME` | *(hostname)* | This node's identity (sent during gateway auth) |
 | `HTTP_PORT` | `2756` | Node's local HTTP port |
-| `GATEWAY_SECRET` | *(none)* | Must match gateway's secret |
-| `GATEWAY_TRUST_TOKEN` | *(none)* | One-time enrollment token |
+| `TICLAW_GATEWAY_SECRET` | *(none)* | Must match the gateway's secret |
+| `TICLAW_GATEWAY_TRUST_TOKEN` | *(none)* | One-time enrollment token |
 
 ---
 
 ## Node Authentication Flow
 
-Nodes authenticate to the gateway using **HMAC tokens** when `GATEWAY_SECRET`
+Nodes authenticate to the gateway using **HMAC tokens** when `TICLAW_GATEWAY_SECRET`
 is set on both sides:
 
 1. Node computes `HMAC-SHA256(secret, "${nodeId}:${timestamp}")`.
 2. Node sends `{ type: "auth", token: "${nodeId}.${ts}.${hmac}" }` over WebSocket.
 3. Gateway verifies the HMAC and timestamp (5-minute window, replay-safe).
 
-For first-time enrollment, use `GATEWAY_TRUST_TOKEN` (a one-time secret issued
+For first-time enrollment, use `TICLAW_GATEWAY_TRUST_TOKEN` (a one-time secret issued
 via the node's enroll API).

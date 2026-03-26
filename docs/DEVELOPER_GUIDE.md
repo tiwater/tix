@@ -228,9 +228,9 @@ Typical node-level errors:
 Common node env:
 
 ```env
-GATEWAY_URL=wss://your-gateway.example.com
-GATEWAY_TRUST_TOKEN=your-token
-TC_NODE_NAME=my-node
+TICLAW_GATEWAY_URL=wss://your-gateway.example.com
+TICLAW_GATEWAY_TRUST_TOKEN=your-token
+TICLAW_NODE_NAME=my-node
 LLM_API_KEY=your-llm-key
 LLM_BASE_URL=https://api.anthropic.com
 ```

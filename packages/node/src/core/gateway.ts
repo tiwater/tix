@@ -119,10 +119,10 @@ export class Gateway {
   /**
    * Build a HMAC token for gateway authentication.
    * Format: `${nodeId}.${timestampMs}.${hmacHex}`
-   * Only when GATEWAY_SECRET env var is set on the node side.
+   * Only when TICLAW_GATEWAY_SECRET env var is set on the node side.
    */
   private buildGatewayToken(nodeId: string): string | undefined {
-    const secret = process.env.GATEWAY_SECRET;
+    const secret = process.env.TICLAW_GATEWAY_SECRET;
     if (!secret) return undefined;
     const ts = Date.now().toString();
     const hmac = crypto.createHmac('sha256', secret).update(`${nodeId}:${ts}`).digest('hex');

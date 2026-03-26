@@ -119,7 +119,7 @@ public gateway and the background node service on Render:
 - `render.yaml` wires the node to the gateway over Render's private network.
 
 Deploy the Blueprint, then point your consumer app to the gateway service URL
-and send `Authorization: Bearer <GATEWAY_API_KEY>` on every request. The node
+and send `Authorization: Bearer <TICLAW_GATEWAY_API_KEY>` on every request. The node
 service should stay private. See `docs/INTEGRATING.md` for the end-to-end flow.
 If you configure Render services manually instead of syncing the Blueprint, set
 the public web service Dockerfile path to `packages/gateway/Dockerfile` and the

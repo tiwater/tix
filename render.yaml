@@ -15,10 +15,11 @@ services:
         value: "10000"
       - key: NODE_ENV
         value: "production"
-      - key: GATEWAY_API_KEY
+      - key: TICLAW_GATEWAY_API_KEY
         sync: false
-      - key: GATEWAY_SECRET
+      - key: TICLAW_GATEWAY_SECRET
         generateValue: true
-      - key: GATEWAY_ALLOWED_NODE_IDS
+      - key: TICLAW_GATEWAY_ALLOWED_NODE_IDS
         sync: false
-
+      - key: TICLAW_GATEWAY_EXTERNAL_URL
+        sync: false

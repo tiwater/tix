@@ -30,15 +30,11 @@ export function readGatewayConfig(): GatewayConfig {
     }
   }
 
-  // 2. Override with Environment Variables
-  if (process.env.GATEWAY_URL) config.gateway_url = process.env.GATEWAY_URL;
-  else if (process.env.GATEWAY_HOSTPORT) config.gateway_url = `ws://${process.env.GATEWAY_HOSTPORT}`;
-  else if (process.env.GATEWAY_HOST && (process.env.GATEWAY_PORT || process.env.PORT)) {
-    config.gateway_url = `ws://${process.env.GATEWAY_HOST}:${process.env.GATEWAY_PORT || process.env.PORT}`;
-  }
-  if (process.env.GATEWAY_TRUST_TOKEN) config.trust_token = process.env.GATEWAY_TRUST_TOKEN;
-  if (process.env.GATEWAY_REPORTING_INTERVAL) {
-    config.reporting_interval = parseInt(process.env.GATEWAY_REPORTING_INTERVAL, 10);
+  // 2. Override with environment variables (canonical TICLAW_ names)
+  if (process.env.TICLAW_GATEWAY_URL) config.gateway_url = process.env.TICLAW_GATEWAY_URL;
+  if (process.env.TICLAW_GATEWAY_TRUST_TOKEN) config.trust_token = process.env.TICLAW_GATEWAY_TRUST_TOKEN;
+  if (process.env.TICLAW_GATEWAY_REPORTING_INTERVAL) {
+    config.reporting_interval = parseInt(process.env.TICLAW_GATEWAY_REPORTING_INTERVAL, 10);
   }
 
   // 3. Default gateway_url based on environment
@@ -46,7 +42,7 @@ export function readGatewayConfig(): GatewayConfig {
     config.gateway_url =
       process.env.NODE_ENV === 'production'
         ? 'wss://ticlaw-gateway.onrender.com'
-        : 'ws://localhost:2755';
+        : 'ws://127.0.0.1:2755';
   }
 
   return config;

@@ -13,8 +13,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/start.js",
-    "dev": "tsc --watch & sleep 2 && node --watch dist/start.js"
+    "start": "node --env-file=../../.env dist/start.js",
+    "dev": "tsc --watch & sleep 2 && node --env-file=../../.env --watch dist/start.js"
   },
   "files": [
     "dist"

@@ -1,14 +1,11 @@
-import crypto from 'node:crypto';
-
 /**
  * Cloud Node Provisioning — Render API integration.
  *
- * The gateway owns all infrastructure secrets (RENDER_API_KEY, GATEWAY_SECRET, etc.)
+ * The gateway owns all infrastructure secrets (RENDER_API_KEY, TICLAW_GATEWAY_SECRET, etc.)
  * and exposes HTTP endpoints for controllers (Supen) to manage cloud nodes.
  */
 
 const RENDER_API_BASE = 'https://api.render.com/v1';
-const MANAGED_BY = 'supen';
 const NODE_NAME_PREFIX = 'supen-node-';
 
 // ── Types ──
@@ -57,8 +54,8 @@ const tierPlanMap: Record<CloudNodeTier, { plan: string }> = {
 function getConfig(): RenderConfig {
   const apiKey = process.env.RENDER_API_KEY;
   const ownerId = process.env.RENDER_OWNER_ID;
-  const gatewayUrl = process.env.GATEWAY_EXTERNAL_URL || process.env.RENDER_EXTERNAL_URL || '';
-  const gatewaySecret = process.env.GATEWAY_SECRET || '';
+  const gatewayUrl = process.env.TICLAW_GATEWAY_EXTERNAL_URL || '';
+  const gatewaySecret = process.env.TICLAW_GATEWAY_SECRET || '';
   const imageUrl = process.env.RENDER_NODE_IMAGE || 'ghcr.io/tiwater/ticlaw:latest';
   const registryCredentialId = process.env.RENDER_REGISTRY_CREDENTIAL_ID || undefined;
 
@@ -86,10 +83,6 @@ function createNodeId(name: string): string {
 
 function buildServiceName(nodeId: string): string {
   return `${NODE_NAME_PREFIX}${nodeId}`;
-}
-
-function createHttpApiKey(): string {
-  return crypto.randomBytes(24).toString('hex');
 }
 
 async function renderRequest<T>(path: string, init: RequestInit, apiKey: string): Promise<T> {
@@ -130,8 +123,7 @@ function mapRenderService(service: any): CloudNodeRecord {
     envVars.filter((e: any) => e?.key).map((e: any) => [e.key, e.value]),
   );
 
-  const nodeId = envMap.SUPEN_NODE_ID
-    || envMap.TICLAW_NODE_ID
+  const nodeId = envMap.TICLAW_NODE_NAME
     || (typeof service.name === 'string' && service.name.startsWith(NODE_NAME_PREFIX)
       ? service.name.slice(NODE_NAME_PREFIX.length)
       : service.id);
@@ -143,20 +135,15 @@ function mapRenderService(service: any): CloudNodeRecord {
   const isSuspended = service.suspended === 'suspended' || service.suspended === true;
   const deployStatus = serviceDetails.deployStatus || service.service?.serviceDetails?.deployStatus || '';
   let status: string;
-  if (
-    deployStatus === 'suspended' ||
-    deployStatus === 'created' ||
-    deployStatus === 'build_in_progress' ||
-    deployStatus === 'update_in_progress'
-  ) {
-    // Render uses 'suspended' before first build, and others during deploys — treat as deploying
-    status = 'deploying';
-  } else if (isSuspended) {
+  if (isSuspended) {
     status = 'suspended';
   } else if (deployStatus === 'live') {
     status = 'live';
-  } else if (deployStatus === 'deactivated' || deployStatus === 'failed' || deployStatus === 'canceled') {
+  } else if (deployStatus === 'deactivated' || deployStatus === 'failed') {
     status = deployStatus;
+  } else if (deployStatus === 'suspended') {
+    // Render uses 'suspended' as initial deployStatus before first build — treat as deploying
+    status = 'deploying';
   } else if (deployStatus) {
     status = deployStatus;
   } else {
@@ -194,7 +181,7 @@ export function getCloudNodeMeta() {
 export async function listCloudNodes(): Promise<CloudNodeRecord[]> {
   if (!isConfigured()) return [];
   const config = getConfig();
-  const raw = await renderRequest<any>('/services?limit=100', { method: 'GET' }, config.apiKey);
+  const raw = await renderRequest<any>('/services', { method: 'GET' }, config.apiKey);
   const items: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.services) ? raw.services : [];
   const services = items.map((item: any) => item.service || item);
 
@@ -212,25 +199,11 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
   const nodeId = createNodeId(input.name);
   const imageUrl = normalizeUrl(config.imageUrl);
   const gatewayUrl = normalizeUrl(config.gatewayUrl);
-  const nodeRoute = `${gatewayUrl}/api/gateway/nodes/${nodeId}`;
-  const httpApiKey =
-    typeof input.extraEnv?.HTTP_API_KEY === 'string' && input.extraEnv.HTTP_API_KEY.trim()
-      ? input.extraEnv.HTTP_API_KEY.trim()
-      : createHttpApiKey();
 
   const envVars = Object.entries({
-    SUPEN_MANAGED_BY: MANAGED_BY,
-    SUPEN_NODE_ID: nodeId,
-    TICLAW_NODE_ID: nodeId,
-    NODE_ID: nodeId,
+    TICLAW_NODE_NAME: nodeId,
     TICLAW_GATEWAY_URL: gatewayUrl,
-    SUPEN_GATEWAY_URL: gatewayUrl,
-    TICLAW_GATEWAY_NODE_URL: nodeRoute,
-    SUPEN_GATEWAY_NODE_URL: nodeRoute,
-    SUPEN_NODE_NAME: input.name,
-    TICLAW_NODE_NAME: input.name,
-    HTTP_API_KEY: httpApiKey,
-    ...(config.gatewaySecret ? { GATEWAY_SECRET: config.gatewaySecret } : {}),
+    ...(config.gatewaySecret ? { TICLAW_GATEWAY_SECRET: config.gatewaySecret } : {}),
     ...(input.extraEnv || {}),
   }).map(([key, value]) => ({ key, value, sync: false }));
 

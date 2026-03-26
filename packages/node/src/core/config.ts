@@ -43,9 +43,8 @@ const envConfig = readEnvFile([
   'TASK_DEFAULT_STEP_TIMEOUT_MS',
   'TASK_DEFAULT_RETRY_COUNT',
   'TASK_DEFAULT_RETRY_BACKOFF_MS',
-  'TC_NODE_NAME',
+  'TICLAW_NODE_NAME',
   'TICLAW_AUTH_TOKEN',
-  'SUPEN_NODE_ID',
   'WORKSPACE_ROOT',
   'ALLOWED_ORIGINS',
 ]);
@@ -281,8 +280,7 @@ export const HTTP_API_KEY =
 
 export const TICLAW_AUTH_TOKEN =
   process.env.TICLAW_AUTH_TOKEN || envConfig.TICLAW_AUTH_TOKEN || '';
-export const SUPEN_NODE_ID =
-  process.env.SUPEN_NODE_ID || envConfig.SUPEN_NODE_ID || '';
+
 export const WORKSPACE_ROOT =
   process.env.WORKSPACE_ROOT || envConfig.WORKSPACE_ROOT || '';
 export const ALLOWED_ORIGINS =
@@ -372,10 +370,10 @@ export const MODELS_REGISTRY: ModelEntry[] = (() => {
 export const DEFAULT_MODEL: ModelEntry | undefined =
   MODELS_REGISTRY.find((m) => m.default) ?? MODELS_REGISTRY[0];
 
-// Node identity — derived from hostname or manual override via TC_NODE_NAME
+// Node identity — derived from hostname or manual override via TICLAW_NODE_NAME
 const rawHostname = os.hostname() || 'ticlaw-local';
 export const NODE_HOSTNAME =
-  process.env.TC_NODE_NAME || envConfig.TC_NODE_NAME || rawHostname;
+  process.env.TICLAW_NODE_NAME || envConfig.TICLAW_NODE_NAME || rawHostname;
 
 // ACP (Agent Communication Protocol) configuration
 export const ACP_ENABLED =

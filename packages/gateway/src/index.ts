@@ -56,11 +56,11 @@ const sseClients = new Map<string, Set<http.ServerResponse>>();
 let requestIdCounter = 0;
 
 /**
- * GATEWAY_API_KEY — API key that controller clients (e.g. Supen) must provide.
+ * TICLAW_GATEWAY_API_KEY — API key that controller clients (e.g. Supen) must provide.
  * When set, every inbound HTTP request must carry `Authorization: Bearer <key>`.
  * If unset, the gateway is in open mode (development only).
  */
-const GATEWAY_API_KEY = process.env.GATEWAY_API_KEY || '';
+const GATEWAY_API_KEY = process.env.TICLAW_GATEWAY_API_KEY || '';
 
 function parseCsvSet(value?: string): Set<string> {
   if (!value) return new Set();
@@ -73,20 +73,20 @@ function parseCsvSet(value?: string): Set<string> {
 }
 
 const ALLOWED_NODE_IDS = parseCsvSet(
-  process.env.GATEWAY_ALLOWED_NODE_IDS ?? process.env.HUB_ALLOWED_NODE_IDS,
+  process.env.TICLAW_GATEWAY_ALLOWED_NODE_IDS,
 );
 const ALLOWED_NODE_FINGERPRINTS = parseCsvSet(
-  process.env.GATEWAY_ALLOWED_NODE_FINGERPRINTS ?? process.env.HUB_ALLOWED_NODE_FINGERPRINTS,
+  process.env.TICLAW_GATEWAY_ALLOWED_NODE_FINGERPRINTS,
 );
 
 /**
- * GATEWAY_SECRET — pre-shared secret for node authentication.
+ * TICLAW_GATEWAY_SECRET — pre-shared secret for node authentication.
  * When set, every enroll/auth message MUST include a valid HMAC token.
  * Token format: `${nodeId}.${timestampMs}.${hmacHex}` where hmacHex is
  * HMAC-SHA256(secret, `${nodeId}:${timestampMs}`).
  * Timestamps more than TOKEN_VALIDITY_MS old are rejected (replay protection).
  */
-const GATEWAY_SECRET = process.env.GATEWAY_SECRET || '';
+const GATEWAY_SECRET = process.env.TICLAW_GATEWAY_SECRET || '';
 const TOKEN_VALIDITY_MS = 5 * 60 * 1000; // 5 minutes
 
 function verifyNodeToken(
@@ -453,7 +453,7 @@ export async function handleGatewayRequest(
       security: [{ bearerAuth: [] }],
       components: {
         securitySchemes: {
-          bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via GATEWAY_API_KEY env var.' },
+          bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via TICLAW_GATEWAY_API_KEY env var.' },
         },
       },
       paths: { ...gatewayPaths, ...nodePaths },
