@@ -74,6 +74,7 @@ import {
   getAgentModelConfig,
   ALLOWED_ORIGINS,
 } from '../core/config.js';
+import { readConfigYaml } from '../core/env.js';
 
 function inferMimeType(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
@@ -1684,6 +1685,34 @@ export class HttpChannel implements Channel {
             };
           }),
         });
+        return;
+      }
+
+      if ((pathname === '/api/v1/skills/install' || pathname === '/api/skills/install') && method === 'POST') {
+        let bodyObj: any;
+        try {
+          bodyObj = await readJsonBody(req);
+        } catch (e) {
+          writeProtocolError(res, 400, 'input_error', 'invalid_json', 'invalid json body');
+          return;
+        }
+        
+        if (!bodyObj?.url) {
+          writeProtocolError(res, 400, 'input_error', 'missing_url', 'url is required');
+          return;
+        }
+        const registry = new SkillsRegistry(SKILLS_CONFIG);
+        const ctx = adminContext || { actor: 'web-ui', isAdmin: true, approveLevel3: true };
+        try {
+          // Proxy priority: API body (from Supen UI) > config.yaml proxy field.
+          // Shell env vars (http_proxy etc.) are intentionally ignored.
+          const proxy = bodyObj.proxy || readConfigYaml(['HTTPS_PROXY'])['HTTPS_PROXY'] || undefined;
+          const result = (registry as any).installManagedSkill(bodyObj.url, ctx, { trustSource: true, proxy });
+          registry.enableSkill(result.name, ctx);
+          writeJson(res, 200, { ok: true, skill: result });
+        } catch (err: any) {
+          writeProtocolError(res, 400, 'input_error', 'skill_install_failed', err.message);
+        }
         return;
       }
 

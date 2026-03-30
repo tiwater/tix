@@ -88,6 +88,8 @@ export const ROUTES: RouteDef[] = [
   { method: 'GET',    path: '/api/v1/skills/{name}',                       tag: 'Skills',    summary: 'Get skill details', params: [skillName] },
   { method: 'POST',   path: '/api/v1/skills/{name}/enable',                tag: 'Skills',    summary: 'Enable skill', params: [skillName] },
   { method: 'POST',   path: '/api/v1/skills/{name}/disable',               tag: 'Skills',    summary: 'Disable skill', params: [skillName] },
+  { method: 'POST',   path: '/api/v1/skills/install',                      tag: 'Skills',    summary: 'Install dynamic skill by URL',
+    body: { required: true, schema: { type: 'object', properties: { source: { type: 'string' }, url: { type: 'string' } } } } },
 
   // ── Schedules ────────────────────────────────────────────────────────────
   { method: 'GET',    path: '/api/v1/schedules',                           tag: 'Schedules', summary: 'List schedules' },

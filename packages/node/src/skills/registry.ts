@@ -301,7 +301,7 @@ export class SkillsRegistry {
       );
     }
 
-    const materialized = materializeSkillSource(sourceSpec);
+    const materialized = materializeSkillSource(sourceSpec, { proxy: options.proxy });
     const managedRoot = this.managedSkillsRoot();
     ensureDir(managedRoot);
 

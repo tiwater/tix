@@ -3,12 +3,18 @@ import http from 'http';
 import crypto from 'crypto';
 import os from 'os';
 import fs from 'fs';
+import { Agent } from 'undici';
 import { logger } from './logger.js';
 import { readGatewayConfig, GatewayConfig } from './gateway-config.js';
 import { validateOutboundEndpoint } from './security.js';
 import { readEnrollmentState, verifyEnrollmentToken } from './enrollment.js';
 import { NODE_HOSTNAME, HTTP_API_KEY, HTTP_PORT, TICLAW_HOME } from './config.js';
 import { NewMessage } from './types.js';
+
+// Direct dispatcher that bypasses any http_proxy/https_proxy env vars.
+// Without this, Node.js global fetch routes loopback traffic through the
+// system proxy, causing 504 Gateway Timeouts on every API relay.
+const directAgent = new Agent();
 
 const GATEWAY_JID_PREFIX = 'gateway:';
 
@@ -247,7 +253,7 @@ export class Gateway {
       };
       if (payload.body && payload.method !== 'GET') fetchOpts.body = JSON.stringify(payload.body);
 
-      const res = await fetch(localUrl, fetchOpts);
+      const res = await fetch(localUrl, { ...fetchOpts, dispatcher: directAgent } as any);
       const contentType = res.headers.get('content-type') || '';
 
       if (contentType.includes('application/json')) {

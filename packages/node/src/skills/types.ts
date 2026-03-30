@@ -206,6 +206,7 @@ export interface SkillsCommandResult {
 export interface SkillInstallOptions {
   expectedHash?: string;
   trustSource?: boolean;
+  proxy?: string;
 }
 
 export interface ManagedSkillManifest {

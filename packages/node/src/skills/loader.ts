@@ -49,6 +49,7 @@ interface ResolvedSkillSource {
   canonical: string;
   path?: string;
   ref?: string;
+  subPath?: string;
   packageSpec?: string;
 }
 
@@ -246,13 +247,35 @@ export function resolveSkillApiCompatibility(
   };
 }
 
-function splitGitRef(spec: string): { source: string; ref?: string } {
-  const hashIndex = spec.lastIndexOf('#');
-  if (hashIndex === -1) return { source: spec };
+function splitGitRefAndPath(spec: string): { source: string; ref?: string; subPath?: string } {
+  let subPath: string | undefined;
+  let remaining = spec;
+  const dirIndex = remaining.indexOf('::');
+  if (dirIndex !== -1) {
+    subPath = remaining.slice(dirIndex + 2);
+    remaining = remaining.slice(0, dirIndex);
+  }
+  const hashIndex = remaining.lastIndexOf('#');
+  if (hashIndex === -1) return { source: remaining, subPath };
   return {
-    source: spec.slice(0, hashIndex),
-    ref: spec.slice(hashIndex + 1) || undefined,
+    source: remaining.slice(0, hashIndex),
+    ref: remaining.slice(hashIndex + 1) || undefined,
+    subPath
   };
+}
+
+function sanitizeGitUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.username || u.password) {
+      u.username = '';
+      u.password = '';
+      return u.toString();
+    }
+  } catch {
+    // fallback for ssh or missing protocol
+  }
+  return url;
 }
 
 function resolveExistingPath(raw: string): string | undefined {
@@ -316,17 +339,24 @@ function resolveThirdPartySkillSource(spec: string): ResolvedSkillSource {
 
   if (trimmed.startsWith('git+') || isLikelyGitSpec(trimmed)) {
     const normalized = trimmed.startsWith('git+') ? trimmed.slice(4) : trimmed;
-    const { source, ref } = splitGitRef(normalized);
+    const { source, ref, subPath } = splitGitRefAndPath(normalized);
+    const sanitizedSource = sanitizeGitUrl(source);
     const maybeLocalPath = normalizeFileLikePath(source);
     const localPath = resolveExistingPath(maybeLocalPath);
     const cloneSource = localPath || source;
-    const canonical = `${localPath || source}${ref ? `#${ref}` : ''}`;
+    const canonicalBase = localPath || sanitizedSource;
+    const canonical = `${canonicalBase}${ref ? '#' + ref : ''}${subPath ? '::' + subPath : ''}`;
+    const sanitizedSpec = spec.startsWith('git+') 
+        ? `git+${sanitizedSource}${ref ? '#' + ref : ''}${subPath ? '::' + subPath : ''}`
+        : `${sanitizedSource}${ref ? '#' + ref : ''}${subPath ? '::' + subPath : ''}`;
+    
     return {
       type: 'git',
-      spec: trimmed,
+      spec: sanitizedSpec,
       canonical,
       path: cloneSource,
       ref,
+      subPath,
     };
   }
 
@@ -402,6 +432,7 @@ function materializeLocalSource(
 function materializeGitSource(
   source: ResolvedSkillSource,
   targetDir: string,
+  options?: { proxy?: string },
 ): string {
   if (!source.path) {
     throw new Error(`Git source "${source.spec}" could not be resolved.`);
@@ -412,7 +443,24 @@ function materializeGitSource(
     args.push('--branch', source.ref);
   }
   args.push(source.path, targetDir);
-  execFileSync('git', args, { stdio: 'pipe' });
+
+  // Build a clean env: strip any inherited proxy vars from the shell,
+  // then only apply proxy if explicitly configured via settings/config.yaml.
+  const env = { ...process.env };
+  delete env.http_proxy;
+  delete env.https_proxy;
+  delete env.all_proxy;
+  delete env.HTTP_PROXY;
+  delete env.HTTPS_PROXY;
+  delete env.ALL_PROXY;
+  if (options?.proxy) {
+    env.http_proxy = options.proxy;
+    env.https_proxy = options.proxy;
+    env.HTTP_PROXY = options.proxy;
+    env.HTTPS_PROXY = options.proxy;
+  }
+
+  execFileSync('git', args, { stdio: 'pipe', env });
   fs.rmSync(path.join(targetDir, '.git'), { recursive: true, force: true });
   return targetDir;
 }
@@ -420,6 +468,7 @@ function materializeGitSource(
 function materializeNpmSource(
   source: ResolvedSkillSource,
   targetDir: string,
+  options?: { proxy?: string }
 ): string {
   if (!source.packageSpec) {
     throw new Error(`NPM source "${source.spec}" could not be resolved.`);
@@ -429,17 +478,33 @@ function materializeNpmSource(
   try {
     const npmCacheDir = path.join(packDir, '.npm-cache');
     ensureDir(npmCacheDir);
+
+    // Build a clean env: strip inherited proxy vars, apply explicit proxy only.
+    const env: Record<string, string | undefined> = { 
+      ...process.env,
+      npm_config_cache: npmCacheDir,
+      npm_config_userconfig: '/dev/null',
+    };
+    delete env.http_proxy;
+    delete env.https_proxy;
+    delete env.all_proxy;
+    delete env.HTTP_PROXY;
+    delete env.HTTPS_PROXY;
+    delete env.ALL_PROXY;
+    if (options?.proxy) {
+      env.http_proxy = options.proxy;
+      env.https_proxy = options.proxy;
+      env.HTTP_PROXY = options.proxy;
+      env.HTTPS_PROXY = options.proxy;
+    }
+
     const packRaw = execFileSync(
       'npm',
       ['pack', source.packageSpec, '--json'],
       {
         cwd: packDir,
         encoding: 'utf-8',
-        env: {
-          ...process.env,
-          npm_config_cache: npmCacheDir,
-          npm_config_userconfig: '/dev/null',
-        },
+        env,
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
@@ -456,19 +521,21 @@ function materializeNpmSource(
   }
 }
 
-export function materializeSkillSource(spec: string): MaterializedSkillSource {
+export function materializeSkillSource(spec: string, options?: { proxy?: string }): MaterializedSkillSource {
   const source = resolveThirdPartySkillSource(spec);
   const workspaceDir = fs.mkdtempSync(
     path.join(os.tmpdir(), 'ticlaw-skill-src-'),
   );
   const targetDir = path.join(workspaceDir, 'skill');
 
-  const skillDir =
+  const loadedDir =
     source.type === 'local'
       ? materializeLocalSource(source, targetDir)
       : source.type === 'git'
-        ? materializeGitSource(source, targetDir)
-        : materializeNpmSource(source, targetDir);
+        ? materializeGitSource(source, targetDir, options)
+        : materializeNpmSource(source, targetDir, options);
+
+  const skillDir = source.subPath ? path.join(loadedDir, source.subPath) : loadedDir;
 
   return {
     sourceRef: {
