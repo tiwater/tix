@@ -450,14 +450,18 @@ function materializeGitSource(
   delete env.http_proxy;
   delete env.https_proxy;
   delete env.all_proxy;
+  delete env.no_proxy;
   delete env.HTTP_PROXY;
   delete env.HTTPS_PROXY;
   delete env.ALL_PROXY;
+  delete env.NO_PROXY;
   if (options?.proxy) {
     env.http_proxy = options.proxy;
     env.https_proxy = options.proxy;
+    env.all_proxy = options.proxy;
     env.HTTP_PROXY = options.proxy;
     env.HTTPS_PROXY = options.proxy;
+    env.ALL_PROXY = options.proxy;
   }
 
   execFileSync('git', args, { stdio: 'pipe', env });
@@ -488,14 +492,23 @@ function materializeNpmSource(
     delete env.http_proxy;
     delete env.https_proxy;
     delete env.all_proxy;
+    delete env.no_proxy;
     delete env.HTTP_PROXY;
     delete env.HTTPS_PROXY;
     delete env.ALL_PROXY;
+    delete env.NO_PROXY;
+    delete env.npm_config_proxy;
+    delete env.npm_config_https_proxy;
+    delete env.npm_config_noproxy;
     if (options?.proxy) {
       env.http_proxy = options.proxy;
       env.https_proxy = options.proxy;
+      env.all_proxy = options.proxy;
       env.HTTP_PROXY = options.proxy;
       env.HTTPS_PROXY = options.proxy;
+      env.ALL_PROXY = options.proxy;
+      env.npm_config_proxy = options.proxy;
+      env.npm_config_https_proxy = options.proxy;
     }
 
     const packRaw = execFileSync(
