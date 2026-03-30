@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { readConfigYaml } from '../core/env.js';
 import { SkillsRegistry } from './registry.js';
 import type {
   ListedSkill,
@@ -618,17 +619,22 @@ function executeMutation(
   options: SkillInstallOptions = {},
 ): SkillsCommandResult {
   const registry = new SkillsRegistry();
+  const configProxy = readConfigYaml(['HTTPS_PROXY'])['HTTPS_PROXY'];
+  const mutationOptions: SkillInstallOptions = {
+    ...options,
+    proxy: options.proxy || configProxy,
+  };
 
   try {
     if (action === 'install') {
-      const record = registry.installSkill(target, context, options);
+      const record = registry.installSkill(target, context, mutationOptions);
       return ok(
         `Installed ${record.name} (${record.version}) from ${record.sourceRef.type}. Enabled=${record.enabled}.`,
       );
     }
 
     if (action === 'upgrade') {
-      const record = registry.upgradeSkill(target, context, options);
+      const record = registry.upgradeSkill(target, context, mutationOptions);
       return ok(
         `Upgraded ${record.name} to ${record.version}. Source=${record.sourceRef.type}.`,
       );
