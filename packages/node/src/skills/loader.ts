@@ -357,7 +357,7 @@ function copyDirectory(sourceDir: string, targetDir: string): void {
 
 function extractTarball(archivePath: string, targetDir: string): string {
   ensureDir(targetDir);
-  execFileSync('tar', ['-xzf', archivePath, '-C', targetDir], {
+  execFileSync('tar', ['-xz', '-f', archivePath, '-C', targetDir], {
     stdio: 'pipe',
   });
 
@@ -407,11 +407,18 @@ function materializeGitSource(
     throw new Error(`Git source "${source.spec}" could not be resolved.`);
   }
 
+  if (source.path.startsWith('-')) {
+    throw new Error(`Invalid git source path: ${source.path}`);
+  }
+  if (source.ref?.startsWith('-')) {
+    throw new Error(`Invalid git ref: ${source.ref}`);
+  }
+
   const args = ['clone', '--depth', '1', '--single-branch'];
   if (source.ref) {
     args.push('--branch', source.ref);
   }
-  args.push(source.path, targetDir);
+  args.push('--', source.path, targetDir);
   execFileSync('git', args, { stdio: 'pipe' });
   fs.rmSync(path.join(targetDir, '.git'), { recursive: true, force: true });
   return targetDir;
@@ -423,6 +430,10 @@ function materializeNpmSource(
 ): string {
   if (!source.packageSpec) {
     throw new Error(`NPM source "${source.spec}" could not be resolved.`);
+  }
+
+  if (source.packageSpec.startsWith('-')) {
+    throw new Error(`Invalid NPM package spec: ${source.packageSpec}`);
   }
 
   const packDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticlaw-skill-pack-'));

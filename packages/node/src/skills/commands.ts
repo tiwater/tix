@@ -327,7 +327,7 @@ function executeAuthScript(
   const interactive =
     action !== 'status' && process.stdin.isTTY && process.stdout.isTTY;
 
-  const result = spawnSync(runner, [scriptPath], {
+  const result = spawnSync(runner, ['--', scriptPath], {
     cwd: entry.skill.directory,
     env: process.env,
     encoding: 'utf-8',
