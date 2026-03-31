@@ -264,11 +264,12 @@ function setCorsHeaders(req: http.IncomingMessage, res: http.ServerResponse): vo
     res.setHeader('Vary', 'Origin');
   }
 
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE, HEAD');
   res.setHeader(
     'Access-Control-Allow-Headers',
     'Authorization, Content-Type, X-API-Key',
   );
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Last-Modified');
 }
 
 function writeJson(
@@ -808,7 +809,7 @@ export class HttpChannel implements Channel {
       // ── Workspace file access ──
       const workspaceMatch = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/workspace\/(.*)$/)
         ?? pathname.match(/^\/api\/workspace\/(.*)$/);
-      if (workspaceMatch && req.method === 'GET') {
+      if (workspaceMatch && (req.method === 'GET' || req.method === 'HEAD')) {
         // /api/v1/agents/:agent_id/workspace/<relpath> — agent_id is captured group 1 (v1) or falls back to query param (legacy)
         const agentId = workspaceMatch[2] !== undefined
           ? decodeURIComponent(workspaceMatch[1])
@@ -862,9 +863,16 @@ export class HttpChannel implements Channel {
         res.writeHead(200, {
           'Content-Type': mime,
           'Content-Length': stat.size,
+          'Last-Modified': stat.mtime.toUTCString(),
           'Cache-Control': 'public, max-age=60',
           'Content-Disposition': disposition,
         });
+        
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        
         fs.createReadStream(filePath).pipe(res);
         return;
       }
