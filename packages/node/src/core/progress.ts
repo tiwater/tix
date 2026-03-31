@@ -28,10 +28,12 @@ function summarizeToolTarget(tool: string, target: string): string | null {
   const cleaned = toSingleLine(target);
   if (!cleaned) return null;
 
+  const isBash = tool.toLowerCase().includes('bash');
+
   try {
     const parsed = JSON.parse(cleaned);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return truncate(cleaned);
+      return truncate(cleaned, isBash ? 500 : 120);
     }
 
     const payload = parsed as Record<string, unknown>;
@@ -52,9 +54,10 @@ function summarizeToolTarget(tool: string, target: string): string | null {
       extractScalar(payload, preferredKeys) ||
       extractScalar(payload, Object.keys(payload));
     if (!picked) return null;
-    return truncate(toSingleLine(picked));
+    // Preserve newlines for Bash commands so the UI can show full scripts
+    return isBash ? truncate(picked.trim(), 500) : truncate(toSingleLine(picked));
   } catch {
-    return truncate(cleaned);
+    return truncate(cleaned, isBash ? 500 : 120);
   }
 }
 
