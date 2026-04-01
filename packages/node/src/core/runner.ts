@@ -236,6 +236,7 @@ interface ActiveHandler {
   onResult: (event: any) => Promise<void>;
   startTime: number;
   textParts: string[];
+  streamText: string;
   pendingFiles: Set<string>;
   resolve: () => void;
   reject: (err: Error) => void;
@@ -426,6 +427,10 @@ function startOutputLoop(key: string, warm: WarmSession): void {
 
         logger.debug({ eventType: event.type }, 'AgentRunner Event Received');
 
+        if (event.type === 'stream_event' && event.event?.delta?.text) {
+          handler.streamText += event.event.delta.text;
+        }
+
         await handler.onEvent(event, Date.now() - handler.startTime);
 
         if (event.type === 'assistant') {
@@ -605,6 +610,7 @@ export class AgentRunner {
         const handler: ActiveHandler = {
           startTime: Date.now(),
           textParts: [],
+          streamText: '',
           pendingFiles: new Set(),
           resolve,
           reject,
@@ -612,9 +618,12 @@ export class AgentRunner {
             await this.handleExecutorEvent(event, elapsed);
           },
           onResult: async (event: any) => {
+            const fallbackText =
+              handler.streamText.trim() ||
+              handler.textParts.join('\n\n').trim();
             let finalText =
               event.result?.trim() ||
-              handler.textParts.join('\n').trim() ||
+              fallbackText ||
               '(done)';
 
             // Rewrite workspace file paths to ticlaw:// protocol URLs
