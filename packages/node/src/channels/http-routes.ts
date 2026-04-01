@@ -43,6 +43,40 @@ const sessionId: RouteParam   = { name: 'session_id', in: 'path', required: true
 const scheduleId: RouteParam  = { name: 'id',         in: 'path', required: true,  type: 'string' };
 const skillName: RouteParam   = { name: 'name',       in: 'path', required: true,  type: 'string' };
 
+
+const bindingSchema = {
+  type: 'object',
+  required: ['chat_jid', 'agent_id', 'kind', 'channel', 'created_at', 'updated_at'],
+  properties: {
+    chat_jid: { type: 'string' },
+    agent_id: { type: 'string' },
+    kind: { type: 'string', enum: ['user', 'chat'] },
+    channel: { type: 'string' },
+    pair_code: { type: 'string', nullable: true },
+    approved_by: { type: 'string', nullable: true },
+    created_at: { type: 'string', format: 'date-time' },
+    updated_at: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+const pendingPairingSchema = {
+  type: 'object',
+  required: ['pair_code', 'chat_jid', 'requested_agent_id', 'kind', 'channel', 'status', 'created_at', 'expires_at'],
+  properties: {
+    pair_code: { type: 'string' },
+    chat_jid: { type: 'string' },
+    requested_agent_id: { type: 'string' },
+    kind: { type: 'string', enum: ['user', 'chat'] },
+    channel: { type: 'string' },
+    status: { type: 'string', enum: ['pending', 'approved', 'expired'] },
+    created_at: { type: 'string', format: 'date-time' },
+    expires_at: { type: 'string', format: 'date-time' },
+    approved_at: { type: 'string', format: 'date-time', nullable: true },
+    approved_by: { type: 'string', nullable: true },
+    bound_agent_id: { type: 'string', nullable: true },
+  },
+} as const;
+
 export const ROUTES: RouteDef[] = [
   // ── Node ────────────────────────────────────────────────────────────────
   { method: 'GET',    path: '/health',                                     tag: 'Node',      summary: 'Health check' },
@@ -113,40 +147,11 @@ export const ROUTES: RouteDef[] = [
         ok: { type: 'boolean' },
         bindings: {
           type: 'array',
-          items: {
-            type: 'object',
-            required: ['chat_jid', 'agent_id', 'kind', 'channel', 'created_at', 'updated_at'],
-            properties: {
-              chat_jid: { type: 'string' },
-              agent_id: { type: 'string' },
-              kind: { type: 'string', enum: ['user', 'chat'] },
-              channel: { type: 'string' },
-              pair_code: { type: 'string' },
-              approved_by: { type: 'string' },
-              created_at: { type: 'string', format: 'date-time' },
-              updated_at: { type: 'string', format: 'date-time' },
-            },
-          },
+          items: bindingSchema,
         },
         pending: {
           type: 'array',
-          items: {
-            type: 'object',
-            required: ['pair_code', 'chat_jid', 'requested_agent_id', 'kind', 'channel', 'status', 'created_at', 'expires_at'],
-            properties: {
-              pair_code: { type: 'string' },
-              chat_jid: { type: 'string' },
-              requested_agent_id: { type: 'string' },
-              kind: { type: 'string', enum: ['user', 'chat'] },
-              channel: { type: 'string' },
-              status: { type: 'string', enum: ['pending', 'approved', 'expired'] },
-              created_at: { type: 'string', format: 'date-time' },
-              expires_at: { type: 'string', format: 'date-time' },
-              approved_at: { type: 'string', format: 'date-time' },
-              approved_by: { type: 'string' },
-              bound_agent_id: { type: 'string' },
-            },
-          },
+          items: pendingPairingSchema,
         },
       },
     } },
@@ -157,37 +162,8 @@ export const ROUTES: RouteDef[] = [
       required: ['ok', 'pairing', 'binding'],
       properties: {
         ok: { type: 'boolean' },
-        pairing: {
-          type: 'object',
-          required: ['pair_code', 'chat_jid', 'requested_agent_id', 'kind', 'channel', 'status', 'created_at', 'expires_at'],
-          properties: {
-            pair_code: { type: 'string' },
-            chat_jid: { type: 'string' },
-            requested_agent_id: { type: 'string' },
-            kind: { type: 'string', enum: ['user', 'chat'] },
-            channel: { type: 'string' },
-            status: { type: 'string', enum: ['pending', 'approved', 'expired'] },
-            created_at: { type: 'string', format: 'date-time' },
-            expires_at: { type: 'string', format: 'date-time' },
-            approved_at: { type: 'string', format: 'date-time' },
-            approved_by: { type: 'string' },
-            bound_agent_id: { type: 'string' },
-          },
-        },
-        binding: {
-          type: 'object',
-          required: ['chat_jid', 'agent_id', 'kind', 'channel', 'created_at', 'updated_at'],
-          properties: {
-            chat_jid: { type: 'string' },
-            agent_id: { type: 'string' },
-            kind: { type: 'string', enum: ['user', 'chat'] },
-            channel: { type: 'string' },
-            pair_code: { type: 'string' },
-            approved_by: { type: 'string' },
-            created_at: { type: 'string', format: 'date-time' },
-            updated_at: { type: 'string', format: 'date-time' },
-          },
-        },
+        pairing: pendingPairingSchema,
+        binding: bindingSchema,
       },
     } },
   { method: 'DELETE', path: '/api/v1/pairings',                            tag: 'Pairing', summary: 'Remove a binding',
