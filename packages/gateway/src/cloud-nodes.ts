@@ -75,6 +75,23 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+function normalizeGatewayWsUrl(url: string): string {
+  const normalized = normalizeUrl(url.trim());
+  if (!normalized) return '';
+  if (normalized.startsWith('https://')) return `wss://${normalized.slice('https://'.length)}`;
+  if (normalized.startsWith('http://')) return `ws://${normalized.slice('http://'.length)}`;
+  return normalized;
+}
+
+function makeRandomSecret(length = 40): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let out = '';
+  for (let i = 0; i < length; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+}
+
 function createNodeId(name: string): string {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const rand = Math.random().toString(36).slice(2, 8);
@@ -198,14 +215,19 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
   const config = getConfig();
   const nodeId = createNodeId(input.name);
   const imageUrl = normalizeUrl(config.imageUrl);
-  const gatewayUrl = normalizeUrl(config.gatewayUrl);
+  const gatewayUrl = normalizeGatewayWsUrl(config.gatewayUrl);
+  if (!gatewayUrl) {
+    throw new Error('Missing TICLAW_GATEWAY_EXTERNAL_URL: cannot provision cloud node without gateway URL');
+  }
 
+  const callerEnv = input.extraEnv || {};
   const envVars = Object.entries({
     TICLAW_NODE_NAME: nodeId,
     TICLAW_GATEWAY_URL: gatewayUrl,
+    HTTP_API_KEY: callerEnv.HTTP_API_KEY || makeRandomSecret(),
     ...(config.gatewaySecret ? { TICLAW_GATEWAY_SECRET: config.gatewaySecret } : {}),
-    ...(input.extraEnv || {}),
-  }).map(([key, value]) => ({ key, value, sync: false }));
+    ...callerEnv,
+  }).map(([key, value]) => ({ key, value: String(value), sync: false }));
 
   const plan = tierPlanMap[input.tier].plan;
   const imageBlock: Record<string, string> = { imagePath: imageUrl };
