@@ -1,5 +1,5 @@
 /**
- * TiClaw Gateway — WebSocket relay that accepts inbound node node connections.
+ * TiClaw Gateway — WebSocket relay that accepts inbound runner connections.
  *
  * Standalone package — no ticlaw core dependencies.
  * Ticos/Supen can `import { attachGateway } from '@ticlaw/gateway'` to embed.
@@ -8,17 +8,17 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { listCloudNodes, launchCloudNode, deleteCloudNode, getCloudNodeMeta } from './cloud-nodes.js';
+import { listCloudRunners, launchCloudRunner, deleteCloudRunner, getCloudRunnerMeta } from './cloud-runners.js';
 
-export interface NodeInfo {
-  node_id: string;
-  node_fingerprint: string;
+export interface RemoteRunner {
+  runner_id: string;
+  runner_fingerprint: string;
   trusted: boolean;
   /** True if the WebSocket connection is currently open. */
   online: boolean;
-  /** ISO timestamp of last message received from this node. */
+  /** ISO timestamp of last message received from this runner. */
   last_seen?: string;
-  /** IP address the node connected from. */
+  /** IP address the runner connected from. */
   ip?: string;
   /** System telemetry data. */
   telemetry?: any;
@@ -45,12 +45,12 @@ export interface GatewayOptions {
 
 // ── State ──
 
-interface NodeState {
-  info: NodeInfo;
+interface RunnerState {
+  info: RemoteRunner;
   lastSeen: number;
 }
 
-const nodes = new Map<WebSocket, NodeState>();
+const runners = new Map<WebSocket, RunnerState>();
 const pendingRequests = new Map<string, PendingRequest>();
 const sseClients = new Map<string, Set<http.ServerResponse>>();
 let requestIdCounter = 0;
@@ -72,26 +72,26 @@ function parseCsvSet(value?: string): Set<string> {
   );
 }
 
-const ALLOWED_NODE_IDS = parseCsvSet(
-  process.env.TICLAW_GATEWAY_ALLOWED_NODE_IDS,
+const ALLOWED_RUNNER_IDS = parseCsvSet(
+  process.env.TICLAW_GATEWAY_ALLOWED_RUNNER_IDS,
 );
-const ALLOWED_NODE_FINGERPRINTS = parseCsvSet(
-  process.env.TICLAW_GATEWAY_ALLOWED_NODE_FINGERPRINTS,
+const ALLOWED_RUNNER_FINGERPRINTS = parseCsvSet(
+  process.env.TICLAW_GATEWAY_ALLOWED_RUNNER_FINGERPRINTS,
 );
 
 /**
- * TICLAW_GATEWAY_SECRET — pre-shared secret for node authentication.
+ * TICLAW_GATEWAY_SECRET — pre-shared secret for runner authentication.
  * When set, every enroll/auth message MUST include a valid HMAC token.
- * Token format: `${nodeId}.${timestampMs}.${hmacHex}` where hmacHex is
- * HMAC-SHA256(secret, `${nodeId}:${timestampMs}`).
+ * Token format: `${runnerId}.${timestampMs}.${hmacHex}` where hmacHex is
+ * HMAC-SHA256(secret, `${runnerId}:${timestampMs}`).
  * Timestamps more than TOKEN_VALIDITY_MS old are rejected (replay protection).
  */
 const GATEWAY_SECRET = process.env.TICLAW_GATEWAY_SECRET || '';
 const TOKEN_VALIDITY_MS = 5 * 60 * 1000; // 5 minutes
 
-function verifyNodeToken(
+function verifyRunnerToken(
   token: string | undefined,
-  nodeId: string,
+  runnerId: string,
 ): { ok: boolean; code?: string } {
   if (!GATEWAY_SECRET) {
     // No secret configured — gateway is in open mode (warn once at startup)
@@ -104,9 +104,9 @@ function verifyNodeToken(
   if (parts.length !== 3) {
     return { ok: false, code: 'token_malformed' };
   }
-  const [tokenNodeId, tsStr, givenHmac] = parts as [string, string, string];
-  if (tokenNodeId !== nodeId) {
-    return { ok: false, code: 'token_node_mismatch' };
+  const [tokenRunnerId, tsStr, givenHmac] = parts as [string, string, string];
+  if (tokenRunnerId !== runnerId) {
+    return { ok: false, code: 'token_runner_mismatch' };
   }
   const ts = parseInt(tsStr, 10);
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > TOKEN_VALIDITY_MS) {
@@ -114,7 +114,7 @@ function verifyNodeToken(
   }
   const expected = crypto
     .createHmac('sha256', GATEWAY_SECRET)
-    .update(`${nodeId}:${tsStr}`)
+    .update(`${runnerId}:${tsStr}`)
     .digest('hex');
   try {
     const givenBuf = Buffer.from(givenHmac, 'hex');
@@ -131,13 +131,13 @@ function verifyNodeToken(
   return { ok: true };
 }
 
-function isNodeAllowed(nodeId: string, nodeFingerprint: string): boolean {
-  if (ALLOWED_NODE_IDS.size > 0 && !ALLOWED_NODE_IDS.has(nodeId)) {
+function isRunnerAllowed(runnerId: string, runnerFingerprint: string): boolean {
+  if (ALLOWED_RUNNER_IDS.size > 0 && !ALLOWED_RUNNER_IDS.has(runnerId)) {
     return false;
   }
   if (
-    ALLOWED_NODE_FINGERPRINTS.size > 0 &&
-    !ALLOWED_NODE_FINGERPRINTS.has(nodeFingerprint)
+    ALLOWED_RUNNER_FINGERPRINTS.size > 0 &&
+    !ALLOWED_RUNNER_FINGERPRINTS.has(runnerFingerprint)
   ) {
     return false;
   }
@@ -146,43 +146,43 @@ function isNodeAllowed(nodeId: string, nodeFingerprint: string): boolean {
 
 // ── Public API ──
 
-export function listNodes(): NodeInfo[] {
-  return Array.from(nodes.values()).map(({ info, lastSeen }) => ({
+export function listRunners(): RemoteRunner[] {
+  return Array.from(runners.values()).map(({ info, lastSeen }) => ({
     ...info,
     online: true,
     last_seen: new Date(lastSeen).toISOString(),
   }));
 }
 
-/** Get the WebSocket for a specific node by node_id. */
-export function getNodeById(nodeId: string): WebSocket | null {
-  for (const [ws, { info }] of nodes) {
-    if (info.node_id === nodeId && info.trusted && ws.readyState === WebSocket.OPEN) return ws;
+/** Get the WebSocket for a specific runner by runner_id. */
+export function getRunnerById(runnerId: string): WebSocket | null {
+  for (const [ws, { info }] of runners) {
+    if (info.runner_id === runnerId && info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
 }
 
-export function getActiveNode(): WebSocket | null {
-  for (const [ws, { info }] of nodes) {
+export function getActiveRunner(): WebSocket | null {
+  for (const [ws, { info }] of runners) {
     if (info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
 }
 
-export function relayToNode(
+export function relayToRunner(
   method: string,
   path: string,
   body?: unknown,
   timeoutMs = 15000,
-  targetNodeId?: string,
+  targetRunnerId?: string,
 ): Promise<RelayResult> {
   return new Promise((resolve) => {
-    const node = targetNodeId ? getNodeById(targetNodeId) : getActiveNode();
-    if (!node) {
-      const msg = targetNodeId
-        ? `Node '${targetNodeId}' is not connected to this gateway`
-        : 'No node is currently connected to this gateway';
-      resolve({ status: 503, headers: {}, body: { error: 'no_node_connected', message: msg } });
+    const runner = targetRunnerId ? getRunnerById(targetRunnerId) : getActiveRunner();
+    if (!runner) {
+      const msg = targetRunnerId
+        ? `Runner '${targetRunnerId}' is not connected to this gateway`
+        : 'No runner is currently connected to this gateway';
+      resolve({ status: 503, headers: {}, body: { error: 'no_runner_connected', message: msg } });
       return;
     }
 
@@ -192,88 +192,88 @@ export function relayToNode(
       resolve({
         status: 504,
         headers: {},
-        body: { error: 'timeout', message: 'Node did not respond in time' },
+        body: { error: 'timeout', message: 'Runner did not respond in time' },
       });
     }, timeoutMs);
 
     pendingRequests.set(reqId, { resolve, timer });
-    node.send(
+    runner.send(
       JSON.stringify({ type: 'api_request', request_id: reqId, method, path, body }),
     );
   });
 }
 
-// ── Node message handler ──
+// ── Runner message handler ──
 
-function handleNodeMessage(
+function handleRunnerMessage(
   ws: WebSocket,
   msg: Record<string, unknown>,
   log: GatewayOptions['logger'],
 ): void {
   // Update last_seen on every message
-  const state = nodes.get(ws);
+  const state = runners.get(ws);
   if (state) state.lastSeen = Date.now();
 
   switch (msg.type) {
     case 'enroll': {
-      const node_id = msg.node_id as string;
-      const node_fingerprint = msg.node_fingerprint as string;
-      const ip = nodes.get(ws)?.info.ip;
+      const runner_id = msg.runner_id as string;
+      const runner_fingerprint = msg.runner_fingerprint as string;
+      const ip = runners.get(ws)?.info.ip;
       // gateway_token = HMAC credential (separate from enrollment trust_token)
-      const tokenCheck = verifyNodeToken(msg.gateway_token as string | undefined, node_id);
+      const tokenCheck = verifyRunnerToken(msg.gateway_token as string | undefined, runner_id);
       if (!tokenCheck.ok) {
         log?.warn?.(
-          `[gateway] Rejected node enrollment for id=${node_id}: ${tokenCheck.code}`,
+          `[gateway] Rejected runner enrollment for id=${runner_id}: ${tokenCheck.code}`,
         );
         ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
-      if (!isNodeAllowed(node_id, node_fingerprint)) {
+      if (!isRunnerAllowed(runner_id, runner_fingerprint)) {
         log?.warn?.(
-          `[gateway] Rejected node enrollment for id=${node_id} from ${ip || 'unknown-ip'} due to allowlist policy`,
+          `[gateway] Rejected runner enrollment for id=${runner_id} from ${ip || 'unknown-ip'} due to allowlist policy`,
         );
-        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: 'node_not_allowed' }));
+        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: 'runner_not_allowed' }));
         ws.close();
         break;
       }
-      nodes.set(ws, { info: { node_id, node_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
-      log?.info?.(`[gateway] Node enrolled: ${node_id}`);
-      ws.send(JSON.stringify({ type: 'enrollment_result', ok: true, node_id, node_fingerprint }));
+      runners.set(ws, { info: { runner_id, runner_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
+      log?.info?.(`[gateway] Runner enrolled: ${runner_id}`);
+      ws.send(JSON.stringify({ type: 'enrollment_result', ok: true, runner_id, runner_fingerprint }));
       break;
     }
 
     case 'auth': {
-      const node_id = msg.node_id as string;
-      const node_fingerprint = msg.node_fingerprint as string;
-      const ip = nodes.get(ws)?.info.ip;
-      const tokenCheck = verifyNodeToken(msg.token as string | undefined, node_id);
+      const runner_id = msg.runner_id as string;
+      const runner_fingerprint = msg.runner_fingerprint as string;
+      const ip = runners.get(ws)?.info.ip;
+      const tokenCheck = verifyRunnerToken(msg.token as string | undefined, runner_id);
       if (!tokenCheck.ok) {
-        log?.warn?.(`[gateway] Rejected node auth for id=${node_id}: ${tokenCheck.code}`);
+        log?.warn?.(`[gateway] Rejected runner auth for id=${runner_id}: ${tokenCheck.code}`);
         ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
-      if (!isNodeAllowed(node_id, node_fingerprint)) {
-        log?.warn?.(`[gateway] Rejected node auth for id=${node_id} from ${ip || 'unknown-ip'} due to allowlist policy`);
-        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: 'node_not_allowed' }));
+      if (!isRunnerAllowed(runner_id, runner_fingerprint)) {
+        log?.warn?.(`[gateway] Rejected runner auth for id=${runner_id} from ${ip || 'unknown-ip'} due to allowlist policy`);
+        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: 'runner_not_allowed' }));
         ws.close();
         break;
       }
-      nodes.set(ws, { info: { node_id, node_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
-      log?.info?.(`[gateway] Node authenticated: ${node_id}`);
+      runners.set(ws, { info: { runner_id, runner_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
+      log?.info?.(`[gateway] Runner authenticated: ${runner_id}`);
       ws.send(JSON.stringify({ type: 'auth_result', ok: true }));
       break;
     }
 
     case 'report': {
-      const state = nodes.get(ws);
+      const state = runners.get(ws);
       if (state) {
         state.lastSeen = Date.now();
         if (msg.telemetry) {
           state.info.telemetry = msg.telemetry;
         }
-        log?.debug?.(`[gateway] Report from ${state.info.node_id}: ${msg.status}`);
+        log?.debug?.(`[gateway] Report from ${state.info.runner_id}: ${msg.status}`);
       }
       break;
     }
@@ -318,10 +318,10 @@ function handleSSERelay(
   res: http.ServerResponse,
   url: URL,
 ): void {
-  const node = getActiveNode();
-  if (!node) {
+  const runner = getActiveRunner();
+  if (!runner) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'no_node_connected' }));
+    res.end(JSON.stringify({ error: 'no_runner_connected' }));
     return;
   }
 
@@ -338,7 +338,7 @@ function handleSSERelay(
   sseClients.get(streamKey)!.add(res);
 
   const reqId = `gateway-sse-${++requestIdCounter}`;
-  node.send(
+  runner.send(
     JSON.stringify({ type: 'sse_subscribe', request_id: reqId, path: streamKey }),
   );
 
@@ -352,7 +352,7 @@ function handleSSERelay(
 
 /**
  * Attach the WebSocket gateway to an HTTP server.
- * Call this on any http.Server to enable node connections.
+ * Call this on any http.Server to enable runner connections.
  */
 export function attachGateway(
   httpServer: http.Server,
@@ -376,24 +376,24 @@ export function attachGateway(
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     const ipText = Array.isArray(ip) ? ip[0] : String(ip || '');
     // Pre-populate state with IP so enroll/auth handlers can read it
-    nodes.set(ws, {
-      info: { node_id: '', node_fingerprint: '', trusted: false, online: true, ip: ipText },
+    runners.set(ws, {
+      info: { runner_id: '', runner_fingerprint: '', trusted: false, online: true, ip: ipText },
       lastSeen: Date.now(),
     });
-    log.info?.(`[gateway] New node connection from ${ipText}`);
+    log.info?.(`[gateway] New runner connection from ${ipText}`);
 
     ws.on('message', (data) => {
       try {
-        handleNodeMessage(ws, JSON.parse(data.toString()), log);
+        handleRunnerMessage(ws, JSON.parse(data.toString()), log);
       } catch (err) {
         log.error?.('[gateway] Parse error:', err);
       }
     });
 
     ws.on('close', () => {
-      const state = nodes.get(ws);
-      if (state?.info.node_id) log.info?.(`[gateway] Node disconnected: ${state.info.node_id}`);
-      nodes.delete(ws);
+      const state = runners.get(ws);
+      if (state?.info.runner_id) log.info?.(`[gateway] Runner disconnected: ${state.info.runner_id}`);
+      runners.delete(ws);
     });
 
     ws.on('error', (err) => {
@@ -408,7 +408,7 @@ export function attachGateway(
 // ── HTTP request handler (API relay middleware) ──
 
 /**
- * Handle an HTTP request — route gateway API or relay to node.
+ * Handle an HTTP request — route gateway API or relay to runner.
  * Returns true if the request was handled.
  */
 export async function handleGatewayRequest(
@@ -421,33 +421,33 @@ export async function handleGatewayRequest(
   if (url.pathname === '/openapi.json' && req.method === 'GET') {
     const gatewayUrl = `http://${req.headers.host || 'localhost'}`;
 
-    // Gateway-native paths (always present, no node needed)
+    // Gateway-native paths (always present, no runner needed)
     const gatewayPaths: Record<string, unknown> = {
       '/openapi.json': { get: { tags: ['Gateway'], summary: 'OpenAPI spec (this document)', security: [], responses: { '200': { description: 'OpenAPI 3.0 JSON' } } } },
-      '/health': { get: { tags: ['Gateway'], summary: 'Gateway health (node count, uptime)', security: [], responses: { '200': { description: 'OK' } } } },
-      '/api/gateway/nodes': { get: { tags: ['Gateway'], summary: 'List connected nodes', responses: { '200': { description: 'Nodes array' } } } },
+      '/health': { get: { tags: ['Gateway'], summary: 'Gateway health (runner count, uptime)', security: [], responses: { '200': { description: 'OK' } } } },
+      '/api/gateway/runners': { get: { tags: ['Gateway'], summary: 'List connected runners', responses: { '200': { description: 'Runners array' } } } },
     };
 
-    // Try to fetch node spec and merge
-    let nodePaths: Record<string, unknown> = {};
-    let nodeInfo: Record<string, unknown> = {};
+    // Try to fetch runner spec and merge
+    let runnerPaths: Record<string, unknown> = {};
+    let runnerInfo: Record<string, unknown> = {};
     try {
-      const nodeSpec = await relayToNode('GET', '/api/v1/openapi.json', undefined, 5000);
-      if (nodeSpec.status === 200 && nodeSpec.body && typeof nodeSpec.body === 'object') {
-        const spec = nodeSpec.body as Record<string, unknown>;
-        nodePaths = (spec.paths as Record<string, unknown>) || {};
-        nodeInfo = (spec.info as Record<string, unknown>) || {};
+      const runnerSpec = await relayToRunner('GET', '/api/v1/openapi.json', undefined, 5000);
+      if (runnerSpec.status === 200 && runnerSpec.body && typeof runnerSpec.body === 'object') {
+        const spec = runnerSpec.body as Record<string, unknown>;
+        runnerPaths = (spec.paths as Record<string, unknown>) || {};
+        runnerInfo = (spec.info as Record<string, unknown>) || {};
       }
-    } catch { /* node not connected — return gateway-only spec */ }
+    } catch { /* runner not connected — return gateway-only spec */ }
 
     const spec = {
       openapi: '3.0.3',
       info: {
         title: 'TiClaw Gateway API',
-        version: (nodeInfo.version as string) || '1.0.0',
+        version: (runnerInfo.version as string) || '1.0.0',
         description:
-          'TiClaw Gateway API. Gateway-native routes (/health, /api/gateway/*) plus all node routes relayed transparently. ' +
-          'Use X-Node-Id header to target a specific node.',
+          'TiClaw Gateway API. Gateway-native routes (/health, /api/gateway/*) plus all runner routes relayed transparently. ' +
+          'Use X-Runner-Id header to target a specific runner.',
       },
       servers: [{ url: gatewayUrl, description: 'TiClaw Gateway' }],
       security: [{ bearerAuth: [] }],
@@ -456,7 +456,7 @@ export async function handleGatewayRequest(
           bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via TICLAW_GATEWAY_API_KEY env var.' },
         },
       },
-      paths: { ...gatewayPaths, ...nodePaths },
+      paths: { ...gatewayPaths, ...runnerPaths },
     };
 
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -466,23 +466,23 @@ export async function handleGatewayRequest(
 
   // ── Gateway-native: health (own status, not relayed) ──
   if (url.pathname === '/health' && req.method === 'GET') {
-    const connected = Array.from(nodes.values()).filter(
-      ({ info }) => info.trusted && info.node_id,
+    const connected = Array.from(runners.values()).filter(
+      ({ info }) => info.trusted && info.runner_id,
     );
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
       status: 'ok',
       gateway: true,
-      nodes_connected: connected.length,
+      runners_connected: connected.length,
       uptime_s: Math.floor(process.uptime()),
     }));
     return true;
   }
 
-  // ── Gateway-native: list nodes ──
-  if (url.pathname === '/api/gateway/nodes' && req.method === 'GET') {
+  // ── Gateway-native: list runners ──
+  if (url.pathname === '/api/gateway/runners' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ nodes: listNodes() }));
+    res.end(JSON.stringify({ runners: listRunners() }));
     return true;
   }
 
@@ -490,7 +490,7 @@ export async function handleGatewayRequest(
   const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Node-Id',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Runner-Id',
   };
   if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
     res.writeHead(204, CORS_HEADERS);
@@ -509,31 +509,31 @@ export async function handleGatewayRequest(
     }
   }
 
-  // ── Gateway-native: cloud node provisioning ──
-  if (url.pathname === '/api/gateway/cloud-nodes' && req.method === 'GET') {
+  // ── Gateway-native: cloud runner provisioning ──
+  if (url.pathname === '/api/gateway/cloud-runners' && req.method === 'GET') {
     try {
-      const [nodes, meta] = await Promise.all([listCloudNodes(), getCloudNodeMeta()]);
+      const [runnersList, meta] = await Promise.all([listCloudRunners(), getCloudRunnerMeta()]);
       
-      const connectedNodes = listNodes();
-      for (const node of nodes) {
-        const isOnline = connectedNodes.some((n) => n.node_id === node.nodeId && n.online);
+      const connectedRunners = listRunners();
+      for (const runner of runnersList) {
+        const isOnline = connectedRunners.some((r) => r.runner_id === runner.runnerId && r.online);
         if (isOnline) {
-          node.status = 'online';
-        } else if (node.status === 'live') {
-          node.status = 'offline';
+          runner.status = 'online';
+        } else if (runner.status === 'live') {
+          runner.status = 'offline';
         }
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ nodes, meta }));
+      res.end(JSON.stringify({ runners: runnersList, meta }));
     } catch (err: any) {
       res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: err?.message || 'Failed to list cloud nodes' }));
+      res.end(JSON.stringify({ error: err?.message || 'Failed to list cloud runners' }));
     }
     return true;
   }
 
-  if (url.pathname === '/api/gateway/cloud-nodes' && req.method === 'POST') {
+  if (url.pathname === '/api/gateway/cloud-runners' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk; });
     req.on('end', async () => {
@@ -544,18 +544,18 @@ export async function handleGatewayRequest(
           res.end(JSON.stringify({ error: 'name, tier, and region are required' }));
           return;
         }
-        const result = await launchCloudNode(input);
+        const result = await launchCloudRunner(input);
         res.writeHead(201, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(result));
       } catch (err: any) {
         res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: err?.message || 'Failed to launch cloud node' }));
+        res.end(JSON.stringify({ error: err?.message || 'Failed to launch cloud runner' }));
       }
     });
     return true;
   }
 
-  if (url.pathname.startsWith('/api/gateway/cloud-nodes/') && req.method === 'DELETE') {
+  if (url.pathname.startsWith('/api/gateway/cloud-runners/') && req.method === 'DELETE') {
     const serviceId = url.pathname.split('/').pop();
     if (!serviceId) {
       res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -563,12 +563,12 @@ export async function handleGatewayRequest(
       return true;
     }
     try {
-      await deleteCloudNode(serviceId);
+      await deleteCloudRunner(serviceId);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err: any) {
       res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: err?.message || 'Failed to delete cloud node' }));
+      res.end(JSON.stringify({ error: err?.message || 'Failed to delete cloud runner' }));
     }
     return true;
   }
@@ -579,15 +579,15 @@ export async function handleGatewayRequest(
     return true;
   }
 
-  // ── API relay to node (with optional X-Node-Id targeting) ──
+  // ── API relay to runner (with optional X-Runner-Id targeting) ──
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/runs')) {
-    const targetNodeId = req.headers['x-node-id'] as string | undefined;
+    const targetRunnerId = req.headers['x-runner-id'] as string | undefined;
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk; });
     req.on('end', async () => {
       let parsedBody: unknown;
       try { parsedBody = body ? JSON.parse(body) : undefined; } catch { parsedBody = body; }
-      const result = await relayToNode(req.method || 'GET', url.pathname + url.search, parsedBody, 15000, targetNodeId);
+      const result = await relayToRunner(req.method || 'GET', url.pathname + url.search, parsedBody, 15000, targetRunnerId);
 
       if (result.encoding === 'base64' && typeof result.body === 'string') {
         const buffer = Buffer.from(result.body, 'base64');

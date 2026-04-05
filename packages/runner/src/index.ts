@@ -9,9 +9,11 @@ import {
   IDLE_TIMEOUT,
   POLL_INTERVAL,
   TRIGGER_PATTERN,
-  NODE_HOSTNAME,
+  RUNNER_HOSTNAME,
   SKILLS_CONFIG,
   MIND_ADMIN_USERS,
+  configureClawRunner,
+  initializeDataDirs,
 } from './core/config.js';
 import './channels/index.js';
 import { SkillsRegistry } from './skills/registry.js';
@@ -457,10 +459,10 @@ async function processMessages(chatJid: string): Promise<boolean> {
       const parts = latestText.split(/\s+/);
       const sub = parts[1] || 'status';
       if (sub === 'status') {
-        const e = readEnrollmentState(NODE_HOSTNAME || undefined);
+        const e = readEnrollmentState(RUNNER_HOSTNAME || undefined);
         await sendFn(
           chatJid,
-          `🔐 Enrollment status\n- node: ${e.node_id}\n- fingerprint: ${e.node_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
+          `🔐 Enrollment status\n- runner: ${e.runner_id}\n- fingerprint: ${e.runner_fingerprint}\n- trust_state: ${e.trust_state}\n- token_expires_at: ${e.token_expires_at || 'none'}\n- failed_attempts: ${e.failed_attempts}${e.frozen_until ? `\n- frozen_until: ${e.frozen_until}` : ''}`,
         );
         return true;
       }
@@ -471,11 +473,11 @@ async function processMessages(chatJid: string): Promise<boolean> {
           await sendFn(chatJid, 'Usage: /enroll verify <token>');
           return true;
         }
-        const e = readEnrollmentState(NODE_HOSTNAME || undefined);
+        const e = readEnrollmentState(RUNNER_HOSTNAME || undefined);
         const result = verifyEnrollmentToken({
           token,
-          nodeFingerprint: e.node_fingerprint,
-          nodeId: NODE_HOSTNAME || undefined,
+          runnerFingerprint: e.runner_fingerprint,
+          runnerId: RUNNER_HOSTNAME || undefined,
         });
 
         if (result.ok) {
@@ -885,10 +887,8 @@ let sendFn: (
 let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 
 async function main(): Promise<void> {
-  const productName = process.env.NODE_PRODUCT
-    ? process.env.NODE_PRODUCT.charAt(0).toUpperCase() + process.env.NODE_PRODUCT.slice(1)
-    : 'Supen';
-  logger.info(`${productName} Node starting`);
+  const productName = process.env.TICLAW_PRODUCT_NAME || 'Supen';
+  logger.info(`${productName} Runner starting`);
 
   initStore();
   cleanupStaleSessions();
@@ -1076,17 +1076,32 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  logger.info(`${productName} Node running (trigger: @${ASSISTANT_NAME})`);
+  logger.info(`${productName} Runner running (trigger: @${ASSISTANT_NAME})`);
 }
 
-const isDirectRun =
-  process.argv[1] &&
-  new URL(import.meta.url).pathname ===
-    new URL(`file://${process.argv[1]}`).pathname;
+export interface ClawRunnerConfig {
+  productName?: string;
+  dataDir?: string;
+}
 
-if (isDirectRun) {
-  main().catch((err) => {
-    logger.error({ err }, 'Failed to start TiClaw');
+export class ClawRunner {
+  constructor(config: ClawRunnerConfig = {}) {
+    if (config.productName) {
+      process.env.TICLAW_PRODUCT_NAME = config.productName;
+    }
+    configureClawRunner({ dataDir: config.dataDir });
+  }
+
+  async start(): Promise<void> {
+    initializeDataDirs();
+    await main();
+  }
+}
+
+import url from 'node:url';
+if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
+  new ClawRunner().start().catch((err) => {
+    console.error('Fatal runner error:', err);
     process.exit(1);
   });
 }

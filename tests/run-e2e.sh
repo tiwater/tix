@@ -56,7 +56,7 @@ echo -e "${GREEN}CLI built${NC}"
 # ── Step 2: Start server (unless --no-server) ──
 if [ "$NO_SERVER" = false ]; then
   echo -e "${BOLD}Starting TiClaw server on port ${TICLAW_PORT}...${NC}"
-  HTTP_PORT="$TICLAW_PORT" npx tsx packages/node/src/index.ts > /tmp/ticlaw-e2e-server.log 2>&1 &
+  HTTP_PORT="$TICLAW_PORT" npx tsx packages/runner/src/index.ts > /tmp/ticlaw-e2e-server.log 2>&1 &
   SERVER_PID=$!
   echo -e "  Server PID: ${SERVER_PID}"
 
@@ -77,8 +77,8 @@ if [ "$NO_SERVER" = false ]; then
     exit 1
   fi
 
-  # ── Auto-enroll: ensure node is trusted ──
-  echo -e "${BOLD}Enrolling node...${NC}"
+  # ── Auto-enroll: ensure runner is trusted ──
+  echo -e "${BOLD}Enrolling runner...${NC}"
   ENROLL_STATUS=$(curl --max-time 8 -sf "http://localhost:${TICLAW_PORT}/api/enroll/status")
   TRUST=$(echo "$ENROLL_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['trust_state'])" 2>/dev/null || echo "unknown")
 
@@ -86,16 +86,16 @@ if [ "$NO_SERVER" = false ]; then
     FP=$(echo "$ENROLL_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['fingerprint'])" 2>/dev/null)
     TOKEN_RESULT=$(curl --max-time 8 -sf -X POST "http://localhost:${TICLAW_PORT}/api/enroll/token" -H "Content-Type: application/json" -d '{"ttl_minutes":60}')
     TOKEN=$(echo "$TOKEN_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null)
-    VERIFY=$(curl --max-time 8 -sf -X POST "http://localhost:${TICLAW_PORT}/api/enroll/verify" -H "Content-Type: application/json" -d "{\"token\":\"$TOKEN\",\"node_fingerprint\":\"$FP\"}")
+    VERIFY=$(curl --max-time 8 -sf -X POST "http://localhost:${TICLAW_PORT}/api/enroll/verify" -H "Content-Type: application/json" -d "{\"token\":\"$TOKEN\",\"runner_fingerprint\":\"$FP\"}")
     TRUST_AFTER=$(echo "$VERIFY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('trust_state',''))" 2>/dev/null || echo "failed")
     if [ "$TRUST_AFTER" = "trusted" ]; then
-      echo -e "${GREEN}Node enrolled and trusted${NC}"
+      echo -e "${GREEN}Runner enrolled and trusted${NC}"
     else
       echo -e "${RED}Enrollment failed: ${VERIFY}${NC}"
       exit 1
     fi
   else
-    echo -e "${GREEN}Node already trusted${NC}"
+    echo -e "${GREEN}Runner already trusted${NC}"
   fi
 else
   echo -e "${CYAN}Using existing server on port ${TICLAW_PORT}${NC}"

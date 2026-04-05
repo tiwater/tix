@@ -981,9 +981,11 @@ export class AgentRunner {
         // arrives at an already-running process (~20x faster first-turn latency).
         // We fire-and-forget in the background — the current cold-start query will
         // complete regardless, and subsequent turns will benefit immediately.
-        agentQuery.startup().catch((err: any) => {
-          logger.debug({ err: err?.message }, 'AgentRunner: startup() pre-warm failed (non-fatal)');
-        });
+        if (typeof agentQuery.startup === 'function') {
+          agentQuery.startup().catch((err: any) => {
+            logger.debug({ err: err?.message }, 'AgentRunner: startup() pre-warm failed (non-fatal)');
+          });
+        }
 
         const newWarm: WarmSession = {
           query: agentQuery as Query,

@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "build":       "pnpm --filter @tiwater/claw-gateway run build && pnpm --filter @tiwater/claw-sdk run build",
-    "dev":         "pnpm --filter @tiwater/claw-gateway run build && concurrently -n gateway,node -c cyan,green \"pnpm --filter @tiwater/claw-gateway run dev\" \"sleep 1 && pnpm --filter @tiwater/claw-sdk run dev\"",
-    "dev:node":    "pnpm --filter @tiwater/claw-sdk run dev",
+    "dev":         "pnpm --filter @tiwater/claw-gateway run build && concurrently -n gateway,runner -c cyan,green \"pnpm --filter @tiwater/claw-gateway run dev\" \"sleep 1 && pnpm --filter @tiwater/claw-sdk run dev\"",
+    "dev:runner":  "pnpm --filter @tiwater/claw-sdk run dev",
     "dev:gateway": "pnpm --filter @tiwater/claw-gateway run dev",
     "test":        "pnpm --filter @tiwater/claw-sdk run test",
     "test:e2e":    "bash tests/run-e2e.sh"

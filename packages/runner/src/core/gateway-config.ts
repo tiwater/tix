@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { TICLAW_HOME, NODE_HOSTNAME } from './config.js';
+import { TICLAW_HOME, RUNNER_HOSTNAME } from './config.js';
 import { logger } from './logger.js';
 
 export interface GatewayConfig {

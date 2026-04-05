@@ -126,9 +126,9 @@ export function readConfigYaml(keys: string[]): Record<string, string> {
   return result;
 }
 
-const DEFAULT_CONFIG_YAML = `# Supen Node Configuration
-# Edit this file to configure your Supen Node.
-# Docs: https://supen.ai/docs/nodes
+const DEFAULT_CONFIG_YAML = `# Claw Runner Configuration
+# Edit this file to configure your Runner.
+# Docs: https://supen.ai/docs/runners
 
 # ── LLM Provider ──
 # BigModel (recommended): get a key at https://open.bigmodel.cn

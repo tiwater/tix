@@ -20,7 +20,7 @@ import yaml from 'js-yaml';
 import { AGENTS_DIR, TICLAW_HOME, TIMEZONE, getAgentModelConfig } from './config.js';
 import { logger } from './logger.js';
 
-const GLOBAL_USAGE_PATH = path.join(TICLAW_HOME, 'global-usage.json');
+const getGlobalUsagePath = () => path.join(TICLAW_HOME, 'global-usage.json');
 import type {
   AgentRecord,
   Attachment,
@@ -207,8 +207,8 @@ function scheduleYamlPath(agentId: string, scheduleId: string): string {
   return resolveWithin(schedulesDir(agentId), `${safeScheduleId}.yaml`);
 }
 
-const routerStatePath = path.join(TICLAW_HOME, 'router-state.json');
-const registeredGroupsPath = path.join(TICLAW_HOME, 'registered-groups.json');
+const getRouterStatePath = () => path.join(TICLAW_HOME, 'router-state.json');
+const getRegisteredGroupsPath = () => path.join(TICLAW_HOME, 'registered-groups.json');
 
 // ═══════════════════════════════════════════════════════════════
 // Init (no-op — dirs created on demand)
@@ -438,7 +438,7 @@ export function updateSessionUsage(
       }>;
     }
 
-    const rawLedger = readJson<any>(GLOBAL_USAGE_PATH);
+    const rawLedger = readJson<any>(getGlobalUsagePath());
     let ledger: GlobalUsageLedger;
     if (!rawLedger || typeof rawLedger.total !== 'object') {
       ledger = {
@@ -501,7 +501,7 @@ export function updateSessionUsage(
     applyIncrement(model.total);
     applyIncrement(sessionEntry);
 
-    writeJson(GLOBAL_USAGE_PATH, ledger);
+    writeJson(getGlobalUsagePath(), ledger);
   } catch (e) {
     logger.warn({ error: e }, 'Failed to update global usage file');
   }
@@ -532,7 +532,7 @@ export function getUsageStats(record: { tokens_in?: number; tokens_out?: number;
 
 /** Get global usage across all agents and sessions. */
 export function getGlobalUsage() {
-  const ledger = readJson<any>(GLOBAL_USAGE_PATH);
+  const ledger = readJson<any>(getGlobalUsagePath());
 
   if (ledger && ledger.total) {
     return {
@@ -565,7 +565,7 @@ export function getGlobalUsage() {
 
 /** Get the full detailed daily usage ledger. */
 export function getDailyUsage() {
-  const ledger = readJson<any>(GLOBAL_USAGE_PATH);
+  const ledger = readJson<any>(getGlobalUsagePath());
   return ledger?.daily || {};
 }
 
@@ -1003,11 +1003,11 @@ export function deleteSchedule(id: string): void {
 // ═══════════════════════════════════════════════════════════════
 
 function loadRouterState(): Record<string, string> {
-  return readJson<Record<string, string>>(routerStatePath) || {};
+  return readJson<Record<string, string>>(getRouterStatePath()) || {};
 }
 
 function saveRouterState(state: Record<string, string>): void {
-  writeJson(routerStatePath, state);
+  writeJson(getRouterStatePath(), state);
 }
 
 export function getRouterState(key: string): string | undefined {
@@ -1034,13 +1034,13 @@ function loadRegisteredGroups(): Record<
 > {
   return (
     readJson<Record<string, RegisteredProject & { jid?: string }>>(
-      registeredGroupsPath,
+      getRegisteredGroupsPath(),
     ) || {}
   );
 }
 
 function saveRegisteredGroups(groups: Record<string, RegisteredProject>): void {
-  writeJson(registeredGroupsPath, groups);
+  writeJson(getRegisteredGroupsPath(), groups);
 }
 
 export function getRegisteredProject(

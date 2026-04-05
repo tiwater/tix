@@ -8,7 +8,7 @@ import { logger } from './logger.js';
 import { readGatewayConfig, GatewayConfig } from './gateway-config.js';
 import { validateOutboundEndpoint } from './security.js';
 import { readEnrollmentState, verifyEnrollmentToken } from './enrollment.js';
-import { NODE_HOSTNAME, HTTP_API_KEY, HTTP_PORT, TICLAW_HOME } from './config.js';
+import { RUNNER_HOSTNAME, HTTP_API_KEY, HTTP_PORT, TICLAW_HOME } from './config.js';
 import { NewMessage } from './types.js';
 
 // Direct dispatcher that bypasses any http_proxy/https_proxy env vars.
@@ -24,12 +24,12 @@ export interface GatewayCallbacks {
 }
 
 /**
- * Gateway — the node's outbound uplink to the TiClaw Gateway.
+ * Gateway — the runner's outbound uplink to the TiClaw Gateway.
  *
  * Architecture:
- *   - Nodes connect outward to the gateway and receive instructions from it.
+ *   - Runners connect outward to the gateway and receive instructions from it.
  *   - The gateway accepts connections from controller platforms (Supen, etc.)
- *     that drive the nodes via channels (Discord, HTTP, ACP, …).
+ *     that drive the runners via channels (Discord, HTTP, ACP, …).
  *
  * This is core infrastructure, not a consumer channel.
  * Instantiated directly in index.ts, not via the channel registry.
@@ -100,8 +100,8 @@ export class Gateway {
   }
 
   private authenticate(): void {
-    const state = readEnrollmentState(NODE_HOSTNAME || undefined);
-    const gatewayToken = this.buildGatewayToken(state.node_id);
+    const state = readEnrollmentState(RUNNER_HOSTNAME || undefined);
+    const gatewayToken = this.buildGatewayToken(state.runner_id);
 
     if (this.config.trust_token && state.trust_state !== 'trusted') {
       logger.info('Attempting enrollment with gateway using trust_token');
@@ -109,37 +109,37 @@ export class Gateway {
         type: 'enroll',
         token: this.config.trust_token,
         gateway_token: gatewayToken,
-        node_id: state.node_id,
-        node_fingerprint: state.node_fingerprint,
+        runner_id: state.runner_id,
+        runner_fingerprint: state.runner_fingerprint,
       }));
     } else {
       this.ws?.send(JSON.stringify({
         type: 'auth',
         token: gatewayToken,
-        node_id: state.node_id,
-        node_fingerprint: state.node_fingerprint,
+        runner_id: state.runner_id,
+        runner_fingerprint: state.runner_fingerprint,
       }));
     }
   }
 
   /**
    * Build a HMAC token for gateway authentication.
-   * Format: `${nodeId}.${timestampMs}.${hmacHex}`
-   * Only when TICLAW_GATEWAY_SECRET env var is set on the node side.
+   * Format: `${runnerId}.${timestampMs}.${hmacHex}`
+   * Only when TICLAW_GATEWAY_SECRET env var is set on the runner side.
    */
-  private buildGatewayToken(nodeId: string): string | undefined {
+  private buildGatewayToken(runnerId: string): string | undefined {
     const secret = process.env.TICLAW_GATEWAY_SECRET;
     if (!secret) return undefined;
     const ts = Date.now().toString();
-    const hmac = crypto.createHmac('sha256', secret).update(`${nodeId}:${ts}`).digest('hex');
-    return `${nodeId}.${ts}.${hmac}`;
+    const hmac = crypto.createHmac('sha256', secret).update(`${runnerId}:${ts}`).digest('hex');
+    return `${runnerId}.${ts}.${hmac}`;
   }
 
   private startReporting(): void {
     const interval = this.config.reporting_interval || 60000;
     this.reportingInterval = setInterval(() => {
       if (this._connected && this.ws?.readyState === WebSocket.OPEN) {
-        const state = readEnrollmentState(NODE_HOSTNAME || undefined);
+        const state = readEnrollmentState(RUNNER_HOSTNAME || undefined);
         
         // System Telemetry
         const cpus = os.cpus();
@@ -199,8 +199,8 @@ export class Gateway {
           logger.info('Gateway enrollment successful');
           verifyEnrollmentToken({
             token: this.config.trust_token!,
-            nodeFingerprint: payload.node_fingerprint,
-            nodeId: NODE_HOSTNAME || undefined,
+            runnerFingerprint: payload.runner_fingerprint,
+            runnerId: RUNNER_HOSTNAME || undefined,
           });
         } else {
           logger.error({ code: payload.code }, 'Gateway enrollment failed');
@@ -270,7 +270,7 @@ export class Gateway {
         }));
       }
     } catch (err) {
-      logger.error({ err, path: payload.path }, 'Failed to relay API request to gateway');
+      logger.error({ err, path: payload.path }, 'Failed to relay API request to runner');
       this.ws?.send(JSON.stringify({ type: 'api_response', request_id: payload.request_id, status: 502, headers: {}, body: { error: 'relay_failed', message: String(err) } }));
     }
   }

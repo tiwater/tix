@@ -1,34 +1,34 @@
 /**
- * Cloud Node Provisioning — Render API integration.
+ * Cloud Runner Provisioning — Render API integration.
  *
  * The gateway owns all infrastructure secrets (RENDER_API_KEY, TICLAW_GATEWAY_SECRET, etc.)
- * and exposes HTTP endpoints for controllers (Supen) to manage cloud nodes.
+ * and exposes HTTP endpoints for controllers (Supen) to manage cloud runners.
  */
 
 const RENDER_API_BASE = 'https://api.render.com/v1';
-const NODE_NAME_PREFIX = 'supen-node-';
+const RUNNER_NAME_PREFIX = 'supen-runner-';
 
 // ── Types ──
 
-export type CloudNodeTier = 'nano' | 'pro' | 'cluster';
+export type CloudRunnerTier = 'nano' | 'pro' | 'cluster';
 
-export interface LaunchNodeInput {
+export interface LaunchRunnerInput {
   name: string;
-  tier: CloudNodeTier;
+  tier: CloudRunnerTier;
   region: string;
   extraEnv?: Record<string, string>;
 }
 
-export interface CloudNodeRecord {
+export interface CloudRunnerRecord {
   id: string;
-  nodeId: string;
+  runnerId: string;
   name: string;
   slug: string;
   url: string | null;
   status: string;
   region: string | null;
   plan: string | null;
-  tier: CloudNodeTier | null;
+  tier: CloudRunnerTier | null;
   imageUrl: string | null;
   suspended: boolean;
   createdAt: string | null;
@@ -43,7 +43,7 @@ interface RenderConfig {
   registryCredentialId?: string;
 }
 
-const tierPlanMap: Record<CloudNodeTier, { plan: string }> = {
+const tierPlanMap: Record<CloudRunnerTier, { plan: string }> = {
   nano: { plan: 'starter' },
   pro: { plan: 'standard' },
   cluster: { plan: 'pro' },
@@ -56,7 +56,7 @@ function getConfig(): RenderConfig {
   const ownerId = process.env.RENDER_OWNER_ID;
   const gatewayUrl = process.env.TICLAW_GATEWAY_EXTERNAL_URL || '';
   const gatewaySecret = process.env.TICLAW_GATEWAY_SECRET || '';
-  const imageUrl = process.env.RENDER_NODE_IMAGE || 'ghcr.io/tiwater/ticlaw:latest';
+  const imageUrl = process.env.RENDER_RUNNER_IMAGE || 'ghcr.io/tiwater/ticlaw:latest';
   const registryCredentialId = process.env.RENDER_REGISTRY_CREDENTIAL_ID || undefined;
 
   if (!apiKey) throw new Error('Missing RENDER_API_KEY');
@@ -92,14 +92,14 @@ function makeRandomSecret(length = 40): string {
   return out;
 }
 
-function createNodeId(name: string): string {
+function createRunnerId(name: string): string {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const rand = Math.random().toString(36).slice(2, 8);
   return `${slug}-${rand}`;
 }
 
-function buildServiceName(nodeId: string): string {
-  return `${NODE_NAME_PREFIX}${nodeId}`;
+function buildServiceName(runnerId: string): string {
+  return `${RUNNER_NAME_PREFIX}${runnerId}`;
 }
 
 async function renderRequest<T>(path: string, init: RequestInit, apiKey: string): Promise<T> {
@@ -131,7 +131,7 @@ async function renderRequest<T>(path: string, init: RequestInit, apiKey: string)
   return response.json() as Promise<T>;
 }
 
-function mapRenderService(service: any): CloudNodeRecord {
+function mapRenderService(service: any): CloudRunnerRecord {
   const serviceDetails = service.serviceDetails || service;
   const envVars = Array.isArray(service.envVars)
     ? service.envVars
@@ -140,13 +140,13 @@ function mapRenderService(service: any): CloudNodeRecord {
     envVars.filter((e: any) => e?.key).map((e: any) => [e.key, e.value]),
   );
 
-  const nodeId = envMap.TICLAW_NODE_NAME
-    || (typeof service.name === 'string' && service.name.startsWith(NODE_NAME_PREFIX)
-      ? service.name.slice(NODE_NAME_PREFIX.length)
+  const runnerId = envMap.TICLAW_RUNNER_NAME
+    || (typeof service.name === 'string' && service.name.startsWith(RUNNER_NAME_PREFIX)
+      ? service.name.slice(RUNNER_NAME_PREFIX.length)
       : service.id);
 
   const plan = service.plan || service.servicePlan || serviceDetails.plan || null;
-  const tier = (Object.entries(tierPlanMap).find(([, meta]) => meta.plan === plan)?.[0] ?? null) as CloudNodeTier | null;
+  const tier = (Object.entries(tierPlanMap).find(([, meta]) => meta.plan === plan)?.[0] ?? null) as CloudRunnerTier | null;
   const url = serviceDetails.url || service.url || service.service?.url || null;
   // Derive a user-friendly status
   const isSuspended = service.suspended === 'suspended' || service.suspended === true;
@@ -169,9 +169,9 @@ function mapRenderService(service: any): CloudNodeRecord {
 
   return {
     id: service.id,
-    nodeId,
-    name: service.name || nodeId,
-    slug: service.slug || service.name || nodeId,
+    runnerId,
+    name: service.name || runnerId,
+    slug: service.slug || service.name || runnerId,
     url,
     status,
     region: service.region || serviceDetails.region || null,
@@ -185,7 +185,7 @@ function mapRenderService(service: any): CloudNodeRecord {
 
 // ── Public API ──
 
-export function getCloudNodeMeta() {
+export function getCloudRunnerMeta() {
   if (!isConfigured()) return { configured: false, imageUrl: null, gatewayUrl: null };
   const config = getConfig();
   return {
@@ -195,7 +195,7 @@ export function getCloudNodeMeta() {
   };
 }
 
-export async function listCloudNodes(): Promise<CloudNodeRecord[]> {
+export async function listCloudRunners(): Promise<CloudRunnerRecord[]> {
   if (!isConfigured()) return [];
   const config = getConfig();
   const raw = await renderRequest<any>('/services', { method: 'GET' }, config.apiKey);
@@ -206,23 +206,23 @@ export async function listCloudNodes(): Promise<CloudNodeRecord[]> {
     .filter((svc: any) => {
       const name = svc?.name || '';
       if (name === 'ticlaw-gateway') return false;
-      return name.includes('ticlaw') || name.startsWith(NODE_NAME_PREFIX);
+      return name.includes('ticlaw') || name.startsWith(RUNNER_NAME_PREFIX);
     })
     .map(mapRenderService);
 }
 
-export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: CloudNodeRecord; nodeId: string }> {
+export async function launchCloudRunner(input: LaunchRunnerInput): Promise<{ runner: CloudRunnerRecord; runnerId: string }> {
   const config = getConfig();
-  const nodeId = createNodeId(input.name);
+  const runnerId = createRunnerId(input.name);
   const imageUrl = normalizeUrl(config.imageUrl);
   const gatewayUrl = normalizeGatewayWsUrl(config.gatewayUrl);
   if (!gatewayUrl) {
-    throw new Error('Missing TICLAW_GATEWAY_EXTERNAL_URL: cannot provision cloud node without gateway URL');
+    throw new Error('Missing TICLAW_GATEWAY_EXTERNAL_URL: cannot provision cloud runner without gateway URL');
   }
 
   const callerEnv = input.extraEnv || {};
   const envVars = Object.entries({
-    TICLAW_NODE_NAME: nodeId,
+    TICLAW_RUNNER_NAME: runnerId,
     TICLAW_GATEWAY_URL: gatewayUrl,
     HTTP_API_KEY: callerEnv.HTTP_API_KEY || makeRandomSecret(),
     ...(config.gatewaySecret ? { TICLAW_GATEWAY_SECRET: config.gatewaySecret } : {}),
@@ -238,7 +238,7 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
   const payload = {
     ownerId: config.ownerId,
     type: 'web_service',
-    name: buildServiceName(nodeId),
+    name: buildServiceName(runnerId),
     image: imageBlock,
     envVars,
     serviceDetails: {
@@ -257,12 +257,12 @@ export async function launchCloudNode(input: LaunchNodeInput): Promise<{ node: C
   }, config.apiKey);
 
   return {
-    node: mapRenderService(created.service || created),
-    nodeId,
+    runner: mapRenderService(created.service || created),
+    runnerId,
   };
 }
 
-export async function deleteCloudNode(serviceId: string): Promise<void> {
+export async function deleteCloudRunner(serviceId: string): Promise<void> {
   const config = getConfig();
   await renderRequest<any>(`/services/${serviceId}`, { method: 'DELETE' }, config.apiKey);
 }

@@ -43,7 +43,8 @@ const envConfig = readEnvFile([
   'TASK_DEFAULT_STEP_TIMEOUT_MS',
   'TASK_DEFAULT_RETRY_COUNT',
   'TASK_DEFAULT_RETRY_BACKOFF_MS',
-  'TICLAW_NODE_NAME',
+  'TICLAW_RUNNER_NAME',
+  'TICLAW_PRODUCT_NAME',
   'TICLAW_AUTH_TOKEN',
   'WORKSPACE_ROOT',
   'ALLOWED_ORIGINS',
@@ -79,12 +80,7 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 
 // Absolute paths for TiClaw data management
 const HOME_DIR = process.env.HOME || os.homedir();
-export const TICLAW_HOME = process.env.TICLAW_HOME || path.join(HOME_DIR, '.ticlaw');
-
-// Ensure base directory exists
-if (!fs.existsSync(TICLAW_HOME)) {
-  fs.mkdirSync(TICLAW_HOME, { recursive: true });
-}
+export let TICLAW_HOME = process.env.TICLAW_HOME || path.join(HOME_DIR, '.ticlaw');
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value == null || value === '') return fallback;
@@ -143,21 +139,35 @@ function parseStringList(value: string | undefined, fallback: string[]): string[
   return Array.from(new Set(rawItems));
 }
 
-export const MOUNT_ALLOWLIST_PATH = path.join(
+export let MOUNT_ALLOWLIST_PATH = path.join(
   TICLAW_HOME,
   'mount-allowlist.json',
 );
-export const STORE_DIR = path.join(TICLAW_HOME, 'store');
-export const AGENTS_DIR = path.join(TICLAW_HOME, 'agents');
+export let STORE_DIR = path.join(TICLAW_HOME, 'store');
+export let AGENTS_DIR = path.join(TICLAW_HOME, 'agents');
 
-if (!fs.existsSync(AGENTS_DIR)) {
-  fs.mkdirSync(AGENTS_DIR, { recursive: true });
+export let DATA_DIR = path.join(TICLAW_HOME, 'data');
+export let SKILLS_HOME = path.join(TICLAW_HOME, 'skills');
+export let SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
+export let SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
+
+export function configureClawRunner(options: { dataDir?: string }) {
+  if (options.dataDir) {
+    TICLAW_HOME = options.dataDir;
+    MOUNT_ALLOWLIST_PATH = path.join(TICLAW_HOME, 'mount-allowlist.json');
+    STORE_DIR = path.join(TICLAW_HOME, 'store');
+    AGENTS_DIR = path.join(TICLAW_HOME, 'agents');
+    DATA_DIR = path.join(TICLAW_HOME, 'data');
+    SKILLS_HOME = path.join(TICLAW_HOME, 'skills');
+    SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
+    SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
+  }
 }
 
-export const DATA_DIR = path.join(TICLAW_HOME, 'data');
-export const SKILLS_HOME = path.join(TICLAW_HOME, 'skills');
-export const SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
-export const SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
+export function initializeDataDirs() {
+  if (!fs.existsSync(TICLAW_HOME)) fs.mkdirSync(TICLAW_HOME, { recursive: true });
+  if (!fs.existsSync(AGENTS_DIR)) fs.mkdirSync(AGENTS_DIR, { recursive: true });
+}
 
 export const SECURITY_TRUSTED_REMOTE_HOSTS = parseStringList(
   process.env.SECURITY_TRUSTED_REMOTE_HOSTS ||
@@ -370,10 +380,14 @@ export const MODELS_REGISTRY: ModelEntry[] = (() => {
 export const DEFAULT_MODEL: ModelEntry | undefined =
   MODELS_REGISTRY.find((m) => m.default) ?? MODELS_REGISTRY[0];
 
-// Node identity — derived from hostname or manual override via TICLAW_NODE_NAME
+// Runner identity — derived from hostname or manual override via TICLAW_RUNNER_NAME
 const rawHostname = os.hostname() || 'ticlaw-local';
-export const NODE_HOSTNAME =
-  process.env.TICLAW_NODE_NAME || envConfig.TICLAW_NODE_NAME || rawHostname;
+export const RUNNER_HOSTNAME =
+  process.env.TICLAW_RUNNER_NAME || envConfig.TICLAW_RUNNER_NAME || rawHostname;
+
+/** Product branding name (e.g. "Supen", "Ticos"). Defaults to "Supen". */
+export const TICLAW_PRODUCT_NAME = 
+  process.env.TICLAW_PRODUCT_NAME || envConfig.TICLAW_PRODUCT_NAME || 'Supen';
 
 // ACP (Agent Communication Protocol) configuration
 export const ACP_ENABLED =

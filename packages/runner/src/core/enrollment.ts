@@ -5,7 +5,7 @@ import path from 'path';
 
 import { TICLAW_HOME } from './config.js';
 
-export type NodeTrustState =
+export type RunnerTrustState =
   | 'discovered_untrusted'
   | 'pending_verification'
   | 'trusted'
@@ -13,9 +13,9 @@ export type NodeTrustState =
   | 'revoked';
 
 export interface EnrollmentState {
-  node_id: string;
-  node_fingerprint: string;
-  trust_state: NodeTrustState;
+  runner_id: string;
+  runner_fingerprint: string;
+  trust_state: RunnerTrustState;
   token_hash?: string;
   token_salt?: string;
   token_expires_at?: string;
@@ -51,7 +51,7 @@ function ensureDir(): void {
   fs.mkdirSync(ENROLLMENT_DIR, { recursive: true });
 }
 
-function normalizeNodeId(input?: string): string {
+function normalizeRunnerId(input?: string): string {
   const raw = (input || '').trim();
   if (raw) return raw;
   return `${os.hostname()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -64,7 +64,7 @@ function machineFingerprintMaterial(): string {
   return `${host}|${platform}|${arch}`;
 }
 
-function deriveNodeFingerprint(): string {
+function deriveRunnerFingerprint(): string {
   const h = crypto.createHash('sha256');
   h.update(machineFingerprintMaterial());
   return h.digest('base64url');
@@ -76,20 +76,20 @@ function hashToken(token: string, salt: string): string {
   return h.digest('hex');
 }
 
-function defaultState(nodeId?: string): EnrollmentState {
+function defaultState(runnerId?: string): EnrollmentState {
   return {
-    node_id: normalizeNodeId(nodeId),
-    node_fingerprint: deriveNodeFingerprint(),
+    runner_id: normalizeRunnerId(runnerId),
+    runner_fingerprint: deriveRunnerFingerprint(),
     trust_state: 'discovered_untrusted',
     failed_attempts: 0,
     updated_at: nowIso(),
   };
 }
 
-export function readEnrollmentState(nodeId?: string): EnrollmentState {
+export function readEnrollmentState(runnerId?: string): EnrollmentState {
   ensureDir();
   if (!fs.existsSync(ENROLLMENT_STATE_PATH)) {
-    const initial = defaultState(nodeId);
+    const initial = defaultState(runnerId);
     writeEnrollmentState(initial);
     return initial;
   }
@@ -99,16 +99,16 @@ export function readEnrollmentState(nodeId?: string): EnrollmentState {
       fs.readFileSync(ENROLLMENT_STATE_PATH, 'utf-8'),
     ) as EnrollmentState;
     const merged = {
-      ...defaultState(nodeId),
+      ...defaultState(runnerId),
       ...parsed,
     };
-    if (nodeId && nodeId.trim() && merged.node_id !== nodeId.trim()) {
-      merged.node_id = nodeId.trim();
+    if (runnerId && runnerId.trim() && merged.runner_id !== runnerId.trim()) {
+      merged.runner_id = runnerId.trim();
       writeEnrollmentState(merged);
     }
     return merged;
   } catch {
-    const reset = defaultState(nodeId);
+    const reset = defaultState(runnerId);
     writeEnrollmentState(reset);
     return reset;
   }
@@ -125,14 +125,14 @@ export function writeEnrollmentState(state: EnrollmentState): void {
 
 export function createEnrollmentToken(opts?: {
   ttlMinutes?: number;
-  nodeId?: string;
+  runnerId?: string;
 }): {
   token: string;
   expires_at: string;
-  node_id: string;
-  node_fingerprint: string;
+  runner_id: string;
+  runner_fingerprint: string;
 } {
-  const state = readEnrollmentState(opts?.nodeId);
+  const state = readEnrollmentState(opts?.runnerId);
   const ttl = Math.max(
     10,
     Math.min(30, opts?.ttlMinutes ?? DEFAULT_TOKEN_TTL_MINUTES),
@@ -159,15 +159,15 @@ export function createEnrollmentToken(opts?: {
   return {
     token,
     expires_at: next.token_expires_at!,
-    node_id: next.node_id,
-    node_fingerprint: next.node_fingerprint,
+    runner_id: next.runner_id,
+    runner_fingerprint: next.runner_fingerprint,
   };
 }
 
 export function verifyEnrollmentToken(input: {
   token: string;
-  nodeFingerprint: string;
-  nodeId?: string;
+  runnerFingerprint: string;
+  runnerId?: string;
 }): {
   ok: boolean;
   code:
@@ -176,11 +176,11 @@ export function verifyEnrollmentToken(input: {
     | 'not_pending'
     | 'frozen'
     | 'expired'
-    | 'fingerprint_mismatch'
+    | 'runner_fingerprint_mismatch'
     | 'token_mismatch';
   state: EnrollmentState;
 } {
-  const state = readEnrollmentState(input.nodeId);
+  const state = readEnrollmentState(input.runnerId);
 
   if (!state.token_hash || !state.token_salt || !state.token_expires_at) {
     return { ok: false, code: 'missing_token', state };
@@ -210,10 +210,10 @@ export function verifyEnrollmentToken(input: {
     return { ok: false, code: 'expired', state: expired };
   }
 
-  const fingerprint = input.nodeFingerprint;
-  if (fingerprint !== state.node_fingerprint) {
+  const fingerprint = input.runnerFingerprint;
+  if (fingerprint !== state.runner_fingerprint) {
     const failed = applyFailedAttempt(state);
-    return { ok: false, code: 'fingerprint_mismatch', state: failed };
+    return { ok: false, code: 'runner_fingerprint_mismatch', state: failed };
   }
 
   const hashed = hashToken(input.token, state.token_salt);
@@ -254,10 +254,10 @@ function applyFailedAttempt(state: EnrollmentState): EnrollmentState {
 }
 
 export function setTrustState(
-  target: NodeTrustState,
-  opts?: { nodeId?: string },
+  target: RunnerTrustState,
+  opts?: { runnerId?: string },
 ): EnrollmentState {
-  const state = readEnrollmentState(opts?.nodeId);
+  const state = readEnrollmentState(opts?.runnerId);
   const next: EnrollmentState = {
     ...state,
     trust_state: target,

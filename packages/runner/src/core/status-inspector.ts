@@ -42,7 +42,7 @@ export class StatusInspector {
    */
   static generateManagementCard(statuses: BotStatus[]) {
     return {
-      title: `${process.env.NODE_PRODUCT ? process.env.NODE_PRODUCT.charAt(0).toUpperCase() + process.env.NODE_PRODUCT.slice(1) : 'Supen'} Node 实时运行状态`,
+      title: `${process.env.TICLAW_PRODUCT_NAME ? process.env.TICLAW_PRODUCT_NAME.charAt(0).toUpperCase() + process.env.TICLAW_PRODUCT_NAME.slice(1) : 'Supen'} Runner 实时运行状态`,
       elements: statuses.map((s) => ({
         type: 'bot_row',
         channel: s.channel,

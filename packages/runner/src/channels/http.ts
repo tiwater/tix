@@ -65,7 +65,7 @@ import {
   ACP_ENABLED,
   AGENTS_DIR,
   HTTP_API_KEY,
-  NODE_HOSTNAME,
+  RUNNER_HOSTNAME,
   HTTP_ENABLED,
   HTTP_PORT,
   SKILLS_CONFIG,
@@ -701,7 +701,7 @@ export class HttpChannel implements Channel {
           chatJid = buildHttpSessionId(agent_id, session_id);
 
           // Check trust status
-          const enrollState = readEnrollmentState(NODE_HOSTNAME || undefined);
+          const enrollState = readEnrollmentState(RUNNER_HOSTNAME || undefined);
           if (enrollState.trust_state !== 'trusted') {
             ws.send(
               JSON.stringify({
@@ -1268,10 +1268,10 @@ export class HttpChannel implements Channel {
       // ── Enrollment endpoints ──
 
       if (pathname === '/api/enroll/status' && req.method === 'GET') {
-        const state = readEnrollmentState(NODE_HOSTNAME || undefined);
+        const state = readEnrollmentState(RUNNER_HOSTNAME || undefined);
         writeJson(res, 200, {
-          node_id: state.node_id,
-          fingerprint: state.node_fingerprint,
+          runner_id: state.runner_id,
+          fingerprint: state.runner_fingerprint,
           trust_state: state.trust_state,
           token_expires_at: state.token_expires_at || null,
           failed_attempts: state.failed_attempts,
@@ -1293,7 +1293,7 @@ export class HttpChannel implements Channel {
         const ttlMinutes = Number(parsed.ttl_minutes);
         const result = createEnrollmentToken({
           ttlMinutes: Number.isFinite(ttlMinutes) ? ttlMinutes : undefined,
-          nodeId: NODE_HOSTNAME || undefined,
+          runnerId: RUNNER_HOSTNAME || undefined,
         });
         writeJson(res, 201, result);
         return;
@@ -1302,22 +1302,22 @@ export class HttpChannel implements Channel {
       if (pathname === '/api/enroll/verify' && req.method === 'POST') {
         const parsed = await readJsonBody(req);
         const token = parsed.token;
-        const nodeFingerprint = parsed.node_fingerprint;
-        if (!token || !nodeFingerprint) {
+        const runnerFingerprint = parsed.runner_fingerprint;
+        if (!token || !runnerFingerprint) {
           writeProtocolError(
             res,
             400,
             'input_error',
             'bad_request',
-            'token and node_fingerprint are required',
+            'token and runner_fingerprint are required',
           );
           return;
         }
 
         const result = verifyEnrollmentToken({
           token,
-          nodeFingerprint,
-          nodeId: NODE_HOSTNAME || undefined,
+          runnerFingerprint,
+          runnerId: RUNNER_HOSTNAME || undefined,
         });
         if (!result.ok) {
           const statusCode =
@@ -1351,7 +1351,7 @@ export class HttpChannel implements Channel {
           return;
         }
         const state = setTrustState('revoked', {
-          nodeId: NODE_HOSTNAME || undefined,
+          runnerId: RUNNER_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -1365,7 +1365,7 @@ export class HttpChannel implements Channel {
           return;
         }
         const state = setTrustState('suspended', {
-          nodeId: NODE_HOSTNAME || undefined,
+          runnerId: RUNNER_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -1373,7 +1373,7 @@ export class HttpChannel implements Channel {
 
       if (pathname === '/api/enroll/reenroll' && req.method === 'POST') {
         const state = setTrustState('discovered_untrusted', {
-          nodeId: NODE_HOSTNAME || undefined,
+          runnerId: RUNNER_HOSTNAME || undefined,
         });
         writeJson(res, 200, { ok: true, trust_state: state.trust_state });
         return;
@@ -1603,7 +1603,7 @@ export class HttpChannel implements Channel {
           : { sender: 'web-user', sender_name: 'Web User' };
         const timestamp = new Date().toISOString();
 
-        const enrollState = readEnrollmentState(NODE_HOSTNAME || undefined);
+        const enrollState = readEnrollmentState(RUNNER_HOSTNAME || undefined);
         if (enrollState.trust_state !== 'trusted') {
           writeJson(res, 403, {
             error: 'node_not_trusted',
@@ -2402,8 +2402,8 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Node ──
 
-      if ((pathname === '/api/v1/node' || pathname === '/api/node') && req.method === 'GET') {
-        const enrollment = readEnrollmentState(NODE_HOSTNAME || undefined);
+      if ((pathname === '/api/v1/runner' || pathname === '/api/node') && req.method === 'GET') {
+        const enrollment = readEnrollmentState(RUNNER_HOSTNAME || undefined);
         const stats = getExecutorStats();
 
         // System Telemetry
@@ -2427,10 +2427,10 @@ export class HttpChannel implements Channel {
         }
 
         writeJson(res, 200, {
-          hostname: NODE_HOSTNAME,
+          hostname: RUNNER_HOSTNAME,
           enrollment: {
             trust_state: enrollment.trust_state,
-            fingerprint: enrollment.node_fingerprint,
+            fingerprint: enrollment.runner_fingerprint,
             trusted_at: enrollment.trusted_at,
             failed_attempts: enrollment.failed_attempts,
           },
