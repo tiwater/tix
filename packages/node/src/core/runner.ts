@@ -5,6 +5,7 @@ import type {
   Query,
   SDKResultMessage,
   SDKUserMessage,
+  PermissionMode,
 } from '@anthropic-ai/claude-agent-sdk';
 import { logger } from './logger.js';
 import {
@@ -340,7 +341,13 @@ function buildQueryOptions(
   agentId: string,
   sessionId: string,
   taskId: string,
-  overrides?: { apiKey?: string; baseUrl?: string; model?: string },
+  overrides?: {
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+    permissionMode?: PermissionMode;
+    maxTaskTokens?: number;
+  },
 ) {
   const cliPath = getClaudeCliPath();
 
@@ -348,6 +355,10 @@ function buildQueryOptions(
   const effectiveApiKey = overrides?.apiKey ?? (ANTHROPIC_API_KEY || LLM_API_KEY || '');
   const effectiveBaseUrl = overrides?.baseUrl ?? (LLM_BASE_URL || '');
   const effectiveModel = overrides?.model ?? DEFAULT_LLM_MODEL;
+  // Feature 6: per-agent permissionMode from agent-config.json; default = 'acceptEdits'
+  const effectivePermissionMode: PermissionMode = overrides?.permissionMode ?? 'acceptEdits';
+  // Feature 3: per-agent taskBudget from agent-config.json (undefined = no limit)
+  const taskBudget = overrides?.maxTaskTokens;
 
   if (!effectiveApiKey) {
     logger.warn('No API key configured (ANTHROPIC_API_KEY or LLM_API_KEY)');
@@ -369,12 +380,16 @@ function buildQueryOptions(
         args: [path.join(process.cwd(), 'dist/bin/mcp-os.js')],
       },
     },
-    permissionMode: 'acceptEdits' as const,
+    permissionMode: effectivePermissionMode,
     model: effectiveModel,
     settingSources: [] as any[],
     includePartialMessages: true,
+    // Feature 5: receive hook_started / hook_progress / hook_response events
+    includeHookEvents: true,
     pathToClaudeCodeExecutable: cliPath,
     persistSession: true,
+    // Feature 3: API-side token budget — prevents runaway tasks
+    ...(taskBudget ? { taskBudget: { total: taskBudget } } : {}),
     env: buildChildProcessEnv({
       workspace,
       effectiveApiKey,
@@ -480,6 +495,14 @@ export const __testOnly = {
   getPromptMtimeKey,
   getClaudeSessionPath,
 };
+
+/**
+ * Returns the warm session for a given agent + session, if one exists.
+ * Used by the HTTP channel to call getContextUsage() on the active Query object.
+ */
+export function getWarmSession(agentId: string, sessionId: string): WarmSession | undefined {
+  return warmSessions.get(buildSessionKey(agentId, sessionId));
+}
 
 // ══════════════════════════════════════════════════════════════
 // AgentRunner — Public API (unchanged interface)
@@ -625,6 +648,29 @@ export class AgentRunner {
               event.result?.trim() ||
               fallbackText ||
               '(done)';
+
+            // Feature 2: terminal_reason — inform user why the agent loop stopped.
+            // The SDK now exposes a structured reason on every result event.
+            const terminalReason = event.terminal_reason as string | undefined;
+            logger.info(
+              {
+                agentId: this.state.agent_id,
+                sessionId: this.state.session_id,
+                terminal_reason: terminalReason,
+                is_error: event.is_error,
+              },
+              'Agent loop terminated',
+            );
+            if (terminalReason === 'max_turns') {
+              finalText +=
+                '\n\n> ⚠️ The agent reached its maximum number of turns. Send another message to continue.';
+            } else if (terminalReason === 'blocking_limit') {
+              finalText +=
+                '\n\n> ⚠️ The agent was paused due to a resource limit. Please try again shortly.';
+            } else if (terminalReason === 'aborted_tools' || event.is_error === true) {
+              // Prefer the stream text if available; otherwise a tidy stopped indicator
+              finalText = finalText || '(stopped)';
+            }
 
             // Rewrite workspace file paths to ticlaw:// protocol URLs
             const workspace = agentPaths(this.state.agent_id).workspace;
@@ -847,7 +893,26 @@ export class AgentRunner {
         }
 
         const agentModels = getAgentModelConfig(this.state.agent_id);
-        
+        // Feature 6: read per-agent permission mode + Feature 3: max task tokens
+        const agentConfig = (() => {
+          try {
+            const cfgPath = paths.config;
+            if (fs.existsSync(cfgPath)) {
+              return JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as Record<string, any>;
+            }
+          } catch { /* ignore */ }
+          return {};
+        })();
+        const agentPermissionMode = (
+          ['acceptEdits', 'auto', 'bypassPermissions'].includes(agentConfig.permission_mode)
+            ? agentConfig.permission_mode
+            : undefined
+        ) as PermissionMode | undefined;
+        const agentMaxTaskTokens: number | undefined =
+          typeof agentConfig.max_task_tokens === 'number' && agentConfig.max_task_tokens > 0
+            ? agentConfig.max_task_tokens
+            : undefined;
+
         const spawnQuery = (modelOverride: { apiKey?: string; baseUrl?: string; model?: string }) => {
           const spawnOpts = buildQueryOptions(
             systemPrompt,
@@ -855,7 +920,7 @@ export class AgentRunner {
             this.state.agent_id,
             this.state.session_id,
             this.state.task_id!,
-            modelOverride,
+            { ...modelOverride, permissionMode: agentPermissionMode, maxTaskTokens: agentMaxTaskTokens },
           );
           spawnOpts.plugins = compiledPlugins;
           return query({
@@ -911,6 +976,14 @@ export class AgentRunner {
         }
 
         const agentQuery = agentQueryObj;
+
+        // Feature 1: startup() pre-warms the CLI subprocess so the NEXT message
+        // arrives at an already-running process (~20x faster first-turn latency).
+        // We fire-and-forget in the background — the current cold-start query will
+        // complete regardless, and subsequent turns will benefit immediately.
+        agentQuery.startup().catch((err: any) => {
+          logger.debug({ err: err?.message }, 'AgentRunner: startup() pre-warm failed (non-fatal)');
+        });
 
         const newWarm: WarmSession = {
           query: agentQuery as Query,
@@ -1153,6 +1226,16 @@ When asked to list your capabilities, skills, or tools:
     } else if (type === 'stream_event' && event.event?.delta?.text) {
       this.state.activity.action = 'speaking';
       this.state.activity.target = event.event.delta.text;
+    } else if (type === 'hook_started') {
+      // Feature 5: hook lifecycle events for observability
+      this.state.activity.action = 'hook_started';
+      this.state.activity.target = event.hook_type ?? 'unknown';
+    } else if (type === 'hook_progress') {
+      this.state.activity.action = 'hook_progress';
+      this.state.activity.target = event.hook_type ?? 'unknown';
+    } else if (type === 'hook_response') {
+      this.state.activity.action = 'hook_done';
+      this.state.activity.target = event.hook_type ?? 'unknown';
     }
 
     const logLine = `[${this.state.activity.phase}] ${this.state.activity.action || ''}`;

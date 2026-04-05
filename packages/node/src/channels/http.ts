@@ -27,6 +27,7 @@
  *   GET    /api/v1/agents/:agent_id/sessions/:session_id/messages — chat history
  *   POST   /api/v1/agents/:agent_id/sessions/:session_id/messages — send message
  *   GET    /api/v1/agents/:agent_id/sessions/:session_id/stream   — SSE stream
+ *   GET    /api/v1/agents/:agent_id/sessions/:session_id/context  — context window usage
  *
  * Skills:
  *   GET    /api/v1/skills                                  — list
@@ -130,6 +131,7 @@ import { logger } from '../core/logger.js';
 import { getTaskLogPath } from '../core/utils.js';
 import { isPathWithin } from '../core/security.js';
 import { getExecutorStats, listActiveTasks } from '../task-executor.js';
+import { getWarmSession } from '../core/runner.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { maybeHandleAcpRequest } from './acp.js';
 import type {
@@ -2464,6 +2466,31 @@ export class HttpChannel implements Channel {
           'trust_endpoint_removed',
           'Direct trust elevation is disabled. Use the enrollment flow (/api/enroll/token + /api/enroll/verify) to transition a node to trusted state.',
         );
+        return;
+      }
+
+      // ── Feature 4: Context window usage for an active session ──
+      //   GET /api/v1/agents/:agentId/sessions/:sessionId/context
+      const contextUsageMatch =
+        req.method === 'GET' &&
+        pathname.match(
+          /^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)\/context$/,
+        );
+      if (contextUsageMatch) {
+        const agentId = decodeURIComponent(contextUsageMatch[1]);
+        const sessionId = decodeURIComponent(contextUsageMatch[2]);
+        const warm = getWarmSession(agentId, sessionId);
+        if (!warm || !warm.alive) {
+          writeProtocolError(res, 404, 'not_found', 'no_active_session',
+            'No active warm session found for this agent/session. The session may be idle or not yet started.');
+          return;
+        }
+        try {
+          const usage = await warm.query.getContextUsage();
+          writeJson(res, 200, usage);
+        } catch (err: any) {
+          writeProtocolError(res, 500, 'internal_error', 'context_usage_failed', err.message);
+        }
         return;
       }
 
