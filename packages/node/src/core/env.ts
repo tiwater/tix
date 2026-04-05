@@ -126,9 +126,9 @@ export function readConfigYaml(keys: string[]): Record<string, string> {
   return result;
 }
 
-const DEFAULT_CONFIG_YAML = `# TiClaw Configuration
-# Edit this file to configure your TiClaw agent.
-# Docs: https://github.com/tiwater/ticlaw
+const DEFAULT_CONFIG_YAML = `# Supen Node Configuration
+# Edit this file to configure your Supen Node.
+# Docs: https://supen.ai/docs/nodes
 
 # ── LLM Provider ──
 # BigModel (recommended): get a key at https://open.bigmodel.cn

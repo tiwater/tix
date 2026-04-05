@@ -885,7 +885,10 @@ let sendFn: (
 let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 
 async function main(): Promise<void> {
-  logger.info('TiClaw starting');
+  const productName = process.env.NODE_PRODUCT
+    ? process.env.NODE_PRODUCT.charAt(0).toUpperCase() + process.env.NODE_PRODUCT.slice(1)
+    : 'Supen';
+  logger.info(`${productName} Node starting`);
 
   initStore();
   cleanupStaleSessions();
@@ -1028,7 +1031,7 @@ async function main(): Promise<void> {
         if (installed.permissionLevel === 3) {
           logger.warn(
             { skill: skillName },
-            'Skipping auto-enable of Level 3 default skill — explicit approval required. Use `ticlaw skills enable --approve` to enable it.',
+            'Skipping auto-enable of Level 3 default skill — explicit approval required. Use `supen-node skills enable --approve` to enable it.',
           );
           continue;
         }
@@ -1073,7 +1076,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  logger.info(`TiClaw running (trigger: @${ASSISTANT_NAME})`);
+  logger.info(`${productName} Node running (trigger: @${ASSISTANT_NAME})`);
 }
 
 const isDirectRun =

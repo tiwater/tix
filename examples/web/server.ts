@@ -1,7 +1,7 @@
 /**
  * TiClaw Web — Reference implementation of a TiClaw controller.
  *
- * Demonstrates how to use @ticlaw/gateway to build a controller that:
+ * Demonstrates how to use @tiwater/claw-gateway to build a controller that:
  * - Accepts inbound WebSocket connections from nodes
  * - Provides a web UI for interacting with connected nodes
  * - Relays API requests from the UI to nodes
@@ -16,7 +16,7 @@
  */
 
 import http from 'node:http';
-import { attachHub, handleHubRequest } from '@ticlaw/gateway';
+import { attachHub, handleHubRequest } from '@tiwater/claw-gateway';
 
 const PORT = parseInt(process.env.PORT || '2756', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -64,7 +64,7 @@ async function start() {
 
   // 3. Start listening
   httpServer.listen(PORT, HOST, () => {
-    console.log(`[web] TiClaw controller listening on http://${HOST}:${PORT}`);
+    console.log(`[web] Claw controller listening on http://${HOST}:${PORT}`);
   });
 }
 

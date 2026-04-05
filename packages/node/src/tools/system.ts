@@ -5,6 +5,11 @@
 import os from 'os';
 import { TIMEZONE } from '../core/config.js';
 
+/** Product brand name, set by the product wrapper (e.g. @supen/node sets NODE_PRODUCT=supen). */
+const NODE_PRODUCT = process.env.NODE_PRODUCT
+  ? process.env.NODE_PRODUCT.charAt(0).toUpperCase() + process.env.NODE_PRODUCT.slice(1)
+  : 'Supen';
+
 export const systemTools = {
   /**
    * Get Current system time, date, and day of week.
@@ -47,7 +52,7 @@ export const systemTools = {
   async whoami(_args: any, context: { agent_id: string }) {
     return {
       agent_id: context.agent_id,
-      description: `You are agent '${context.agent_id}' running inside TiClaw framework.`
+      description: `You are agent '${context.agent_id}' running as a ${NODE_PRODUCT} Node.`
     };
   }
 };

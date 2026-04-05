@@ -1,7 +1,7 @@
 {
-  "name": "@ticlaw/node",
+  "name": "@tiwater/claw-sdk",
   "version": "1.3.0",
-  "description": "TiClaw Node — machine-side agent runtime. Runs multiple agents on a host machine and connects outbound to a TiClaw Gateway.",
+  "description": "Claw SDK — shared agent runtime for Supen and Ticos. Runs multiple agents on a host machine and connects outbound to a Claw Gateway.",
   "type": "module",
   "main": "dist/index.js",
   "exports": {

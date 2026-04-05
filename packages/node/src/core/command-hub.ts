@@ -33,7 +33,7 @@ export class CommandHub {
       return {
         type: 'text',
         content:
-          'TiClaw 快捷指令说明:\n/status - 查看所有 Bot 连接状态\n/reload - 重新加载配置\n/web [url] - 快速抓取网页内容',
+          `${process.env.NODE_PRODUCT ? process.env.NODE_PRODUCT.charAt(0).toUpperCase() + process.env.NODE_PRODUCT.slice(1) : 'Supen'} Node 快捷指令说明:\n/status - 查看所有 Bot 连接状态\n/reload - 重新加载配置\n/web [url] - 快速抓取网页内容`,
       };
     });
   }
