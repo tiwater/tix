@@ -12,6 +12,15 @@ export interface GatewayConfig {
 
 const CONFIG_PATH = path.join(TICLAW_HOME, 'config.yaml');
 
+/**
+ * Default gateway URLs used by the Gateway class when no URL is configured.
+ * Exported so callers can apply them explicitly rather than having readGatewayConfig
+ * silently inject a value.
+ */
+export const DEFAULT_GATEWAY_URL_DEV = 'ws://127.0.0.1:2755';
+export const DEFAULT_GATEWAY_URL_PROD = 'wss://ticlaw-gateway.onrender.com';
+
+
 export function readGatewayConfig(): GatewayConfig {
   let config: GatewayConfig = {};
 
@@ -37,13 +46,9 @@ export function readGatewayConfig(): GatewayConfig {
     config.reporting_interval = parseInt(process.env.TICLAW_GATEWAY_REPORTING_INTERVAL, 10);
   }
 
-  // 3. Default gateway_url based on environment
-  if (!config.gateway_url) {
-    config.gateway_url =
-      process.env.NODE_ENV === 'production'
-        ? 'wss://ticlaw-gateway.onrender.com'
-        : 'ws://127.0.0.1:2755';
-  }
+  // Note: no automatic default for gateway_url — a missing value means
+  // "gateway uplink disabled". Callers that want a default should use
+  // DEFAULT_GATEWAY_URL_DEV / DEFAULT_GATEWAY_URL_PROD explicitly.
 
   return config;
 }
