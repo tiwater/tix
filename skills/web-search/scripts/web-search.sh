@@ -36,13 +36,13 @@ if [[ -z "$QUERY" ]]; then
 fi
 
 # Load keys
-SERPER_API_KEY=${TC_SERPER_API_KEY:-"893c202c20c4a0c7b1cd123d60ce006c4e792475"}
-PERPLEXITY_API_KEY=${TC_PERPLEXITY_API_KEY:-$(grep -E '^TC_PERPLEXITY_API_KEY=' .env 2>/dev/null | cut -d '=' -f 2-)}
+SERPER_API_KEY=${TIX_SERPER_API_KEY:-"893c202c20c4a0c7b1cd123d60ce006c4e792475"}
+PERPLEXITY_API_KEY=${TIX_PERPLEXITY_API_KEY:-$(grep -E '^TIX_PERPLEXITY_API_KEY=' .env 2>/dev/null | cut -d '=' -f 2-)}
 
 # Decide on provider and key
 if [[ "$PROVIDER" == "perplexity" ]]; then
   if [[ -z "$PERPLEXITY_API_KEY" ]]; then
-    echo "Warning: TC_PERPLEXITY_API_KEY not set. Falling back to Serper."
+    echo "Warning: TIX_PERPLEXITY_API_KEY not set. Falling back to Serper."
     PROVIDER="serper"
   fi
 fi

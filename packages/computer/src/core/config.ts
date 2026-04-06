@@ -12,7 +12,7 @@ export type { ModelEntry };
 const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
-  'TC_CODING_CLI',
+  'TIX_CODING_CLI',
   'SKILLS_DIRS',
   'SKILLS_ADMIN_ONLY',
   'SKILLS_ALLOW_LEVEL3',
@@ -56,8 +56,8 @@ export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER ||
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 /** Workspace skill CLI: gemini, codex, claude, etc. Used only when agent needs to run code. */
-export const TC_CODING_CLI =
-  process.env.TC_CODING_CLI || envConfig.TC_CODING_CLI || 'gemini';
+export const TIX_CODING_CLI =
+  process.env.TIX_CODING_CLI || envConfig.TIX_CODING_CLI || 'gemini';
 
 // Comma-separated sender IDs that can perform privileged mind operations.
 // Example: MIND_ADMIN_USERS="ou_xxx,dc:user:12345"

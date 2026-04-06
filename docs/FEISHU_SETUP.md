@@ -40,7 +40,7 @@ channels:
         agent_id: "agent-b"
 ```
 
-> 说明：仅设置 `TC_FEISHU_APP_ID` / `TC_FEISHU_APP_SECRET` 环境变量，在当前版本下不足以启用 Feishu（因为 channel loader 不走该 env fallback）。
+> 说明：仅设置 `TIX_FEISHU_APP_ID` / `TIX_FEISHU_APP_SECRET` 环境变量，在当前版本下不足以启用 Feishu（因为 channel loader 不走该 env fallback）。
 
 ## 3. 触发词（可选）
 
@@ -65,6 +65,6 @@ pnpm run dev
 
 ## 6. Planned Improvements
 
-1. 为 Feishu channel loader 增加环境变量 fallback（`TC_FEISHU_APP_ID` / `TC_FEISHU_APP_SECRET`）。
+1. 为 Feishu channel loader 增加环境变量 fallback（`TIX_FEISHU_APP_ID` / `TIX_FEISHU_APP_SECRET`）。
 2. 完成 `sendFile` 的生产可用实现（含 media 上传与消息引用）。
 3. 增加连接与事件链路的健康指标暴露。

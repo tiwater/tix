@@ -123,11 +123,11 @@ export class DingTalkChannel extends AbstractChannel<
 }
 
 function createDingTalkChannel(opts: ChannelOpts): DingTalkChannel | null {
-  const config = readEnvFile(['TC_DINGTALK_ENABLED', 'TC_DINGTALK_ACCOUNTS']);
-  if (config.TC_DINGTALK_ENABLED === 'false') return null;
+  const config = readEnvFile(['TIX_DINGTALK_ENABLED', 'TIX_DINGTALK_ACCOUNTS']);
+  if (config.TIX_DINGTALK_ENABLED === 'false') return null;
 
   try {
-    const accounts = JSON.parse(config.TC_DINGTALK_ACCOUNTS || '[]');
+    const accounts = JSON.parse(config.TIX_DINGTALK_ACCOUNTS || '[]');
     return accounts.length > 0 ? new DingTalkChannel(accounts, opts) : null;
   } catch {
     return null;

@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
-  TC_CODING_CLI,
+  TIX_CODING_CLI,
   ASSISTANT_NAME,
   TIX_HOME,
   IDLE_TIMEOUT,

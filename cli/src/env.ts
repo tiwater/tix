@@ -70,7 +70,7 @@ function getDiscordToken(): string | null {
   const config = readConfig();
   return (
     config.channels?.discord?.token ||
-    process.env.TC_DISCORD_TOKEN ||
+    process.env.TIX_DISCORD_TOKEN ||
     process.env.DISCORD_BOT_TOKEN ||
     null
   );

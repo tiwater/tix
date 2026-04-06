@@ -6,7 +6,7 @@
 pnpm test:e2e                       # start server + run all tests
 bash tests/run-e2e.sh --no-server   # run against already-running server
 bash tests/run-e2e.sh 01            # run a single scenario (by number)
-TC_PORT=3000 pnpm test:e2e          # custom port
+TIX_PORT=3000 pnpm test:e2e          # custom port
 ```
 
 ## How to Write a New Test Case
@@ -30,7 +30,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario NN: My Feature"
 
-BASE="http://localhost:${TC_PORT}"
+BASE="http://localhost:${TIX_PORT}"
 
 # ── Test NN.1: Description ──
 echo -e "  Doing something..."
