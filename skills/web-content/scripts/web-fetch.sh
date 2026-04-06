@@ -32,7 +32,7 @@ fi
 
 # Fallback to Jina Reader or Similar if browser isn't needed
 # (Using Jina for clean markdown extraction as a first-class lightweight proxy)
-# In Ticlaw, we'll keep this simple and let the model handle the Markdown if provided.
+# In Tix, we'll keep this simple and let the model handle the Markdown if provided.
 # A more robust implementation would use Playwright or a headless browser.
 
 curl -s "https://r.jina.ai/$URL"

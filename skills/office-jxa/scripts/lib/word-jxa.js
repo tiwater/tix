@@ -296,7 +296,7 @@ function getComments(filePath) {
  * @param {string|null} filePath - path to .docx or null for active doc
  * @param {number} paraIndex - paragraph index to attach the comment to
  * @param {string} commentText - the comment text
- * @param {string} [author] - optional author name (default: "TiClaw Review")
+ * @param {string} [author] - optional author name (default: "Tix Review")
  */
 function addComment(filePath, paraIndex, commentText, author) {
   const word = getWordApp();

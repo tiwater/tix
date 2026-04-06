@@ -14,13 +14,13 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 16: Gateway Node Authentication"
 
-BASE="http://localhost:${TICLAW_PORT:-2756}"
+BASE="http://localhost:${TIX_PORT:-2756}"
 GATEWAY_PORT="${GATEWAY_PORT:-}"
 
 # ── Test 16.1: Gateway nodes endpoint responds (node node exposes relay) ──
 echo -e "  Testing /api/gateway/nodes relay..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-nodes_resp=$(ticlaw_curl -sf "${BASE}/api/gateway/nodes" 2>/dev/null) || nodes_resp=""
+nodes_resp=$(tix_curl -sf "${BASE}/api/gateway/nodes" 2>/dev/null) || nodes_resp=""
 if [ -n "$nodes_resp" ] && echo "$nodes_resp" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)

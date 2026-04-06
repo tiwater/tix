@@ -1,5 +1,5 @@
 /**
- * `tc start/stop/status` — Control the TiClaw system service.
+ * `tc start/stop/status` — Control the Tix system service.
  *
  * Wraps the existing setup/service.ts for launchd (macOS) and systemd (Linux).
  */
@@ -11,7 +11,7 @@ import {
   readConfig,
   PROJECT_ROOT,
   HOME_DIR,
-  TICLAW_HOME,
+  TIX_HOME,
   CONFIG_PATH,
 } from './utils.js';
 
@@ -29,11 +29,11 @@ const LAUNCHD_PLIST = path.join(
   HOME_DIR,
   'Library',
   'LaunchAgents',
-  'com.ticlaw.plist',
+  'com.tix.plist',
 );
 
 function getSystemdUnit(): string {
-  return 'ticlaw.service';
+  return 'tix.service';
 }
 
 // --- Start ---
@@ -41,7 +41,7 @@ function getSystemdUnit(): string {
 export async function start(): Promise<void> {
   const platform = getPlatform();
 
-  console.log('\n  🚀 Starting TiClaw service...\n');
+  console.log('\n  🚀 Starting Tix service...\n');
 
   if (platform === 'macos') {
     if (!fs.existsSync(LAUNCHD_PLIST)) {
@@ -54,7 +54,7 @@ export async function start(): Promise<void> {
     } catch {
       try {
         const uid = execSync('id -u', { encoding: 'utf-8' }).trim();
-        execSync(`launchctl kickstart -k gui/${uid}/com.ticlaw`, {
+        execSync(`launchctl kickstart -k gui/${uid}/com.tix`, {
           stdio: 'inherit',
         });
         console.log('  ✅ Service restarted (launchd)');
@@ -74,9 +74,9 @@ export async function start(): Promise<void> {
       console.log('  ✅ Service started (systemd)');
     } catch {
       console.log('  systemd failed. Starting directly...');
-      const logDir = path.join(TICLAW_HOME, 'logs');
+      const logDir = path.join(TIX_HOME, 'logs');
       fs.mkdirSync(logDir, { recursive: true });
-      execSync(`nohup node dist/index.js > ${logDir}/ticlaw.log 2>&1 &`, {
+      execSync(`nohup node dist/index.js > ${logDir}/tix.log 2>&1 &`, {
         cwd: PROJECT_ROOT,
         stdio: 'ignore',
       });
@@ -93,7 +93,7 @@ export async function start(): Promise<void> {
 export async function stop(): Promise<void> {
   const platform = getPlatform();
 
-  console.log('\n  🛑 Stopping TiClaw service...\n');
+  console.log('\n  🛑 Stopping Tix service...\n');
 
   if (platform === 'macos') {
     try {
@@ -128,12 +128,12 @@ export async function status(): Promise<void> {
   const platform = getPlatform();
   const config = readConfig();
 
-  console.log('\n  🦀 TiClaw Status\n');
+  console.log('\n  🦀 Tix Status\n');
 
   // Service status
   if (platform === 'macos') {
     try {
-      const output = execSync('launchctl list | grep ticlaw', {
+      const output = execSync('launchctl list | grep tix', {
         encoding: 'utf-8',
       });
       const parts = output.trim().split('\t');

@@ -1,7 +1,7 @@
 /**
- * TiClaw Web — Reference implementation of a TiClaw controller.
+ * Tix Web — Reference implementation of a Tix controller.
  *
- * Demonstrates how to use @ticlaw/gateway to build a controller that:
+ * Demonstrates how to use @tiwater/claw-gateway to build a controller that:
  * - Accepts inbound WebSocket connections from nodes
  * - Provides a web UI for interacting with connected nodes
  * - Relays API requests from the UI to nodes
@@ -16,7 +16,7 @@
  */
 
 import http from 'node:http';
-import { attachHub, handleHubRequest } from '@ticlaw/gateway';
+import { attachGateway, handleGatewayRequest } from '@tix/gateway';
 
 const PORT = parseInt(process.env.PORT || '2756', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -25,8 +25,8 @@ const DEV = process.env.NODE_ENV !== 'production';
 async function start() {
   const httpServer = http.createServer();
 
-  // 1. Attach hub WebSocket server (same in dev and prod)
-  attachHub(httpServer);
+  // 1. Attach gateway WebSocket server (same in dev and prod)
+  attachGateway(httpServer);
 
   // 2. Set up request handling
   if (DEV) {
@@ -37,9 +37,9 @@ async function start() {
       appType: 'custom',
     });
 
-    httpServer.on('request', (req, res) => {
-      // Hub API routes first (relays to node via WebSocket, including binary files)
-      if (handleHubRequest(req, res)) return;
+    httpServer.on('request', async (req, res) => {
+      // Gateway API routes first (relays to node via WebSocket, including binary files)
+      if (await handleGatewayRequest(req, res)) return;
       // Then Vite + SvelteKit dev server
       vite.middlewares(req, res);
     });
@@ -49,9 +49,9 @@ async function start() {
     // Production: use SvelteKit adapter-node handler
     const { handler } = await import('./build/handler.js');
 
-    httpServer.on('request', (req, res) => {
-      // Hub API routes first (relays to node via WebSocket, including binary files)
-      if (handleHubRequest(req, res)) return;
+    httpServer.on('request', async (req, res) => {
+      // Gateway API routes first (relays to node via WebSocket, including binary files)
+      if (await handleGatewayRequest(req, res)) return;
       // Then SvelteKit
       handler(req, res, () => {
         res.writeHead(404);
@@ -64,7 +64,7 @@ async function start() {
 
   // 3. Start listening
   httpServer.listen(PORT, HOST, () => {
-    console.log(`[web] TiClaw controller listening on http://${HOST}:${PORT}`);
+    console.log(`[web] Claw controller listening on http://${HOST}:${PORT}`);
   });
 }
 

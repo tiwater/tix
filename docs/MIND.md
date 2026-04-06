@@ -1,6 +1,6 @@
 # Agent Mind Architecture (MIND.md)
 
-TiClaw agents possess a continuous memory and persona framework inspired by the OpenClaw standard. The agent's "mind" is defined by four distinct Markdown files that live inside the agent's dedicated workspace (`~/.ticlaw/agents/<agent_id>/`).
+Tix agents possess a continuous memory and persona framework inspired by the OpenClaw standard. The agent's "mind" is defined by four distinct Markdown files that live inside the agent's dedicated workspace (`~/.tix/agents/<agent_id>/`).
 
 The agent is fully aware of these files and actively uses its file-editing capabilities to update them as it learns new information.
 
@@ -24,7 +24,7 @@ The agent is fully aware of these files and actively uses its file-editing capab
 ### 4. `MEMORY.md` (Long-Term Knowledge)
 **Purpose:** Curated long-term facts, environmental knowledge, rules, and system details.
 **Maintained by:** The Agent.
-**Behavior:** While TiClaw captures everything in daily raw journals (`memory/YYYY-MM-DD.md`), `MEMORY.md` acts as the consolidated, high-signal knowledge base. The agent actively graduates important facts from the daily journal into this long-term memory file.
+**Behavior:** While Tix captures everything in daily raw journals (`memory/YYYY-MM-DD.md`), `MEMORY.md` acts as the consolidated, high-signal knowledge base. The agent actively graduates important facts from the daily journal into this long-term memory file.
 
 ---
-By allowing the agent to mutate its own `IDENTITY.md`, `USER.md`, and `MEMORY.md`, TiClaw agents natively achieve true continuity and an evolving relationship with their operators across sessions. 
+By allowing the agent to mutate its own `IDENTITY.md`, `USER.md`, and `MEMORY.md`, Tix agents natively achieve true continuity and an evolving relationship with their operators across sessions. 

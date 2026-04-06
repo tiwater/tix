@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 22: Model Selection and Fallback"
 
-BASE="http://localhost:${TICLAW_PORT:-2756}"
+BASE="http://localhost:${TIX_PORT:-2756}"
 
 AGENT_DEFAULT="agent_def_$$"
 AGENT_CUSTOM="agent_cus_$$"
@@ -15,15 +15,15 @@ register_agent "$AGENT_DEFAULT"
 register_agent "$AGENT_CUSTOM"
 register_agent "$AGENT_INVALID"
 
-mkdir -p "${TICLAW_HOME}/agents/$AGENT_DEFAULT"
-mkdir -p "${TICLAW_HOME}/agents/$AGENT_CUSTOM"
-mkdir -p "${TICLAW_HOME}/agents/$AGENT_INVALID"
+mkdir -p "${TIX_HOME}/agents/$AGENT_DEFAULT"
+mkdir -p "${TIX_HOME}/agents/$AGENT_CUSTOM"
+mkdir -p "${TIX_HOME}/agents/$AGENT_INVALID"
 
 # 1. Custom agent -> specific model
-echo '{"model": "bigmodel-glm4"}' > "${TICLAW_HOME}/agents/$AGENT_CUSTOM/agent-config.json"
+echo '{"model": "bigmodel-glm4"}' > "${TIX_HOME}/agents/$AGENT_CUSTOM/agent-config.json"
 
 # 2. Invalid model config -> should warn but fall back to the default registry list
-echo '{"model": "invalid-nonexistent-model"}' > "${TICLAW_HOME}/agents/$AGENT_INVALID/agent-config.json"
+echo '{"model": "invalid-nonexistent-model"}' > "${TIX_HOME}/agents/$AGENT_INVALID/agent-config.json"
 
 
 # ── Test 22.1: Default agent ──

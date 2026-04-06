@@ -125,7 +125,7 @@ ${CLAUDE_SKILL_DIR}/scripts/word-save.sh --save-as /output.pdf --format pdf
 
 ### `word-set-properties` — Document metadata
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/word-set-properties.sh --title "Report" --author "TiClaw" [--file path.docx]
+${CLAUDE_SKILL_DIR}/scripts/word-set-properties.sh --title "Report" --author "Tix" [--file path.docx]
 ```
 
 ---

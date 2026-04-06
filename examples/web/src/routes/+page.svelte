@@ -10,7 +10,7 @@
   </div>
 
   <div class="flex flex-col gap-1.5 max-w-[360px]">
-    <h2 class="text-lg font-semibold text-foreground">TiClaw DevUI</h2>
+    <h2 class="text-lg font-semibold text-foreground">Tix DevUI</h2>
     <p class="text-sm text-muted-foreground leading-relaxed">
       Select a session from the sidebar to start chatting, or create a new one.
     </p>

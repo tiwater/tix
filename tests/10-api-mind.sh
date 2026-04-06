@@ -5,9 +5,9 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 10: Mind API"
 
-BASE="http://localhost:${TICLAW_PORT}"
+BASE="http://localhost:${TIX_PORT}"
 AGENT_ID="mind_api_$$"
-AGENT_DIR="${TICLAW_HOME}/agents/${AGENT_ID}"
+AGENT_DIR="${TIX_HOME}/agents/${AGENT_ID}"
 
 register_agent "$AGENT_ID"
 

@@ -1,4 +1,4 @@
-# Legacy single-container TiClaw node image with built-in Chrome 146.
+# Legacy single-container Tix node image with built-in Chrome 146.
 # This is useful for private/local node deployments that need browser automation.
 # For the Render Blueprint public web service, use packages/gateway/Dockerfile instead.
 
@@ -40,7 +40,7 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Build TiClaw
+# 3. Build Tix
 WORKDIR /app
 COPY . .
 
@@ -50,17 +50,17 @@ RUN npm install -g pnpm && \
     pnpm run build
 
 # 4. Prepare Persistance for browser sessions
-# We use /root/.ticlaw as the default TICLAW_HOME. 
+# We use /root/.tix as the default TIX_HOME. 
 # In Render, mount a Persistent Disk to this directory to keep login sessions across deploys.
-RUN mkdir -p /root/.ticlaw/browser-data
+RUN mkdir -p /root/.tix/browser-data
 
 # 5. Runtime Configuration
 ENV NODE_ENV=production
-ENV TICLAW_HOME=/root/.ticlaw
+ENV TIX_HOME=/root/.tix
 ENV CHROME_PATH=/usr/bin/google-chrome-stable
 ENV HTTP_PORT=10000
 
 EXPOSE 10000
 
-# Start TiClaw Edge with the compiled distribution
+# Start Tix Edge with the compiled distribution
 CMD ["node", "packages/node/dist/index.js"]

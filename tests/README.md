@@ -1,4 +1,4 @@
-# TiClaw E2E Test Suite
+# Tix E2E Test Suite
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ TC_PORT=3000 pnpm test:e2e          # custom port
 3. **Each test checks one thing.** Use clear assertion names that describe the expected behavior.
 4. **Report failures honestly.** Never suppress errors to make tests pass. A failing test = a real bug = a GitHub issue.
 5. **LLM-as-judge for quality.** When string matching isn't enough (e.g., "is this well-formatted?"), use `judge_response` to let the LLM evaluate quality.
-6. **Known bug: sequential messages.** Due to [#2](https://github.com/dustland/ticlaw/issues/2), the 2nd chat message to the agent in a single script run returns empty. Keep chat tests to 1 message per script, or accept failures for messages after the first.
+6. **Known bug: sequential messages.** Due to [#2](https://github.com/dustland/tix/issues/2), the 2nd chat message to the agent in a single script run returns empty. Keep chat tests to 1 message per script, or accept failures for messages after the first.
 
 ### File Template
 
@@ -107,6 +107,6 @@ assert_contains "Math works" "$response" "4" || true
 
 ## Prerequisites
 
-- LLM API key configured in `~/.ticlaw/config.yaml` (for chat tests)
+- LLM API key configured in `~/.tix/config.yaml` (for chat tests)
 - `python3` available (for JSON parsing)
 - `curl` available (for API tests)

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * TiClaw CLI — tc
+ * Tix CLI — tc
  *
  * Usage:
  *   tc bootstrap               First-time setup (interactive)
- *   tc start                    Start the TiClaw service
- *   tc stop                     Stop the TiClaw service
+ *   tc start                    Start the Tix service
+ *   tc stop                     Stop the Tix service
  *   tc status                   Show service state + detected CLIs
  *   tc skills list              List available skills
  *   tc skills install <name>    Install a skill
@@ -28,19 +28,19 @@ const program = new Command();
 
 program
   .name('tc')
-  .description('TiClaw CLI — bootstrap, manage skills, and control the service')
+  .description('Tix CLI — bootstrap, manage skills, and control the service')
   .version('1.0.0');
 
 program
   .command('bootstrap')
   .description(
-    'First-time setup: detect CLIs, configure ~/.ticlaw/config.yaml, apply initial skills, install service',
+    'First-time setup: detect CLIs, configure ~/.tix/config.yaml, apply initial skills, install service',
   )
   .action(bootstrap);
 
-program.command('start').description('Start the TiClaw service').action(start);
+program.command('start').description('Start the Tix service').action(start);
 
-program.command('stop').description('Stop the TiClaw service').action(stop);
+program.command('stop').description('Stop the Tix service').action(stop);
 
 program
   .command('status')

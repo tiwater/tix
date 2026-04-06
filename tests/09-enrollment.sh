@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 9: Enrollment Lifecycle"
 
-BASE="http://localhost:${TICLAW_PORT}"
+BASE="http://localhost:${TIX_PORT}"
 
 # ── Test 9.1: Get enrollment status ──
 echo -e "  GET /api/enroll/status"

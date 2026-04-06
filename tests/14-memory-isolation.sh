@@ -8,7 +8,7 @@ print_scenario_header "Scenario 14: Memory Isolation Internals"
 AGENT_ID="memory_iso_$$"
 SESSION_A="mem_sess_a_$$"
 SESSION_B="mem_sess_b_$$"
-BASE_DIR="${TICLAW_HOME}/agents/$AGENT_ID"
+BASE_DIR="${TIX_HOME}/agents/$AGENT_ID"
 SESS_DIR="$BASE_DIR/.claude_sessions"
 
 register_agent "$AGENT_ID"

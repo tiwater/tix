@@ -1,8 +1,8 @@
-# TiClaw 数据管理设计文档 (Data Management Design)
+# Tix 数据管理设计文档 (Data Management Design)
 
 ## 1. 核心哲学：大脑与手脚 (Brain vs. Hands)
 
-TiClaw 采用“文件即数据库”的模型：
+Tix 采用“文件即数据库”的模型：
 - **大脑 (Brain)**：Agent 身份、心智、长期记忆（Markdown + JSON）
 - **手脚 (Hands)**：运行时会话、消息、调度、任务执行（JSON/JSONL/YAML）
 
@@ -19,10 +19,10 @@ TiClaw 采用“文件即数据库”的模型：
 
 ## 3. 当前目录结构标准 (Current Directory Standard)
 
-所有数据位于 `~/.ticlaw/`：
+所有数据位于 `~/.tix/`：
 
 ```text
-~/.ticlaw/
+~/.tix/
 ├── config.yaml
 ├── router-state.json
 ├── registered-groups.json                 # 当前路由绑定来源（chat_jid -> RegisteredProject）
@@ -38,7 +38,7 @@ TiClaw 采用“文件即数据库”的模型：
         ├── USER.md
         ├── MEMORY.md
         ├── .claude_sessions/
-        │   └── {encoded_session_id}.id    # Claude 侧 session 续接 ID（按 TiClaw session 隔离）
+        │   └── {encoded_session_id}.id    # Claude 侧 session 续接 ID（按 Tix session 隔离）
         ├── memory/
         │   └── YYYY-MM-DD.md              # 日志式记忆归档
         ├── skills.json                    # 可选，Agent 允许技能名单
@@ -98,7 +98,7 @@ TiClaw 采用“文件即数据库”的模型：
 
 - 长期记忆（Long-term）：`agents/{id}/MEMORY.md`，由人或系统维护的稳定记忆。
 - 短期记忆（Short-term）：`agents/{id}/memory/*.md`，运行时自动追加的任务日志摘要。
-- 当前 Runner 会将最近 3 个 journal 文件注入系统提示词。
+- 当前 Computer 会将最近 3 个 journal 文件注入系统提示词。
 - `/api/mind` 返回长期视图（`SOUL.md` + `MEMORY.md`）。
 - `/api/mind/files` 返回根目录心智文件（`SOUL.md`、`IDENTITY.md`、`USER.md`、`MEMORY.md`），不包含 `memory/` journals。
 
@@ -112,8 +112,8 @@ TiClaw 采用“文件即数据库”的模型：
    - 会话、消息、事件、调度持久化
    - 为 HTTP/Hub/Channel 统一提供读写模型
 
-3. **Runner/Executor 层**
-   - `AgentRunner` 驱动 Claude Agent SDK
+3. **Computer/Executor 层**
+   - `AgentComputer` 驱动 Claude Agent SDK
    - 通过 warm session、streaming、工具链完成执行
 
 ## 5. 工作空间隔离 (Workspace Isolation)
@@ -122,12 +122,12 @@ TiClaw 采用“文件即数据库”的模型：
 1. 默认：`~/workspace-{agent_id}`
 2. 若存在 `agents/{agent_id}/agent-config.json` 且含 `workspace`，则覆盖默认值
 
-`~/.ticlaw/` 保存状态，不建议作为业务工程产物目录。
+`~/.tix/` 保存状态，不建议作为业务工程产物目录。
 
 ## 6. 交互与并发 (Interaction & Concurrency)
 
 - 每个 `chat_jid` 由 `activeAgentLocks` 保护，避免同一会话并发运行。
-- Runner busy 时不会并行执行第二个同 chat 的 run。
+- Computer busy 时不会并行执行第二个同 chat 的 run。
 - 强抢占/优先级队列机制尚未形成统一调度系统（属于后续增强方向）。
 
 ## 7. SQLite 迁移状态
@@ -147,10 +147,10 @@ TiClaw 采用“文件即数据库”的模型：
 
 ## 9. 术语一致性 (Naming Conventions)
 
-- **Node**：运行中的 TiClaw 实例
+- **Node**：运行中的 Tix 实例
 - **Agent**：一个独立人格与工作目录
 - **Session**：单一上下文流
 - **chat_jid**：跨渠道统一会话地址
 
 ---
-*TiClaw: 文件即数据库；现状与规划分离描述，避免文档漂移。*
+*Tix: 文件即数据库；现状与规划分离描述，避免文档漂移。*

@@ -1,24 +1,24 @@
 /**
- * TiClaw Gateway — WebSocket relay that accepts inbound node node connections.
+ * Tix Gateway — WebSocket relay that accepts inbound computer connections.
  *
- * Standalone package — no ticlaw core dependencies.
- * Ticos/Supen can `import { attachGateway } from '@ticlaw/gateway'` to embed.
+ * Standalone package — no tix core dependencies.
+ * Ticos/Supen can `import { attachGateway } from '@tix/gateway'` to embed.
  */
 
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { listCloudNodes, launchCloudNode, deleteCloudNode, getCloudNodeMeta } from './cloud-nodes.js';
+import { listCloudComputers, launchCloudComputer, deleteCloudComputer, getCloudComputerMeta } from './cloud-computers.js';
 
-export interface NodeInfo {
-  node_id: string;
-  node_fingerprint: string;
+export interface RemoteComputer {
+  computer_id: string;
+  computer_fingerprint: string;
   trusted: boolean;
   /** True if the WebSocket connection is currently open. */
   online: boolean;
-  /** ISO timestamp of last message received from this node. */
+  /** ISO timestamp of last message received from this computer. */
   last_seen?: string;
-  /** IP address the node connected from. */
+  /** IP address the computer connected from. */
   ip?: string;
   /** System telemetry data. */
   telemetry?: any;
@@ -45,22 +45,22 @@ export interface GatewayOptions {
 
 // ── State ──
 
-interface NodeState {
-  info: NodeInfo;
+interface ComputerState {
+  info: RemoteComputer;
   lastSeen: number;
 }
 
-const nodes = new Map<WebSocket, NodeState>();
+const computers = new Map<WebSocket, ComputerState>();
 const pendingRequests = new Map<string, PendingRequest>();
 const sseClients = new Map<string, Set<http.ServerResponse>>();
 let requestIdCounter = 0;
 
 /**
- * TICLAW_GATEWAY_API_KEY — API key that controller clients (e.g. Supen) must provide.
+ * TIX_GATEWAY_API_KEY — API key that controller clients (e.g. Supen) must provide.
  * When set, every inbound HTTP request must carry `Authorization: Bearer <key>`.
  * If unset, the gateway is in open mode (development only).
  */
-const GATEWAY_API_KEY = process.env.TICLAW_GATEWAY_API_KEY || '';
+const GATEWAY_API_KEY = process.env.TIX_GATEWAY_API_KEY || '';
 
 function parseCsvSet(value?: string): Set<string> {
   if (!value) return new Set();
@@ -72,26 +72,26 @@ function parseCsvSet(value?: string): Set<string> {
   );
 }
 
-const ALLOWED_NODE_IDS = parseCsvSet(
-  process.env.TICLAW_GATEWAY_ALLOWED_NODE_IDS,
+const ALLOWED_COMPUTER_IDS = parseCsvSet(
+  process.env.TIX_GATEWAY_ALLOWED_COMPUTER_IDS,
 );
-const ALLOWED_NODE_FINGERPRINTS = parseCsvSet(
-  process.env.TICLAW_GATEWAY_ALLOWED_NODE_FINGERPRINTS,
+const ALLOWED_COMPUTER_FINGERPRINTS = parseCsvSet(
+  process.env.TIX_GATEWAY_ALLOWED_COMPUTER_FINGERPRINTS,
 );
 
 /**
- * TICLAW_GATEWAY_SECRET — pre-shared secret for node authentication.
+ * TIX_GATEWAY_SECRET — pre-shared secret for computer authentication.
  * When set, every enroll/auth message MUST include a valid HMAC token.
- * Token format: `${nodeId}.${timestampMs}.${hmacHex}` where hmacHex is
- * HMAC-SHA256(secret, `${nodeId}:${timestampMs}`).
+ * Token format: `${computerId}.${timestampMs}.${hmacHex}` where hmacHex is
+ * HMAC-SHA256(secret, `${computerId}:${timestampMs}`).
  * Timestamps more than TOKEN_VALIDITY_MS old are rejected (replay protection).
  */
-const GATEWAY_SECRET = process.env.TICLAW_GATEWAY_SECRET || '';
+const GATEWAY_SECRET = process.env.TIX_GATEWAY_SECRET || '';
 const TOKEN_VALIDITY_MS = 5 * 60 * 1000; // 5 minutes
 
-function verifyNodeToken(
+function verifyComputerToken(
   token: string | undefined,
-  nodeId: string,
+  computerId: string,
 ): { ok: boolean; code?: string } {
   if (!GATEWAY_SECRET) {
     // No secret configured — gateway is in open mode (warn once at startup)
@@ -104,9 +104,9 @@ function verifyNodeToken(
   if (parts.length !== 3) {
     return { ok: false, code: 'token_malformed' };
   }
-  const [tokenNodeId, tsStr, givenHmac] = parts as [string, string, string];
-  if (tokenNodeId !== nodeId) {
-    return { ok: false, code: 'token_node_mismatch' };
+  const [tokenComputerId, tsStr, givenHmac] = parts as [string, string, string];
+  if (tokenComputerId !== computerId) {
+    return { ok: false, code: 'token_computer_mismatch' };
   }
   const ts = parseInt(tsStr, 10);
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > TOKEN_VALIDITY_MS) {
@@ -114,7 +114,7 @@ function verifyNodeToken(
   }
   const expected = crypto
     .createHmac('sha256', GATEWAY_SECRET)
-    .update(`${nodeId}:${tsStr}`)
+    .update(`${computerId}:${tsStr}`)
     .digest('hex');
   try {
     const givenBuf = Buffer.from(givenHmac, 'hex');
@@ -131,13 +131,13 @@ function verifyNodeToken(
   return { ok: true };
 }
 
-function isNodeAllowed(nodeId: string, nodeFingerprint: string): boolean {
-  if (ALLOWED_NODE_IDS.size > 0 && !ALLOWED_NODE_IDS.has(nodeId)) {
+function isComputerAllowed(computerId: string, computerFingerprint: string): boolean {
+  if (ALLOWED_COMPUTER_IDS.size > 0 && !ALLOWED_COMPUTER_IDS.has(computerId)) {
     return false;
   }
   if (
-    ALLOWED_NODE_FINGERPRINTS.size > 0 &&
-    !ALLOWED_NODE_FINGERPRINTS.has(nodeFingerprint)
+    ALLOWED_COMPUTER_FINGERPRINTS.size > 0 &&
+    !ALLOWED_COMPUTER_FINGERPRINTS.has(computerFingerprint)
   ) {
     return false;
   }
@@ -146,43 +146,43 @@ function isNodeAllowed(nodeId: string, nodeFingerprint: string): boolean {
 
 // ── Public API ──
 
-export function listNodes(): NodeInfo[] {
-  return Array.from(nodes.values()).map(({ info, lastSeen }) => ({
+export function listComputers(): RemoteComputer[] {
+  return Array.from(computers.values()).map(({ info, lastSeen }) => ({
     ...info,
     online: true,
     last_seen: new Date(lastSeen).toISOString(),
   }));
 }
 
-/** Get the WebSocket for a specific node by node_id. */
-export function getNodeById(nodeId: string): WebSocket | null {
-  for (const [ws, { info }] of nodes) {
-    if (info.node_id === nodeId && info.trusted && ws.readyState === WebSocket.OPEN) return ws;
+/** Get the WebSocket for a specific computer by computer_id. */
+export function getComputerById(computerId: string): WebSocket | null {
+  for (const [ws, { info }] of computers) {
+    if (info.computer_id === computerId && info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
 }
 
-export function getActiveNode(): WebSocket | null {
-  for (const [ws, { info }] of nodes) {
+export function getActiveComputer(): WebSocket | null {
+  for (const [ws, { info }] of computers) {
     if (info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
 }
 
-export function relayToNode(
+export function relayToComputer(
   method: string,
   path: string,
   body?: unknown,
   timeoutMs = 15000,
-  targetNodeId?: string,
+  targetComputerId?: string,
 ): Promise<RelayResult> {
   return new Promise((resolve) => {
-    const node = targetNodeId ? getNodeById(targetNodeId) : getActiveNode();
-    if (!node) {
-      const msg = targetNodeId
-        ? `Node '${targetNodeId}' is not connected to this gateway`
-        : 'No node is currently connected to this gateway';
-      resolve({ status: 503, headers: {}, body: { error: 'no_node_connected', message: msg } });
+    const computer = targetComputerId ? getComputerById(targetComputerId) : getActiveComputer();
+    if (!computer) {
+      const msg = targetComputerId
+        ? `Computer '${targetComputerId}' is not connected to this gateway`
+        : 'No computer is currently connected to this gateway';
+      resolve({ status: 503, headers: {}, body: { error: 'no_computer_connected', message: msg } });
       return;
     }
 
@@ -192,88 +192,88 @@ export function relayToNode(
       resolve({
         status: 504,
         headers: {},
-        body: { error: 'timeout', message: 'Node did not respond in time' },
+        body: { error: 'timeout', message: 'Computer did not respond in time' },
       });
     }, timeoutMs);
 
     pendingRequests.set(reqId, { resolve, timer });
-    node.send(
+    computer.send(
       JSON.stringify({ type: 'api_request', request_id: reqId, method, path, body }),
     );
   });
 }
 
-// ── Node message handler ──
+// ── Computer message handler ──
 
-function handleNodeMessage(
+function handleComputerMessage(
   ws: WebSocket,
   msg: Record<string, unknown>,
   log: GatewayOptions['logger'],
 ): void {
   // Update last_seen on every message
-  const state = nodes.get(ws);
+  const state = computers.get(ws);
   if (state) state.lastSeen = Date.now();
 
   switch (msg.type) {
     case 'enroll': {
-      const node_id = msg.node_id as string;
-      const node_fingerprint = msg.node_fingerprint as string;
-      const ip = nodes.get(ws)?.info.ip;
+      const computer_id = msg.computer_id as string;
+      const computer_fingerprint = msg.computer_fingerprint as string;
+      const ip = computers.get(ws)?.info.ip;
       // gateway_token = HMAC credential (separate from enrollment trust_token)
-      const tokenCheck = verifyNodeToken(msg.gateway_token as string | undefined, node_id);
+      const tokenCheck = verifyComputerToken(msg.gateway_token as string | undefined, computer_id);
       if (!tokenCheck.ok) {
         log?.warn?.(
-          `[gateway] Rejected node enrollment for id=${node_id}: ${tokenCheck.code}`,
+          `[gateway] Rejected computer enrollment for id=${computer_id}: ${tokenCheck.code}`,
         );
         ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
-      if (!isNodeAllowed(node_id, node_fingerprint)) {
+      if (!isComputerAllowed(computer_id, computer_fingerprint)) {
         log?.warn?.(
-          `[gateway] Rejected node enrollment for id=${node_id} from ${ip || 'unknown-ip'} due to allowlist policy`,
+          `[gateway] Rejected computer enrollment for id=${computer_id} from ${ip || 'unknown-ip'} due to allowlist policy`,
         );
-        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: 'node_not_allowed' }));
+        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: 'computer_not_allowed' }));
         ws.close();
         break;
       }
-      nodes.set(ws, { info: { node_id, node_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
-      log?.info?.(`[gateway] Node enrolled: ${node_id}`);
-      ws.send(JSON.stringify({ type: 'enrollment_result', ok: true, node_id, node_fingerprint }));
+      computers.set(ws, { info: { computer_id, computer_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
+      log?.info?.(`[gateway] Computer enrolled: ${computer_id}`);
+      ws.send(JSON.stringify({ type: 'enrollment_result', ok: true, computer_id, computer_fingerprint }));
       break;
     }
 
     case 'auth': {
-      const node_id = msg.node_id as string;
-      const node_fingerprint = msg.node_fingerprint as string;
-      const ip = nodes.get(ws)?.info.ip;
-      const tokenCheck = verifyNodeToken(msg.token as string | undefined, node_id);
+      const computer_id = msg.computer_id as string;
+      const computer_fingerprint = msg.computer_fingerprint as string;
+      const ip = computers.get(ws)?.info.ip;
+      const tokenCheck = verifyComputerToken(msg.token as string | undefined, computer_id);
       if (!tokenCheck.ok) {
-        log?.warn?.(`[gateway] Rejected node auth for id=${node_id}: ${tokenCheck.code}`);
+        log?.warn?.(`[gateway] Rejected computer auth for id=${computer_id}: ${tokenCheck.code}`);
         ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
-      if (!isNodeAllowed(node_id, node_fingerprint)) {
-        log?.warn?.(`[gateway] Rejected node auth for id=${node_id} from ${ip || 'unknown-ip'} due to allowlist policy`);
-        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: 'node_not_allowed' }));
+      if (!isComputerAllowed(computer_id, computer_fingerprint)) {
+        log?.warn?.(`[gateway] Rejected computer auth for id=${computer_id} from ${ip || 'unknown-ip'} due to allowlist policy`);
+        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: 'computer_not_allowed' }));
         ws.close();
         break;
       }
-      nodes.set(ws, { info: { node_id, node_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
-      log?.info?.(`[gateway] Node authenticated: ${node_id}`);
+      computers.set(ws, { info: { computer_id, computer_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
+      log?.info?.(`[gateway] Computer authenticated: ${computer_id}`);
       ws.send(JSON.stringify({ type: 'auth_result', ok: true }));
       break;
     }
 
     case 'report': {
-      const state = nodes.get(ws);
+      const state = computers.get(ws);
       if (state) {
         state.lastSeen = Date.now();
         if (msg.telemetry) {
           state.info.telemetry = msg.telemetry;
         }
-        log?.debug?.(`[gateway] Report from ${state.info.node_id}: ${msg.status}`);
+        log?.debug?.(`[gateway] Report from ${state.info.computer_id}: ${msg.status}`);
       }
       break;
     }
@@ -318,10 +318,10 @@ function handleSSERelay(
   res: http.ServerResponse,
   url: URL,
 ): void {
-  const node = getActiveNode();
-  if (!node) {
+  const computer = getActiveComputer();
+  if (!computer) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'no_node_connected' }));
+    res.end(JSON.stringify({ error: 'no_computer_connected' }));
     return;
   }
 
@@ -338,7 +338,7 @@ function handleSSERelay(
   sseClients.get(streamKey)!.add(res);
 
   const reqId = `gateway-sse-${++requestIdCounter}`;
-  node.send(
+  computer.send(
     JSON.stringify({ type: 'sse_subscribe', request_id: reqId, path: streamKey }),
   );
 
@@ -352,7 +352,7 @@ function handleSSERelay(
 
 /**
  * Attach the WebSocket gateway to an HTTP server.
- * Call this on any http.Server to enable node connections.
+ * Call this on any http.Server to enable computer connections.
  */
 export function attachGateway(
   httpServer: http.Server,
@@ -376,24 +376,24 @@ export function attachGateway(
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     const ipText = Array.isArray(ip) ? ip[0] : String(ip || '');
     // Pre-populate state with IP so enroll/auth handlers can read it
-    nodes.set(ws, {
-      info: { node_id: '', node_fingerprint: '', trusted: false, online: true, ip: ipText },
+    computers.set(ws, {
+      info: { computer_id: '', computer_fingerprint: '', trusted: false, online: true, ip: ipText },
       lastSeen: Date.now(),
     });
-    log.info?.(`[gateway] New node connection from ${ipText}`);
+    log.info?.(`[gateway] New computer connection from ${ipText}`);
 
     ws.on('message', (data) => {
       try {
-        handleNodeMessage(ws, JSON.parse(data.toString()), log);
+        handleComputerMessage(ws, JSON.parse(data.toString()), log);
       } catch (err) {
         log.error?.('[gateway] Parse error:', err);
       }
     });
 
     ws.on('close', () => {
-      const state = nodes.get(ws);
-      if (state?.info.node_id) log.info?.(`[gateway] Node disconnected: ${state.info.node_id}`);
-      nodes.delete(ws);
+      const state = computers.get(ws);
+      if (state?.info.computer_id) log.info?.(`[gateway] Computer disconnected: ${state.info.computer_id}`);
+      computers.delete(ws);
     });
 
     ws.on('error', (err) => {
@@ -408,7 +408,7 @@ export function attachGateway(
 // ── HTTP request handler (API relay middleware) ──
 
 /**
- * Handle an HTTP request — route gateway API or relay to node.
+ * Handle an HTTP request — route gateway API or relay to computer.
  * Returns true if the request was handled.
  */
 export async function handleGatewayRequest(
@@ -421,42 +421,42 @@ export async function handleGatewayRequest(
   if (url.pathname === '/openapi.json' && req.method === 'GET') {
     const gatewayUrl = `http://${req.headers.host || 'localhost'}`;
 
-    // Gateway-native paths (always present, no node needed)
+    // Gateway-native paths (always present, no computer needed)
     const gatewayPaths: Record<string, unknown> = {
       '/openapi.json': { get: { tags: ['Gateway'], summary: 'OpenAPI spec (this document)', security: [], responses: { '200': { description: 'OpenAPI 3.0 JSON' } } } },
-      '/health': { get: { tags: ['Gateway'], summary: 'Gateway health (node count, uptime)', security: [], responses: { '200': { description: 'OK' } } } },
-      '/api/gateway/nodes': { get: { tags: ['Gateway'], summary: 'List connected nodes', responses: { '200': { description: 'Nodes array' } } } },
+      '/health': { get: { tags: ['Gateway'], summary: 'Gateway health (computer count, uptime)', security: [], responses: { '200': { description: 'OK' } } } },
+      '/api/gateway/computers': { get: { tags: ['Gateway'], summary: 'List connected computers', responses: { '200': { description: 'Computers array' } } } },
     };
 
-    // Try to fetch node spec and merge
-    let nodePaths: Record<string, unknown> = {};
-    let nodeInfo: Record<string, unknown> = {};
+    // Try to fetch computer spec and merge
+    let computerPaths: Record<string, unknown> = {};
+    let computerInfo: Record<string, unknown> = {};
     try {
-      const nodeSpec = await relayToNode('GET', '/api/v1/openapi.json', undefined, 5000);
-      if (nodeSpec.status === 200 && nodeSpec.body && typeof nodeSpec.body === 'object') {
-        const spec = nodeSpec.body as Record<string, unknown>;
-        nodePaths = (spec.paths as Record<string, unknown>) || {};
-        nodeInfo = (spec.info as Record<string, unknown>) || {};
+      const computerSpec = await relayToComputer('GET', '/api/v1/openapi.json', undefined, 5000);
+      if (computerSpec.status === 200 && computerSpec.body && typeof computerSpec.body === 'object') {
+        const spec = computerSpec.body as Record<string, unknown>;
+        computerPaths = (spec.paths as Record<string, unknown>) || {};
+        computerInfo = (spec.info as Record<string, unknown>) || {};
       }
-    } catch { /* node not connected — return gateway-only spec */ }
+    } catch { /* computer not connected — return gateway-only spec */ }
 
     const spec = {
       openapi: '3.0.3',
       info: {
-        title: 'TiClaw Gateway API',
-        version: (nodeInfo.version as string) || '1.0.0',
+        title: 'Tix Gateway API',
+        version: (computerInfo.version as string) || '1.0.0',
         description:
-          'TiClaw Gateway API. Gateway-native routes (/health, /api/gateway/*) plus all node routes relayed transparently. ' +
-          'Use X-Node-Id header to target a specific node.',
+          'Tix Gateway API. Gateway-native routes (/health, /api/gateway/*) plus all computer routes relayed transparently. ' +
+          'Use X-Computer-Id header to target a specific computer.',
       },
-      servers: [{ url: gatewayUrl, description: 'TiClaw Gateway' }],
+      servers: [{ url: gatewayUrl, description: 'Tix Gateway' }],
       security: [{ bearerAuth: [] }],
       components: {
         securitySchemes: {
-          bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via TICLAW_GATEWAY_API_KEY env var.' },
+          bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via TIX_GATEWAY_API_KEY env var.' },
         },
       },
-      paths: { ...gatewayPaths, ...nodePaths },
+      paths: { ...gatewayPaths, ...computerPaths },
     };
 
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -466,23 +466,23 @@ export async function handleGatewayRequest(
 
   // ── Gateway-native: health (own status, not relayed) ──
   if (url.pathname === '/health' && req.method === 'GET') {
-    const connected = Array.from(nodes.values()).filter(
-      ({ info }) => info.trusted && info.node_id,
+    const connected = Array.from(computers.values()).filter(
+      ({ info }) => info.trusted && info.computer_id,
     );
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
       status: 'ok',
       gateway: true,
-      nodes_connected: connected.length,
+      computers_connected: connected.length,
       uptime_s: Math.floor(process.uptime()),
     }));
     return true;
   }
 
-  // ── Gateway-native: list nodes ──
-  if (url.pathname === '/api/gateway/nodes' && req.method === 'GET') {
+  // ── Gateway-native: list computers ──
+  if (url.pathname === '/api/gateway/computers' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ nodes: listNodes() }));
+    res.end(JSON.stringify({ computers: listComputers() }));
     return true;
   }
 
@@ -490,7 +490,7 @@ export async function handleGatewayRequest(
   const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Node-Id',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Computer-Id',
   };
   if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
     res.writeHead(204, CORS_HEADERS);
@@ -509,31 +509,31 @@ export async function handleGatewayRequest(
     }
   }
 
-  // ── Gateway-native: cloud node provisioning ──
-  if (url.pathname === '/api/gateway/cloud-nodes' && req.method === 'GET') {
+  // ── Gateway-native: cloud computer provisioning ──
+  if (url.pathname === '/api/gateway/cloud-computers' && req.method === 'GET') {
     try {
-      const [nodes, meta] = await Promise.all([listCloudNodes(), getCloudNodeMeta()]);
+      const [computersList, meta] = await Promise.all([listCloudComputers(), getCloudComputerMeta()]);
       
-      const connectedNodes = listNodes();
-      for (const node of nodes) {
-        const isOnline = connectedNodes.some((n) => n.node_id === node.nodeId && n.online);
+      const connectedComputers = listComputers();
+      for (const computer of computersList) {
+        const isOnline = connectedComputers.some((r) => r.computer_id === computer.computerId && r.online);
         if (isOnline) {
-          node.status = 'online';
-        } else if (node.status === 'live') {
-          node.status = 'offline';
+          computer.status = 'online';
+        } else if (computer.status === 'live') {
+          computer.status = 'offline';
         }
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ nodes, meta }));
+      res.end(JSON.stringify({ computers: computersList, meta }));
     } catch (err: any) {
       res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: err?.message || 'Failed to list cloud nodes' }));
+      res.end(JSON.stringify({ error: err?.message || 'Failed to list cloud computers' }));
     }
     return true;
   }
 
-  if (url.pathname === '/api/gateway/cloud-nodes' && req.method === 'POST') {
+  if (url.pathname === '/api/gateway/cloud-computers' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk; });
     req.on('end', async () => {
@@ -544,18 +544,18 @@ export async function handleGatewayRequest(
           res.end(JSON.stringify({ error: 'name, tier, and region are required' }));
           return;
         }
-        const result = await launchCloudNode(input);
+        const result = await launchCloudComputer(input);
         res.writeHead(201, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(result));
       } catch (err: any) {
         res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: err?.message || 'Failed to launch cloud node' }));
+        res.end(JSON.stringify({ error: err?.message || 'Failed to launch cloud computer' }));
       }
     });
     return true;
   }
 
-  if (url.pathname.startsWith('/api/gateway/cloud-nodes/') && req.method === 'DELETE') {
+  if (url.pathname.startsWith('/api/gateway/cloud-computers/') && req.method === 'DELETE') {
     const serviceId = url.pathname.split('/').pop();
     if (!serviceId) {
       res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -563,12 +563,12 @@ export async function handleGatewayRequest(
       return true;
     }
     try {
-      await deleteCloudNode(serviceId);
+      await deleteCloudComputer(serviceId);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err: any) {
       res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: err?.message || 'Failed to delete cloud node' }));
+      res.end(JSON.stringify({ error: err?.message || 'Failed to delete cloud computer' }));
     }
     return true;
   }
@@ -579,15 +579,15 @@ export async function handleGatewayRequest(
     return true;
   }
 
-  // ── API relay to node (with optional X-Node-Id targeting) ──
+  // ── API relay to computer (with optional X-Computer-Id targeting) ──
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/runs')) {
-    const targetNodeId = req.headers['x-node-id'] as string | undefined;
+    const targetComputerId = req.headers['x-computer-id'] as string | undefined;
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk; });
     req.on('end', async () => {
       let parsedBody: unknown;
       try { parsedBody = body ? JSON.parse(body) : undefined; } catch { parsedBody = body; }
-      const result = await relayToNode(req.method || 'GET', url.pathname + url.search, parsedBody, 15000, targetNodeId);
+      const result = await relayToComputer(req.method || 'GET', url.pathname + url.search, parsedBody, 15000, targetComputerId);
 
       if (result.encoding === 'base64' && typeof result.body === 'string') {
         const buffer = Buffer.from(result.body, 'base64');
@@ -620,12 +620,9 @@ export interface StartGatewayOptions extends GatewayOptions {
   onRequest?: (req: http.IncomingMessage, res: http.ServerResponse) => void;
 }
 
-/** @deprecated Use startGateway() */
-export const StartHubOptions = undefined;
-
 /**
  * Create and start a standalone gateway server.
- * Convenience for quick setup — or use attachHub() for more control.
+ * Convenience for quick setup — or use attachGateway() for more control.
  */
 export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Server> {
   const port = opts.port ?? parseInt(
@@ -649,7 +646,7 @@ export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Serve
 
   return new Promise((resolve) => {
     httpServer.listen(port, host, () => {
-      log.info?.(`[gateway] TiClaw Gateway listening on ws://${host}:${port}`);
+      log.info?.(`[gateway] Tix Gateway listening on ws://${host}:${port}`);
       resolve(httpServer);
     });
   });

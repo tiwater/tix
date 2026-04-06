@@ -1,4 +1,4 @@
--- TiClaw sync schema v2 — fixes schema mismatch (issue #37)
+-- Tix sync schema v2 — fixes schema mismatch (issue #37)
 -- Aligns sessions table and registered_agents with the actual push/pull schema.
 --
 -- BREAKING vs v1 migration: Drop and recreate sessions table.
@@ -68,6 +68,6 @@ CREATE TABLE IF NOT EXISTS mind_packages (
   created_at     TEXT NOT NULL
 );
 
--- Storage bucket 'ticlaw' for agent mind files
+-- Storage bucket 'tix' for agent mind files
 -- Create via Supabase dashboard or:
--- INSERT INTO storage.buckets (id, name, public) VALUES ('ticlaw', 'ticlaw', false);
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('tix', 'tix', false);

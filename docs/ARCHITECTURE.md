@@ -1,12 +1,12 @@
-# TiClaw Architecture
+# Tix Architecture
 
 ## Overview
 
-TiClaw is a multi-channel AI agent runtime on Node.js. Messages flow in from channel adapters, are persisted to filesystem storage, executed by `AgentRunner` (Claude Agent SDK), and responses are routed back through the source channel.
+Tix is a multi-channel AI agent runtime on Node.js. Messages flow in from channel adapters, are persisted to filesystem storage, executed by `AgentComputer` (Claude Agent SDK), and responses are routed back through the source channel.
 
 The deployment model supports both:
 - standalone node
-- hub/node topology (`@ticlaw/hub` + one or more TiClaw nodes)
+- hub/node topology (`@tix/hub` + one or more Tix nodes)
 
 ---
 
@@ -14,17 +14,17 @@ The deployment model supports both:
 
 ```text
                    ┌────────────────────────────────────┐
-                   │ Hub (@ticlaw/hub)                 │
+                   │ Hub (@tix/hub)                 │
                    │ - WebSocket node connections       │
                    │ - HTTP relay (/api/*, /runs*, etc) │
                    │ - SSE bridge                        │
                    └───────────────┬─────────────────────┘
                                    │ ws
                       ┌────────────▼────────────┐
-                      │ Node (TiClaw runtime)   │
+                      │ Node (Tix runtime)   │
                       │ - Channels              │
                       │ - Message loop          │
-                      │ - AgentRunner           │
+                      │ - AgentComputer           │
                       │ - Filesystem store      │
                       └─────────────────────────┘
 ```
@@ -58,9 +58,9 @@ Two paths coexist:
 Concurrency guard:
 - `activeAgentLocks` ensures one active run per `chat_jid`
 
-### 3. Agent Runner (`src/core/runner.ts`)
+### 3. Agent Computer (`src/core/computer.ts`)
 
-`AgentRunner` wraps `@anthropic-ai/claude-agent-sdk` query flow:
+`AgentComputer` wraps `@anthropic-ai/claude-agent-sdk` query flow:
 1. Builds system prompt from `SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`
 2. Injects recent short-term journals from `memory/*.md` (latest 3 files)
 3. Compiles enabled skills into SDK plugin directory
@@ -74,7 +74,7 @@ Warm-session pooling:
 
 ### 4. Filesystem Store (`src/core/store.ts`)
 
-Persistent data under `~/.ticlaw/`:
+Persistent data under `~/.tix/`:
 
 | Data | Format | Path |
 |---|---|---|
@@ -89,7 +89,7 @@ Persistent data under `~/.ticlaw/`:
 
 ### 5. Hub (`hub/src/index.ts`)
 
-`@ticlaw/hub` provides:
+`@tix/hub` provides:
 - node connection tracking
 - REST relay to active node
 - SSE relay for `/runs/.../stream`
@@ -115,7 +115,7 @@ Important current behavior:
 2) Store message to session JSONL
 3) Dispatch path (event-driven or polling recovery)
 4) processMessages() handles control commands (/enroll, /skills) or normal run
-5) AgentRunner streams progress/delta + emits final reply
+5) AgentComputer streams progress/delta + emits final reply
 6) Reply routed back via originating channel and persisted as bot message
 ```
 
@@ -125,7 +125,7 @@ Important current behavior:
 
 ### Standalone (Development)
 
-Single TiClaw process with direct channel adapters.
+Single Tix process with direct channel adapters.
 
 ### Hub + Node (Production)
 

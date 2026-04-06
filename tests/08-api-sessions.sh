@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 8: Sessions & Agents API"
 
-BASE="http://localhost:${TICLAW_PORT}"
+BASE="http://localhost:${TIX_PORT}"
 
 # ── Test 8.1: List sessions ──
 echo -e "  GET /api/sessions"

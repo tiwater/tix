@@ -64,7 +64,7 @@ export function registerChatCommand(program: Command) {
   program
     .command('chat <message>')
     .description(
-      'Send a chat message to a local TiClaw agent and stream the response',
+      'Send a chat message to a local Tix agent and stream the response',
     )
     .option('-a, --agent <id>', 'Target agent ID (defaults to "default")')
     .option('-s, --session <id>', 'Session ID (reuse for multi-turn context)')
@@ -318,7 +318,7 @@ export function registerChatCommand(program: Command) {
           } else {
             if (err.code === 'ECONNREFUSED') {
               console.error(
-                `\x1b[31mConnection refused: Is the TiClaw service running (pnpm dev)?\x1b[0m`,
+                `\x1b[31mConnection refused: Is the Tix service running (pnpm dev)?\x1b[0m`,
               );
             } else {
               console.error(`\x1b[31mFailed to connect: ${err.message}\x1b[0m`);

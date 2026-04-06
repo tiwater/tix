@@ -6,8 +6,8 @@ import yaml from 'yaml';
 
 export const PROJECT_ROOT = path.resolve(import.meta.dirname, '..', '..');
 export const HOME_DIR = process.env.HOME || os.homedir();
-export const TICLAW_HOME = path.join(HOME_DIR, 'ticlaw');
-export const CONFIG_PATH = path.join(TICLAW_HOME, 'config.yaml');
+export const TIX_HOME = path.join(HOME_DIR, 'tix');
+export const CONFIG_PATH = path.join(TIX_HOME, 'config.yaml');
 
 /**
  * Prompts the user for input via the command line.
@@ -27,7 +27,7 @@ export function prompt(question: string, defaultValue?: string): Promise<string>
 }
 
 /**
- * Reads and parses the TiClaw configuration file.
+ * Reads and parses the Tix configuration file.
  */
 export function readConfig(): any {
   try {

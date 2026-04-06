@@ -1,6 +1,6 @@
-# TiClaw Event System
+# Tix Event System
 
-This document describes the real-time event system used for communication between TiClaw Node and consumer applications.
+This document describes the real-time event system used for communication between Tix Node and consumer applications.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ The Node connects **outbound** to the Gateway via a persistent WebSocket. Consum
 
 ```
 ┌─────────────┐                  ┌─────────────────┐                  ┌──────────────┐
-│  TiClaw     │  outbound WS     │  TiClaw Gateway  │   SSE / HTTP     │  Consumer    │
+│  Tix     │  outbound WS     │  Tix Gateway  │   SSE / HTTP     │  Consumer    │
 │  Node       │ ────────────▶   │  (relay)          │ ◀──────────────  │  App         │
 │             │ ◀────────────   │                   │ ──────────────▶  │              │
 └─────────────┘  sse_event /    └─────────────────┘  SSE data frames  └──────────────┘
@@ -44,13 +44,13 @@ Sent immediately when a client subscribes to the SSE stream.
 }
 ```
 
-### `runner_state`
+### `computer_state`
 
 Broadcast on every status transition. This is the **authoritative real-time status update** for session status.
 
 ```json
 {
-  "type": "runner_state",
+  "type": "computer_state",
   "chat_jid": "web:agent-id:session-id",
   "status": "idle",
   "activity": {
@@ -179,13 +179,13 @@ User sends message
                                   processMessages()
                                         │
                                         ▼
-                                  AgentRunner.run()
+                                  AgentComputer.run()
                                         │
-                                  runner_state (busy)
+                                  computer_state (busy)
                                         │
                     ┌───────────────────┼───────────────────┐
                     ▼                   ▼                   ▼
-              progress (N×)      stream_delta (N×)    runner_state
+              progress (N×)      stream_delta (N×)    computer_state
               progress_end            │                (idle/error)
                                       ▼
                                   stream_end
@@ -194,13 +194,13 @@ User sends message
                                    message
 ```
 
-1. **`runner_state`** (`busy`) — emitted when agent starts processing
+1. **`computer_state`** (`busy`) — emitted when agent starts processing
 2. **`progress`** — emitted periodically while agent is thinking/executing tools
 3. **`stream_delta`** — emitted as the agent generates tokens
 4. **`stream_end`** — emitted when streaming is complete
 5. **`progress_end`** — emitted when reply is ready
 6. **`message`** — emitted with the final complete reply
-7. **`runner_state`** (`idle`/`error`) — emitted with terminal status
+7. **`computer_state`** (`idle`/`error`) — emitted with terminal status
 
 ## Session Status Lifecycle
 
@@ -222,7 +222,7 @@ User sends message
 
 ## Gateway Internal Protocol
 
-When the Gateway is in use, events are wrapped in a WebSocket protocol between the Gateway and Node. These are internal to TiClaw — consumers never see them.
+When the Gateway is in use, events are wrapped in a WebSocket protocol between the Gateway and Node. These are internal to Tix — consumers never see them.
 
 | WS Message Type | Direction | Purpose |
 |-----------------|-----------|---------|
@@ -238,10 +238,10 @@ When the Gateway is in use, events are wrapped in a WebSocket protocol between t
 
 | File | Role |
 |------|------|
-| `node/src/core/runner.ts` | `AgentRunner` — sets status, calls `notifyState()` |
+| `node/src/core/computer.ts` | `AgentComputer` — sets status, calls `notifyState()` |
 | `node/src/core/store.ts` | `updateSessionStatus()` — writes to disk |
-| `node/src/index.ts` | `processMessages()` — creates runner, emits events via `onStateChange` |
+| `node/src/index.ts` | `processMessages()` — creates computer, emits events via `onStateChange` |
 | `node/src/channels/http.ts` | `broadcastToChat()` — SSE/WS delivery to direct clients |
 | `node/src/core/gateway.ts` | Node-side gateway uplink — handles `sse_subscribe`, relays events back |
 | `gateway/src/index.ts` | Gateway server — SSE relay, API relay, node WebSocket management |
-| `node/src/core/dispatcher.ts` | Alternative runner manager (broadcasts `runner_state`) |
+| `node/src/core/dispatcher.ts` | Alternative computer manager (broadcasts `computer_state`) |

@@ -1,7 +1,7 @@
 /**
- * Standalone TiClaw Gateway entrypoint.
+ * Standalone Tix Gateway entrypoint.
  * Run with: node dist/start.js
- * Or via: pnpm --filter @ticlaw/gateway start
+ * Or via: pnpm --filter @tix/gateway start
  */
 import { startGateway } from './index.js';
 
