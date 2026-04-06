@@ -23,9 +23,9 @@ async function testRenderLaunch() {
     console.log(`[OK] Render recorded these env vars:`, keys);
     
     if (
-      keys.includes('TICLAW_GATEWAY_SECRET') &&
-      keys.includes('TICLAW_NODE_NAME') &&
-      keys.includes('TICLAW_GATEWAY_URL') &&
+      keys.includes('TIX_GATEWAY_SECRET') &&
+      keys.includes('TIX_NODE_NAME') &&
+      keys.includes('TIX_GATEWAY_URL') &&
       keys.includes('HTTP_API_KEY')
     ) {
       console.log(`✅ SUCCESS! provisioning envVars are correctly passed and saved on Render.`);

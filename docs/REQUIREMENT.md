@@ -1,8 +1,8 @@
-# TiClaw Requirements
+# Tix Requirements
 
 ## Mission
 
-TiClaw is a self-hosted AI agent runtime that connects LLM agents to multi-channel messaging with filesystem-first persistence, durable session continuity, and optional hub/node deployment.
+Tix is a self-hosted AI agent runtime that connects LLM agents to multi-channel messaging with filesystem-first persistence, durable session continuity, and optional hub/node deployment.
 
 ---
 
@@ -18,7 +18,7 @@ This document uses explicit status labels:
 
 ### 1. Filesystem-First Persistence
 
-- Filesystem is the primary data store under `~/.ticlaw/`.
+- Filesystem is the primary data store under `~/.tix/`.
 - Session and message history are persisted as JSON/JSONL.
 - Schedules are persisted as YAML.
 - No SQLite dependency in current runtime path.
@@ -31,7 +31,7 @@ This document uses explicit status labels:
 
 ### 3. Agent Execution
 
-- Execution uses `@anthropic-ai/claude-agent-sdk` via `AgentRunner`.
+- Execution uses `@anthropic-ai/claude-agent-sdk` via `AgentComputer`.
 - Prompt context includes mind files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`).
 - Recent short-term journals (`memory/*.md`, latest 3) are injected into prompt.
 - Streaming is emitted to web clients (`stream_delta`, `message`, progress events).
@@ -40,7 +40,7 @@ This document uses explicit status labels:
 
 - Multiple sessions per agent are supported.
 - Session records are stored per-agent under `sessions/{session_id}`.
-- Claude-side session continuation IDs are persisted per TiClaw session.
+- Claude-side session continuation IDs are persisted per Tix session.
 
 ### 5. Scheduling (Current)
 
@@ -123,7 +123,7 @@ This document uses explicit status labels:
 | Agent SDK | `@anthropic-ai/claude-agent-sdk` |
 | Language | TypeScript |
 | Build | `tsc` |
-| Dev Runner | `tsx` |
+| Dev Computer | `tsx` |
 | Channels | Discord.js, Lark SDK, HTTP/SSE, ACP (DingTalk implementation available) |
 | Storage | Filesystem (JSON/JSONL/YAML/Markdown) |
 | Sync | Supabase (optional) |

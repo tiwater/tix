@@ -2,7 +2,7 @@ import { tick } from 'svelte';
 import { goto } from '$app/navigation';
 
 const isBrowser = typeof window !== 'undefined';
-const API_KEY_STORAGE_KEY = 'ticlaw_http_api_key';
+const API_KEY_STORAGE_KEY = 'tix_http_api_key';
 
 function getStoredApiKey(): string {
   if (!isBrowser) return '';
@@ -206,7 +206,7 @@ function createAppState() {
     file: File;
     name: string;
     uploading: boolean;
-    ticlawUrl?: string;
+    tixUrl?: string;
   }
   let pendingFiles = $state<PendingFile[]>([]);
 
@@ -250,7 +250,7 @@ function createAppState() {
       if (res.ok) {
         const data = await res.json();
         for (const f of data.files || []) {
-          refs.push(f.ticlawUrl);
+          refs.push(f.tixUrl);
         }
       } else {
         const errText = await res.text().catch(() => '');
@@ -406,7 +406,7 @@ function createAppState() {
           return;
         }
 
-        if (data.type === 'runner_state') {
+        if (data.type === 'computer_state') {
           if (data.agent_id && data.session_id) {
             const nextStatus =
               data.status === 'busy'
@@ -816,7 +816,7 @@ function createAppState() {
     // Upload pending files first
     const { refs, names } = await uploadPendingFiles();
 
-    // Build the content sent to the agent (includes ticlaw:// paths)
+    // Build the content sent to the agent (includes tix:// paths)
     let fullContent = content;
     if (refs.length > 0) {
       const refLines = refs.map((url, i) => `[Attached file: ${names[i] || 'file'} → ${url}]`).join('\n');

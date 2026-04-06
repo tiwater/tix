@@ -1,5 +1,5 @@
 /**
- * `tc env` — Manage TiClaw environments.
+ * `tc env` — Manage Tix environments.
  *
  * Subcommands:
  *   tc env add <name>       Create environment (repo + Discord channel + workspace)
@@ -15,14 +15,14 @@ import type { Command } from 'commander';
 import {
   prompt,
   readConfig,
-  TICLAW_HOME,
+  TIX_HOME,
   CONFIG_PATH,
 } from './utils.js';
 
-const WORKSPACES_DIR = path.join(TICLAW_HOME, 'workspaces');
-const ENVS_DIR = path.join(TICLAW_HOME, 'envs');
-const STORE_DIR = path.join(TICLAW_HOME, 'store');
-const AGENTS_DIR = path.join(TICLAW_HOME, 'agents');
+const WORKSPACES_DIR = path.join(TIX_HOME, 'workspaces');
+const ENVS_DIR = path.join(TIX_HOME, 'envs');
+const STORE_DIR = path.join(TIX_HOME, 'store');
+const AGENTS_DIR = path.join(TIX_HOME, 'agents');
 
 function ghAvailable(): boolean {
   try {
@@ -181,7 +181,7 @@ async function addEnv(name: string): Promise<void> {
             body: JSON.stringify({
               name: name,
               type: 0, // GUILD_TEXT
-              topic: `TiClaw environment: ${repoFullName}@${branch}`,
+              topic: `Tix environment: ${repoFullName}@${branch}`,
             }),
           },
         );
@@ -201,7 +201,7 @@ async function addEnv(name: string): Promise<void> {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                content: `🦀 **TiClaw Environment Ready**\n\n` +
+                content: `🦀 **Tix Environment Ready**\n\n` +
                   `**Repo:** ${repoFullName}\n` +
                   `**Branch:** ${branch}\n` +
                   `**Workspace:** \`${workspaceDir}\`\n\n` +
@@ -406,7 +406,7 @@ async function removeEnv(name: string): Promise<void> {
 export function registerEnvCommand(program: Command): void {
   const env = program
     .command('env')
-    .description('Manage TiClaw environments (repo + channel + workspace)');
+    .description('Manage Tix environments (repo + channel + workspace)');
 
   env
     .command('add <name>')

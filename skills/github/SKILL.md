@@ -27,7 +27,7 @@ ${CLAUDE_SKILL_DIR}/scripts/github.sh api repos/owner/repo/pulls
 
 ## Authentication
 
-Use TiClaw auth wrappers:
+Use Tix auth wrappers:
 
 ```bash
 tc skills auth status github

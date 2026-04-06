@@ -1,8 +1,8 @@
 {
-  "name": "@tiwater/claw-gateway",
+  "name": "@tix/gateway",
   "version": "0.1.0",
   "type": "module",
-  "description": "Claw Gateway — WebSocket relay that accepts inbound agent node connections. Embeddable by Supen, Ticos, or any controller platform.",
+  "description": "Tix Gateway — WebSocket multiplexer relay that accepts inbound agent computer connections. Embeddable by Supen or any controller platform.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:watch": "tsc --watch",
     "start": "node --env-file=../../.env dist/start.js",
     "dev": "tsc --watch & sleep 2 && node --env-file=../../.env --watch dist/start.js"
   },

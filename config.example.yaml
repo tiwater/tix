@@ -1,5 +1,5 @@
-# TiClaw 配置示例
-# 复制为 ~/.ticlaw/config.yaml 并填入实际值
+# Tix 配置示例
+# 复制为 ~/.tix/config.yaml 并填入实际值
 
 channels:
   # Config-driven: only channels with a block and enabled !== false are started.
@@ -22,7 +22,7 @@ channels:
 # proxy: "http://127.0.0.1:7890"
 
 # Security note:
-# TiClaw HTTP admin/API surfaces should be protected with environment variables,
+# Tix HTTP admin/API surfaces should be protected with environment variables,
 # especially whenever you expose the node beyond localhost.
 #
 # Recommended:
@@ -47,7 +47,7 @@ channels:
 # OpenClaw-compatible skills registry
 # skills:
 #   directories:
-#     - "~/.ticlaw/skills"
+#     - "~/.tix/skills"
 #     - "./skills"
 #   admin_only: true
 #   allow_level3: false

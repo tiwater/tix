@@ -1,13 +1,13 @@
 /**
- * Resolves ticlaw:// protocol URLs used in message content.
+ * Resolves tix:// protocol URLs used in message content.
  *
- * Format: ticlaw://workspace/{agentId}/{relativePath}
+ * Format: tix://workspace/{agentId}/{relativePath}
  *
  * The web UI intercepts these custom URLs and resolves them to
  * actual /api/workspace/ HTTP endpoints on demand.
  */
 
-const TICLAW_PROTOCOL = 'ticlaw://workspace/';
+const TIX_PROTOCOL = 'tix://workspace/';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov']);
@@ -19,11 +19,11 @@ function getExt(filePath: string): string {
 }
 
 /**
- * Parse a ticlaw:// URL into its components.
+ * Parse a tix:// URL into its components.
  */
-export function parseTiclawUrl(url: string): { agentId: string; path: string } | null {
-  if (!url.startsWith(TICLAW_PROTOCOL)) return null;
-  const rest = url.slice(TICLAW_PROTOCOL.length);
+export function parseTixUrl(url: string): { agentId: string; path: string } | null {
+  if (!url.startsWith(TIX_PROTOCOL)) return null;
+  const rest = url.slice(TIX_PROTOCOL.length);
   const slashIdx = rest.indexOf('/');
   if (slashIdx < 0) return null;
   return {
@@ -33,11 +33,11 @@ export function parseTiclawUrl(url: string): { agentId: string; path: string } |
 }
 
 /**
- * Convert a ticlaw:// URL to an /api/workspace/ HTTP URL.
+ * Convert a tix:// URL to an /api/workspace/ HTTP URL.
  */
-export function resolveToHttp(ticlawUrl: string): string {
-  const parsed = parseTiclawUrl(ticlawUrl);
-  if (!parsed) return ticlawUrl;
+export function resolveToHttp(tixUrl: string): string {
+  const parsed = parseTixUrl(tixUrl);
+  if (!parsed) return tixUrl;
   return `/api/workspace/${encodeURIComponent(parsed.path)}?agent_id=${encodeURIComponent(parsed.agentId)}`;
 }
 
@@ -61,59 +61,59 @@ export function fileName(filePath: string): string {
 }
 
 /**
- * Post-process rendered HTML to resolve ticlaw:// URLs.
+ * Post-process rendered HTML to resolve tix:// URLs.
  *
- * - Images (![alt](ticlaw://...)) → <img> with lazy loading from /api/workspace/
- * - Links ([text](ticlaw://...)) → styled file cards with on-click fetch
- * - Raw ticlaw:// text → clickable file references
+ * - Images (![alt](tix://...)) → <img> with lazy loading from /api/workspace/
+ * - Links ([text](tix://...)) → styled file cards with on-click fetch
+ * - Raw tix:// text → clickable file references
  */
 export function resolveProtocolUrls(html: string): string {
-  // Replace <img src="ticlaw://..."> with real src + lazy loading
+  // Replace <img src="tix://..."> with real src + lazy loading
   html = html.replace(
-    /<img\s+([^>]*?)src="(ticlaw:\/\/workspace\/[^"]+)"([^>]*?)>/gi,
+    /<img\s+([^>]*?)src="(tix:\/\/workspace\/[^"]+)"([^>]*?)>/gi,
     (_match, before, url, after) => {
       const httpUrl = resolveToHttp(url);
-      const parsed = parseTiclawUrl(url);
+      const parsed = parseTixUrl(url);
       const name = parsed ? fileName(parsed.path) : 'image';
-      return `<img ${before}src="${httpUrl}" loading="lazy" alt="${name}" data-ticlaw-src="${url}"${after}>`;
+      return `<img ${before}src="${httpUrl}" loading="lazy" alt="${name}" data-tix-src="${url}"${after}>`;
     },
   );
 
-  // Replace <a href="ticlaw://..."> with file card rendering
+  // Replace <a href="tix://..."> with file card rendering
   html = html.replace(
-    /<a\s+([^>]*?)href="(ticlaw:\/\/workspace\/[^"]+)"([^>]*?)>(.*?)<\/a>/gi,
+    /<a\s+([^>]*?)href="(tix:\/\/workspace\/[^"]+)"([^>]*?)>(.*?)<\/a>/gi,
     (_match, before, url, after, linkText) => {
       const httpUrl = resolveToHttp(url);
-      const parsed = parseTiclawUrl(url);
+      const parsed = parseTixUrl(url);
       const name = parsed ? fileName(parsed.path) : linkText;
       const ext = getExt(name);
       const category = fileCategory(name);
 
       if (category === 'image') {
         // Image link → render as inline image
-        return `<img src="${httpUrl}" loading="lazy" alt="${name}" data-ticlaw-src="${url}" class="ticlaw-file-image">`;
+        return `<img src="${httpUrl}" loading="lazy" alt="${name}" data-tix-src="${url}" class="tix-file-image">`;
       }
 
       if (category === 'video') {
-        return `<video controls preload="none" data-ticlaw-src="${url}" class="ticlaw-file-video"><source src="${httpUrl}"></video>`;
+        return `<video controls preload="none" data-tix-src="${url}" class="tix-file-video"><source src="${httpUrl}"></video>`;
       }
 
       // File card for downloads and previewable files
       const icon = category === 'preview' ? '📄' : '📎';
-      return `<a ${before}href="${httpUrl}" target="_blank" rel="noopener" data-ticlaw-src="${url}" class="ticlaw-file-card"${after}>${icon} <span class="ticlaw-file-name">${name}</span><span class="ticlaw-file-ext">${ext}</span></a>`;
+      return `<a ${before}href="${httpUrl}" target="_blank" rel="noopener" data-tix-src="${url}" class="tix-file-card"${after}>${icon} <span class="tix-file-name">${name}</span><span class="tix-file-ext">${ext}</span></a>`;
     },
   );
 
-  // Replace bare ticlaw:// URLs in text (not already in tags)
+  // Replace bare tix:// URLs in text (not already in tags)
   html = html.replace(
-    /(?<!="|'>)(ticlaw:\/\/workspace\/[^\s<"']+)/gi,
+    /(?<!="|'>)(tix:\/\/workspace\/[^\s<"']+)/gi,
     (url) => {
       const httpUrl = resolveToHttp(url);
-      const parsed = parseTiclawUrl(url);
+      const parsed = parseTixUrl(url);
       const name = parsed ? fileName(parsed.path) : url;
       const category = fileCategory(name);
       const icon = category === 'image' ? '🖼️' : category === 'video' ? '🎬' : '📎';
-      return `<a href="${httpUrl}" target="_blank" rel="noopener" data-ticlaw-src="${url}" class="ticlaw-file-card">${icon} <span class="ticlaw-file-name">${name}</span></a>`;
+      return `<a href="${httpUrl}" target="_blank" rel="noopener" data-tix-src="${url}" class="tix-file-card">${icon} <span class="tix-file-name">${name}</span></a>`;
     },
   );
 

@@ -17,18 +17,18 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 17: Memory Isolation & Prompt Cache Invalidation"
 
-BASE="http://localhost:${TICLAW_PORT:-2756}"
+BASE="http://localhost:${TIX_PORT:-2756}"
 MEM_AGENT="mem_agent_$$"
 
 register_agent "$MEM_AGENT"
 
 # ── Fixture ──
-mkdir -p "$TICLAW_HOME/agents/$MEM_AGENT/memory"
-cat > "$TICLAW_HOME/agents/$MEM_AGENT/SOUL.md" <<'EOF'
+mkdir -p "$TIX_HOME/agents/$MEM_AGENT/memory"
+cat > "$TIX_HOME/agents/$MEM_AGENT/SOUL.md" <<'EOF'
 You are a memory-test agent. When asked "what is the secret fact?",
 reply with ONLY the exact phrase written in your memory files and nothing else.
 EOF
-echo "" > "$TICLAW_HOME/agents/$MEM_AGENT/MEMORY.md"
+echo "" > "$TIX_HOME/agents/$MEM_AGENT/MEMORY.md"
 
 SESS1="mem_sess1_$$"
 SESS2="mem_sess2_$$"
@@ -38,7 +38,7 @@ echo -e "  Testing per-session Claude session file naming..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 
 SESS_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${SESS1}', safe=''))")
-EXPECTED_PATH="$TICLAW_HOME/agents/$MEM_AGENT/.claude_sessions/${SESS_ENCODED}.id"
+EXPECTED_PATH="$TIX_HOME/agents/$MEM_AGENT/.claude_sessions/${SESS_ENCODED}.id"
 
 # Send a first message to trigger Claude session ID creation
 result1=$(send_message \
@@ -72,7 +72,7 @@ assert_not_contains "Session 1 does not contain session 2 ack" "$response1" "SES
 echo -e "  Testing prompt cache invalidation on journal append..."
 
 # Seed MEMORY.md with initial fact
-echo "The secret fact is: INITIAL-FACT-XYZ" > "$TICLAW_HOME/agents/$MEM_AGENT/MEMORY.md"
+echo "The secret fact is: INITIAL-FACT-XYZ" > "$TIX_HOME/agents/$MEM_AGENT/MEMORY.md"
 
 # Ask agent in session 1  — this warms the prompt cache
 MEM_SESS="mem_cache_sess_$$"
@@ -84,8 +84,8 @@ assert_contains "Agent knows initial fact" "$response_before" "INITIAL-FACT-XYZ"
 
 # Now UPDATE the MEMORY.md (simulating what consolidateMemory does via appendFile)
 # We use echo >> to append, which changes the file mtime but NOT the directory mtime
-echo "" >> "$TICLAW_HOME/agents/$MEM_AGENT/MEMORY.md"
-echo "The secret fact is now: UPDATED-FACT-ABC" >> "$TICLAW_HOME/agents/$MEM_AGENT/MEMORY.md"
+echo "" >> "$TIX_HOME/agents/$MEM_AGENT/MEMORY.md"
+echo "The secret fact is now: UPDATED-FACT-ABC" >> "$TIX_HOME/agents/$MEM_AGENT/MEMORY.md"
 
 # Ask again in a NEW session to force a cold prompt rebuild
 MEM_SESS2="mem_cache_sess2_$$"

@@ -1,7 +1,7 @@
 {
-  "name": "@tiwater/claw-cli",
+  "name": "@tix/cli",
   "version": "1.0.0",
-  "description": "Claw CLI — bootstrap, manage skills, and control the service",
+  "description": "Tix CLI — command-line utilities to provision and manage local Tix Computers",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -15,7 +15,7 @@
     "commander": "^13.0.0"
   },
   "peerDependencies": {
-    "@tiwater/claw-sdk": "workspace:*"
+    "@tix/computer": "workspace:*"
   },
   "engines": {
     "node": ">=20"

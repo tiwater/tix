@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/lib.sh — E2E test helpers for TiClaw
+# tests/lib.sh — E2E test helpers for Tix
 # Source this in every test script: source "$(dirname "$0")/lib.sh"
 
 set -euo pipefail
@@ -7,15 +7,15 @@ set -euo pipefail
 # ────────────────────────────────────────────────────
 # Config
 # ────────────────────────────────────────────────────
-TICLAW_PORT="${TICLAW_PORT:-2756}"
-TICLAW_TIMEOUT="${TICLAW_TIMEOUT:-120}"
-TICLAW_CURL_TIMEOUT="${TICLAW_CURL_TIMEOUT:-8}"   # seconds before curl gives up
-TICLAW_CLI="node $(dirname "$0")/../cli/dist/index.js"
+TIX_PORT="${TIX_PORT:-2756}"
+TIX_TIMEOUT="${TIX_TIMEOUT:-120}"
+TIX_CURL_TIMEOUT="${TIX_CURL_TIMEOUT:-8}"   # seconds before curl gives up
+TIX_CLI="node $(dirname "$0")/../cli/dist/index.js"
 
-# Resolve TICLAW_HOME to ensure tests use the same directory as the server
-# Respect existing environment variable, otherwise default to ~/.ticlaw
-if [ -z "${TICLAW_HOME:-}" ]; then
-  export TICLAW_HOME="$HOME/.ticlaw"
+# Resolve TIX_HOME to ensure tests use the same directory as the server
+# Respect existing environment variable, otherwise default to ~/.tix
+if [ -z "${TIX_HOME:-}" ]; then
+  export TIX_HOME="$HOME/.tix"
 fi
 
 TESTS_PASSED=0
@@ -34,7 +34,7 @@ register_session() { CLEANUP_SESSIONS+=("$1"); } # $1 is agent_id:session_id
 register_file() { CLEANUP_FILES+=("$1"); }
 
 perform_cleanup() {
-  local base_url="http://localhost:${TICLAW_PORT}"
+  local base_url="http://localhost:${TIX_PORT}"
   
   # 1. Delete schedules via API (safer as it updates server state)
   for sched_id in "${CLEANUP_SCHEDULES[@]}"; do
@@ -50,7 +50,7 @@ perform_cleanup() {
 
   # 3. Delete agents/directories from filesystem
   for agent_id in "${CLEANUP_AGENTS[@]}"; do
-    local agent_dir="${TICLAW_HOME}/agents/${agent_id}"
+    local agent_dir="${TIX_HOME}/agents/${agent_id}"
     if [ -d "$agent_dir" ]; then
       rm -rf "$agent_dir"
     fi
@@ -66,7 +66,7 @@ perform_cleanup() {
 trap perform_cleanup EXIT
 
 # Convenience wrapper: curl with a short timeout so tests never hang
-ticlaw_curl() { curl --max-time "$TICLAW_CURL_TIMEOUT" "$@"; }
+tix_curl() { curl --max-time "$TIX_CURL_TIMEOUT" "$@"; }
 
 # Colors
 RED='\033[0;31m'
@@ -80,7 +80,7 @@ NC='\033[0m' # No Color
 # Server management
 # ────────────────────────────────────────────────────
 wait_for_server() {
-  local port="${1:-$TICLAW_PORT}"
+  local port="${1:-$TIX_PORT}"
   local timeout="${2:-30}"
   local elapsed=0
   echo -e "${CYAN}Waiting for server on port ${port}...${NC}"
@@ -105,7 +105,7 @@ send_message() {
   local message="$1"
   local agent="${2:-default}"
   local session="${3:-}"
-  local timeout="${4:-$TICLAW_TIMEOUT}"
+  local timeout="${4:-$TIX_TIMEOUT}"
 
   local session_flag=""
   if [ -n "$session" ]; then
@@ -114,14 +114,14 @@ send_message() {
 
   # Use temp file instead of $() subshell — Node.js process.exit() with active
   # SSE connections doesn't flush stdout properly in subshell capture mode
-  local tmpfile="/tmp/ticlaw-e2e-$$-${RANDOM}.json"
+  local tmpfile="/tmp/tix-e2e-$$-${RANDOM}.json"
 
-  $TICLAW_CLI chat "$message" \
+  $TIX_CLI chat "$message" \
     --agent "$agent" \
     $session_flag \
     --json \
     --timeout "$timeout" \
-    --port "$TICLAW_PORT" \
+    --port "$TIX_PORT" \
     > "$tmpfile" 2>/dev/null || true
 
   LAST_RESULT=""
@@ -221,7 +221,7 @@ assert_no_error() {
 # ────────────────────────────────────────────────────
 # LLM-as-Judge: evaluate response quality
 # ────────────────────────────────────────────────────
-# Uses the TiClaw agent itself to judge whether a response
+# Uses the Tix agent itself to judge whether a response
 # meets quality criteria. This catches problems like:
 #   - Raw HTML/webpage content instead of a clean answer
 #   - Hallucinated or irrelevant information

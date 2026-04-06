@@ -62,10 +62,10 @@
 
 <svelte:head>
   <link rel="icon" href={favicon} />
-  <title>TiClaw DevUI</title>
+  <title>Tix DevUI</title>
   <meta
     name="description"
-    content="TiClaw HTTP SSE chat interface for development and testing"
+    content="Tix HTTP SSE chat interface for development and testing"
   />
 </svelte:head>
 
@@ -75,7 +75,7 @@
       <a
         href="/nodes"
         class="flex items-center gap-2.5 font-bold text-[15px] text-primary tracking-tight no-underline mb-2"
-        >TiClaw DevUI</a
+        >Tix DevUI</a
       >
     </Sidebar.Header>
 

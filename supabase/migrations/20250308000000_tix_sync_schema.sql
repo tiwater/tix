@@ -1,4 +1,4 @@
--- TiClaw sync schema for Supabase (Phase 1: sync mode)
+-- Tix sync schema for Supabase (Phase 1: sync mode)
 -- Mirrors critical SQLite tables for cloud backup and robot restore.
 
 CREATE TABLE IF NOT EXISTS mind_state (
@@ -40,5 +40,5 @@ CREATE TABLE IF NOT EXISTS router_state (
   value TEXT NOT NULL
 );
 
--- Storage bucket 'ticlaw' for agent mind files (agents/{SOUL,MEMORY,...}.md, agents/{folder}/*.md)
--- Create via Supabase dashboard or: INSERT INTO storage.buckets (id, name, public) VALUES ('ticlaw', 'ticlaw', false);
+-- Storage bucket 'tix' for agent mind files (agents/{SOUL,MEMORY,...}.md, agents/{folder}/*.md)
+-- Create via Supabase dashboard or: INSERT INTO storage.buckets (id, name, public) VALUES ('tix', 'tix', false);
