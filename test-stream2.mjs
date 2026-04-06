@@ -4,7 +4,7 @@ async function run() {
     prompt: "Count from 1 to 5 slowly",
     options: { 
       cwd: process.cwd(), 
-      pathToClaudeCodeExecutable: "/Users/hugh/tc/ticlaw/node_modules/@anthropic-ai/claude-agent-sdk/cli.js", 
+      pathToClaudeCodeExecutable: "/Users/hugh/tc/tix/node_modules/@anthropic-ai/claude-agent-sdk/cli.js", 
       env: { ...process.env, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "dummy" }
     }
   });

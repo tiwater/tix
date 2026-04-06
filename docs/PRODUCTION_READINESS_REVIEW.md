@@ -13,7 +13,7 @@ Architecture and UX foundations are solid, but there are still correctness and h
 ## What is strong already
 
 1. **End-to-end streaming pipeline exists**
-   - Runner emits progressive events and streaming deltas.
+   - Computer emits progressive events and streaming deltas.
    - Web client merges incremental output and reconciles with final authoritative message.
 
 2. **Skill governance model is mature for a self-hosted runtime**
@@ -99,4 +99,4 @@ Architecture and UX foundations are solid, but there are still correctness and h
 
 ## Final assessment
 
-TiClaw is suitable for advanced staging/self-hosted use today, but should still be labeled **beta / pre-production** for broader production claims until hub auth, CI baseline, and scale/observability gaps are addressed.
+Tix is suitable for advanced staging/self-hosted use today, but should still be labeled **beta / pre-production** for broader production claims until hub auth, CI baseline, and scale/observability gaps are addressed.

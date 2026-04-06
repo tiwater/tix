@@ -1,6 +1,6 @@
 # Pairing & Binding API
 
-This document describes the current pairing/binding HTTP API exposed by the TiClaw node and relayed by the gateway.
+This document describes the current pairing/binding HTTP API exposed by the Tix node and relayed by the gateway.
 
 > Status: first backend iteration
 >
@@ -377,7 +377,7 @@ The current backend still returns HTTP 200, with:
 
 ### A. Initial pairing flow
 
-1. An unpaired identity attempts to use TiClaw
+1. An unpaired identity attempts to use Tix
 2. Backend creates or reuses a pending pair code
 3. Admin opens pairing UI
 4. UI calls `GET /api/v1/pairings`

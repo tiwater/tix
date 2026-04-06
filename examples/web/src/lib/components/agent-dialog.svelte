@@ -642,7 +642,7 @@
                         : `${workspacePath}/${entry.name}`;
                     const url = `/api/workspace/${encodeURIComponent(filePath)}?agent_id=${encodeURIComponent(agentId)}`;
                     window.dispatchEvent(
-                      new CustomEvent('ticlaw:preview-file', {
+                      new CustomEvent('tix:preview-file', {
                         detail: {
                           name: entry.name,
                           url,

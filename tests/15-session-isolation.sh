@@ -5,7 +5,7 @@
 # Verifies that:
 #   1. Two sessions for the same agent get isolated, independent responses.
 #   2. A globally-disabled skill is NOT active even when listed in skills.json (issue #49).
-#   3. The Dispatcher stores runners per agentId:sessionId, not per agentId.
+#   3. The Dispatcher stores computers per agentId:sessionId, not per agentId.
 #
 # Strategy: seed each session with a unique secret word, then ask the agent
 # to repeat it back. If sessions are isolated the words should never bleed
@@ -15,14 +15,14 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 15: Session Isolation & Per-Agent skills.json Checks"
 
-BASE="http://localhost:${TICLAW_PORT:-2756}"
+BASE="http://localhost:${TIX_PORT:-2756}"
 AGENT="iso_agent_$$"
 
 register_agent "$AGENT"
 
 # ── Fixture setup ──
-mkdir -p "${TICLAW_HOME}/agents/$AGENT/memory"
-cat > "${TICLAW_HOME}/agents/$AGENT/SOUL.md" <<'EOF'
+mkdir -p "${TIX_HOME}/agents/$AGENT/memory"
+cat > "${TIX_HOME}/agents/$AGENT/SOUL.md" <<'EOF'
 You are a test agent. When asked "what is the secret word?", reply with ONLY
 the exact secret word that was written in your MEMORY for this session and
 nothing else.
@@ -94,9 +94,9 @@ disable_result=$(curl --max-time 8 -sf -X POST "${BASE}/api/skills/${DISABLED_SK
 # Create an agent that allowlists the now-disabled skill
 SKILL_AGENT="skill_iso_agent_$$"
 register_agent "$SKILL_AGENT"
-mkdir -p "${TICLAW_HOME}/agents/$SKILL_AGENT"
-echo "[\"${DISABLED_SKILL}\"]" > "${TICLAW_HOME}/agents/$SKILL_AGENT/skills.json"
-cat > "${TICLAW_HOME}/agents/$SKILL_AGENT/SOUL.md" <<'EOF'
+mkdir -p "${TIX_HOME}/agents/$SKILL_AGENT"
+echo "[\"${DISABLED_SKILL}\"]" > "${TIX_HOME}/agents/$SKILL_AGENT/skills.json"
+cat > "${TIX_HOME}/agents/$SKILL_AGENT/SOUL.md" <<'EOF'
 You are a test agent. List your available custom tools concisely.
 EOF
 

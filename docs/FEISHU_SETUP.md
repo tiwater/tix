@@ -1,6 +1,6 @@
 # 飞书 (Feishu) Channel 配置指南
 
-TiClaw 支持飞书长连接模式（无需公网 webhook 回调地址）。
+Tix 支持飞书长连接模式（无需公网 webhook 回调地址）。
 
 ## 1. 飞书应用配置
 
@@ -11,9 +11,9 @@ TiClaw 支持飞书长连接模式（无需公网 webhook 回调地址）。
 3. 订阅 `im.message.receive_v1`
 4. 配置必要 IM 权限并发布应用
 
-## 2. TiClaw 配置（当前实现）
+## 2. Tix 配置（当前实现）
 
-当前 Feishu channel loader 直接读取 `~/.ticlaw/config.yaml` 的 `channels.feishu`。
+当前 Feishu channel loader 直接读取 `~/.tix/config.yaml` 的 `channels.feishu`。
 
 ```yaml
 channels:

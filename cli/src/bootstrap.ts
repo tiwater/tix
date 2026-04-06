@@ -1,10 +1,10 @@
 /**
- * `tc bootstrap` — First-time TiClaw setup.
+ * `tc bootstrap` — First-time Tix setup.
  *
  * Steps:
  * 1. Detect platform and installed coding CLIs
  * 2. Collect configuration (data dir, proxy, API keys)
- * 3. Write ~/.ticlaw/config.yaml
+ * 3. Write ~/.tix/config.yaml
  * 4. Apply initial channel skill (Discord)
  * 5. Build the project
  * 6. Install and start system service
@@ -17,7 +17,7 @@ import yaml from 'yaml';
 import {
   prompt,
   PROJECT_ROOT,
-  TICLAW_HOME,
+  TIX_HOME,
   CONFIG_PATH,
 } from './utils.js';
 
@@ -35,7 +35,7 @@ function detectCLIs(): Record<string, boolean> {
 }
 
 export async function bootstrap(): Promise<void> {
-  console.log('\n🦀 TiClaw Bootstrap\n');
+  console.log('\n🦀 Tix Bootstrap\n');
 
   // 1. Detect platform
   const platform = process.platform === 'darwin' ? 'macOS' : 'Linux';
@@ -58,7 +58,7 @@ export async function bootstrap(): Promise<void> {
   console.log(`  Primary CLI: ${primaryCli || 'none (will need to install one)'}\n`);
 
   // 3. Collect configuration
-  const dataDir = await prompt('Data directory', TICLAW_HOME);
+  const dataDir = await prompt('Data directory', TIX_HOME);
   const httpProxy = await prompt('HTTP proxy (leave empty if not needed)', '');
   const githubRepo = await prompt('GitHub repo URL for first workspace', '');
   const discordToken = await prompt('Discord bot token (required for messaging)', '');
@@ -145,7 +145,7 @@ export async function bootstrap(): Promise<void> {
   }
 
   // 7. Build
-  console.log('\n  🔨 Building TiClaw...');
+  console.log('\n  🔨 Building Tix...');
   try {
     execSync('pnpm run build', {
       cwd: PROJECT_ROOT,
@@ -170,7 +170,7 @@ export async function bootstrap(): Promise<void> {
   }
 
   // Done
-  console.log('\n  🦀 TiClaw is ready!');
+  console.log('\n  🦀 Tix is ready!');
   console.log(`  Config: ${CONFIG_PATH}`);
   console.log(`  Data: ${dataDir}`);
   console.log(`  Primary CLI: ${primaryCli || 'gemini'}`);

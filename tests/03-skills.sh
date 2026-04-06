@@ -13,7 +13,7 @@ response=$(get_response_text "$result")
 assert_no_error "Skills command accepted" "$result" || true
 assert_not_empty "Skills list returned" "$response" || true
 
-# ── Test 3.2: File listing (tests tool use) — fresh session so no busy-runner ──
+# ── Test 3.2: File listing (tests tool use) — fresh session so no busy-computer ──
 echo ""
 echo -e "  Sending: \"List the files in the current working directory\""
 result=$(send_message "List the files and directories in the current working directory. Just the names, one per line." "default" "e2e-skills-files-$$")

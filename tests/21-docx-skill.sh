@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
 DOCX_AGENT="docx-test-$$"
-OUTDIR="/tmp/ticlaw-docx-tests-$$"
+OUTDIR="/tmp/tix-docx-tests-$$"
 mkdir -p "$OUTDIR"
 
 register_agent "$DOCX_AGENT"
@@ -15,7 +15,7 @@ print_scenario_header "Scenario 21: Docx Skill"
 # ── Test 21.1: Create a simple Word document ──
 echo -e "  Sending: \"Create a Word document with a title and two paragraphs\""
 result=$(send_message "Create a Word document at ${OUTDIR}/hello.docx using the docx npm package (it is already installed globally). The document should have:
-- A Heading 1 title: 'Hello from TiClaw'
+- A Heading 1 title: 'Hello from Tix'
 - A paragraph: 'This document was created by the docx skill.'
 - A second paragraph: 'It demonstrates programmatic Word document generation.'
 Use US Letter page size. Just create the file, no other explanation needed." \
@@ -71,7 +71,7 @@ response=$(get_response_text "$result")
 
 assert_no_error "Document reading accepted" "$result" || true
 assert_not_empty "Agent described document" "$response" || true
-assert_contains "Recognized document title" "$response" "TiClaw" || true
+assert_contains "Recognized document title" "$response" "Tix" || true
 
 # ── Test 21.4: Unpack and inspect XML ──
 echo ""

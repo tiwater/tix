@@ -1,5 +1,5 @@
 /**
- * TiClaw Web — Reference implementation of a TiClaw controller.
+ * Tix Web — Reference implementation of a Tix controller.
  *
  * Demonstrates how to use @tiwater/claw-gateway to build a controller that:
  * - Accepts inbound WebSocket connections from nodes
@@ -16,7 +16,7 @@
  */
 
 import http from 'node:http';
-import { attachGateway, handleGatewayRequest } from '@ticlaw/gateway';
+import { attachGateway, handleGatewayRequest } from '@tix/gateway';
 
 const PORT = parseInt(process.env.PORT || '2756', 10);
 const HOST = process.env.HOST || '0.0.0.0';

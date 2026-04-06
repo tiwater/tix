@@ -5,8 +5,8 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 5: Schedule CRUD"
 
-TICLAW_PORT="${TICLAW_PORT:-2756}"
-BASE="http://localhost:${TICLAW_PORT}"
+TIX_PORT="${TIX_PORT:-2756}"
+BASE="http://localhost:${TIX_PORT}"
 
 # ── Test 5.1: Create a schedule ──
 echo -e "  Creating a test schedule..."

@@ -150,6 +150,6 @@ const doc = new Document({
 
 // Save the document
 Packer.toBuffer(doc).then(buffer => {
-  fs.writeFileSync("/tmp/ticlaw-docx-tests-37616/report.docx", buffer);
-  console.log("Document created successfully at /tmp/ticlaw-docx-tests-37616/report.docx");
+  fs.writeFileSync("/tmp/tix-docx-tests-37616/report.docx", buffer);
+  console.log("Document created successfully at /tmp/tix-docx-tests-37616/report.docx");
 });

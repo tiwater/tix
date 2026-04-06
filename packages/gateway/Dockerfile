@@ -11,7 +11,7 @@ COPY packages/gateway/package.json packages/gateway/package.json
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN pnpm --filter @ticlaw/gateway run build
+RUN pnpm --filter @tix/gateway run build
 
 FROM node:22-slim AS runtime
 ENV NODE_ENV=production

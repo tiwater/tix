@@ -1,6 +1,6 @@
-# Integrating with TiClaw Gateway
+# Integrating with Tix Gateway
 
-TiClaw follows an **N:1 architecture**: many worker nodes connect outbound to
+Tix follows an **N:1 architecture**: many worker nodes connect outbound to
 one gateway. Controller platforms like **Supen** talk to the gateway over HTTP
 to drive agent conversations on any connected node.
 
@@ -22,20 +22,20 @@ Node(s)  :2756, :2757 …  ← worker machines running agents
 
 ```bash
 # Standalone (development)
-pnpm --filter @ticlaw/gateway dev
+pnpm --filter @tix/gateway dev
 
 # With auth enabled (production)
-TICLAW_GATEWAY_API_KEY=your-secret pnpm --filter @ticlaw/gateway start
+TIX_GATEWAY_API_KEY=your-secret pnpm --filter @tix/gateway start
 ```
 
 ### 2. Start one or more nodes
 
 ```bash
 # Node 1 (connects to gateway automatically)
-TICLAW_GATEWAY_URL=ws://localhost:2755 pnpm --filter @ticlaw/node dev
+TIX_GATEWAY_URL=ws://localhost:2755 pnpm --filter @tix/node dev
 
 # Node 2 (different HTTP port)
-HTTP_PORT=2757 TICLAW_GATEWAY_URL=ws://localhost:2755 pnpm --filter @ticlaw/node dev
+HTTP_PORT=2757 TIX_GATEWAY_URL=ws://localhost:2755 pnpm --filter @tix/node dev
 ```
 
 ### 3. Verify connectivity
@@ -52,14 +52,14 @@ curl http://localhost:2755/api/gateway/nodes
 
 ## Authentication
 
-Set `TICLAW_GATEWAY_API_KEY` on the gateway. All HTTP requests (except `/health` and
+Set `TIX_GATEWAY_API_KEY` on the gateway. All HTTP requests (except `/health` and
 `OPTIONS` preflight) must carry the header:
 
 ```
-Authorization: Bearer <TICLAW_GATEWAY_API_KEY>
+Authorization: Bearer <TIX_GATEWAY_API_KEY>
 ```
 
-If `TICLAW_GATEWAY_API_KEY` is not set, the gateway is in **open mode** — fine for
+If `TIX_GATEWAY_API_KEY` is not set, the gateway is in **open mode** — fine for
 local development, not for production.
 
 ### Node-side security posture
@@ -84,7 +84,7 @@ specific one.
 
 ```
 X-Node-Id: my-machine                     # optional — omit to use first connected node
-Authorization: Bearer key                 # required if TICLAW_GATEWAY_API_KEY is set
+Authorization: Bearer key                 # required if TIX_GATEWAY_API_KEY is set
 ```
 
 ### Agents
@@ -173,23 +173,23 @@ Without `X-Node-Id`, the gateway routes to the **first connected trusted node**.
 
 ## Render deployment (gateway web service + node background worker)
 
-The repository includes a `render.yaml` Blueprint that deploys the TiClaw
-gateway and the TiClaw node as **two separate Docker services**:
+The repository includes a `render.yaml` Blueprint that deploys the Tix
+gateway and the Tix node as **two separate Docker services**:
 
-- `ticlaw-gateway` (`type: web`) is the public HTTPS/WebSocket entrypoint for your consumer app.
-- `ticlaw-node` (`type: worker`) runs as a background worker and connects outward to the gateway.
+- `tix-gateway` (`type: web`) is the public HTTPS/WebSocket entrypoint for your consumer app.
+- `tix-node` (`type: worker`) runs as a background worker and connects outward to the gateway.
 
 ### How the Render wiring works
 
-1. Set `TICLAW_GATEWAY_EXTERNAL_URL` on the gateway service to its public URL.
-2. The provisioner injects `TICLAW_GATEWAY_URL`, `TICLAW_GATEWAY_SECRET`, and `TICLAW_NODE_NAME` into each cloud node.
+1. Set `TIX_GATEWAY_EXTERNAL_URL` on the gateway service to its public URL.
+2. The provisioner injects `TIX_GATEWAY_URL`, `TIX_GATEWAY_SECRET`, and `TIX_NODE_NAME` into each cloud node.
 3. Your consumer app calls the public gateway URL and never calls nodes directly.
 
 ### Required secrets on Render
 
-- `TICLAW_GATEWAY_API_KEY`: bearer token your consumer app sends to the gateway.
-- `TICLAW_GATEWAY_SECRET`: auto-generated HMAC secret; shared to nodes at provision time.
-- `TICLAW_GATEWAY_EXTERNAL_URL`: the gateway's own public `wss://` URL (needed to inject into cloud nodes).
+- `TIX_GATEWAY_API_KEY`: bearer token your consumer app sends to the gateway.
+- `TIX_GATEWAY_SECRET`: auto-generated HMAC secret; shared to nodes at provision time.
+- `TIX_GATEWAY_EXTERNAL_URL`: the gateway's own public `wss://` URL (needed to inject into cloud nodes).
 - `LLM_API_KEY`: model provider key for the node runtime.
 
 ### Consumer app connection
@@ -197,13 +197,13 @@ gateway and the TiClaw node as **two separate Docker services**:
 Point your consumer application at the **gateway** service URL, for example:
 
 ```
-https://ticlaw-gateway.onrender.com
+https://tix-gateway.onrender.com
 ```
 
 Use that base URL for both REST and SSE traffic, and include:
 
 ```
-Authorization: Bearer <TICLAW_GATEWAY_API_KEY>
+Authorization: Bearer <TIX_GATEWAY_API_KEY>
 ```
 
 The node runs as a background worker and should not be exposed publicly.
@@ -217,31 +217,31 @@ The node runs as a background worker and should not be exposed publicly.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | *(platform-managed)* | Preferred HTTP port in containers/platforms like Render |
-| `TICLAW_GATEWAY_API_KEY` | *(none)* | Controller auth key. Empty = open mode |
-| `TICLAW_GATEWAY_SECRET` | *(none)* | HMAC secret for node authentication |
-| `TICLAW_GATEWAY_ALLOWED_NODE_IDS` | *(all)* | CSV allowlist of permitted node IDs |
-| `TICLAW_GATEWAY_EXTERNAL_URL` | *(none)* | Gateway's own public WS URL (used by provisioner) |
+| `TIX_GATEWAY_API_KEY` | *(none)* | Controller auth key. Empty = open mode |
+| `TIX_GATEWAY_SECRET` | *(none)* | HMAC secret for node authentication |
+| `TIX_GATEWAY_ALLOWED_NODE_IDS` | *(all)* | CSV allowlist of permitted node IDs |
+| `TIX_GATEWAY_EXTERNAL_URL` | *(none)* | Gateway's own public WS URL (used by provisioner) |
 
 ### Node
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TICLAW_GATEWAY_URL` | *(none — required)* | WebSocket URL of the gateway |
-| `TICLAW_NODE_NAME` | *(hostname)* | This node's identity (sent during gateway auth) |
+| `TIX_GATEWAY_URL` | *(none — required)* | WebSocket URL of the gateway |
+| `TIX_NODE_NAME` | *(hostname)* | This node's identity (sent during gateway auth) |
 | `HTTP_PORT` | `2756` | Node's local HTTP port |
-| `TICLAW_GATEWAY_SECRET` | *(none)* | Must match the gateway's secret |
-| `TICLAW_GATEWAY_TRUST_TOKEN` | *(none)* | One-time enrollment token |
+| `TIX_GATEWAY_SECRET` | *(none)* | Must match the gateway's secret |
+| `TIX_GATEWAY_TRUST_TOKEN` | *(none)* | One-time enrollment token |
 
 ---
 
 ## Node Authentication Flow
 
-Nodes authenticate to the gateway using **HMAC tokens** when `TICLAW_GATEWAY_SECRET`
+Nodes authenticate to the gateway using **HMAC tokens** when `TIX_GATEWAY_SECRET`
 is set on both sides:
 
 1. Node computes `HMAC-SHA256(secret, "${nodeId}:${timestamp}")`.
 2. Node sends `{ type: "auth", token: "${nodeId}.${ts}.${hmac}" }` over WebSocket.
 3. Gateway verifies the HMAC and timestamp (5-minute window, replay-safe).
 
-For first-time enrollment, use `TICLAW_GATEWAY_TRUST_TOKEN` (a one-time secret issued
+For first-time enrollment, use `TIX_GATEWAY_TRUST_TOKEN` (a one-time secret issued
 via the node's enroll API).

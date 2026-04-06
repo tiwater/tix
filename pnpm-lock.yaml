@@ -14,7 +14,7 @@ importers:
 
   cli:
     dependencies:
-      '@ticlaw/node':
+      '@tix/node':
         specifier: workspace:*
         version: link:../packages/node
       commander:
@@ -27,7 +27,7 @@ importers:
 
   examples/web:
     dependencies:
-      '@ticlaw/gateway':
+      '@tix/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
       isomorphic-dompurify:

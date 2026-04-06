@@ -5,7 +5,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 6: API Health & Node Info"
 
-BASE="http://localhost:${TICLAW_PORT}"
+BASE="http://localhost:${TIX_PORT}"
 
 # ── Test 6.1: Health endpoint ──
 echo -e "  GET /health"
@@ -53,8 +53,8 @@ echo ""
 echo -e "  GET /agents"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 agents=$(curl --max-time 8 -sf "${BASE}/agents" 2>/dev/null) || agents=""
-if echo "$agents" | grep -q "TiClaw"; then
-  echo -e "  ${GREEN}✓${NC} App info returns TiClaw metadata"
+if echo "$agents" | grep -q "Tix"; then
+  echo -e "  ${GREEN}✓${NC} App info returns Tix metadata"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
   echo -e "  ${RED}✗${NC} App info"

@@ -1,6 +1,6 @@
-# TiClaw Security Model
+# Tix Security Model
 
-This document is the single source of truth for TiClaw security boundaries, trust flows, pairing behavior, and recommended production posture.
+This document is the single source of truth for Tix security boundaries, trust flows, pairing behavior, and recommended production posture.
 
 ## Security Objectives
 
@@ -13,7 +13,7 @@ This document is the single source of truth for TiClaw security boundaries, trus
 ## Threat Model
 
 In-scope attacker classes:
-- Remote network client reaching TiClaw HTTP or WebSocket endpoints.
+- Remote network client reaching Tix HTTP or WebSocket endpoints.
 - Browser-based attacker attempting cross-origin access to node APIs.
 - Client attempting to spoof sender identity on `/runs` or WebSocket message paths.
 - Unpaired channel/user attempting to talk to an agent without authorization.
@@ -27,10 +27,10 @@ Assumptions:
 
 ## Core Model
 
-TiClaw has two distinct security layers:
+Tix has two distinct security layers:
 
 ### Layer 1: Node security
-A **node** is the machine-side TiClaw runtime. In this document, `node` and `device` refer to the same security object.
+A **node** is the machine-side Tix runtime. In this document, `node` and `device` refer to the same security object.
 
 Node security answers two separate questions:
 1. **Who may operate the node API?**
@@ -82,17 +82,17 @@ Its allowed behavior should be limited to:
 External users/channels
   -> Channel identity boundary
   -> Agent binding / pairing boundary
-  -> TiClaw agent conversation boundary
+  -> Tix agent conversation boundary
   -> Node HTTP/WS admin boundary
-  -> Task runner boundary
-  -> Local filesystem (~/.ticlaw)
+  -> Task computer boundary
+  -> Local filesystem (~/.tix)
                 |
                 +-> Node enrollment / trust boundary
                 +-> Optional Hub / control-plane boundary
 ```
 
 Primary protection boundary:
-- TiClaw node process and data under `~/.ticlaw/`.
+- Tix node process and data under `~/.tix/`.
 
 Secondary boundaries:
 - Node enrollment and trust-state lifecycle.
@@ -195,8 +195,8 @@ If a channel identity is not bound to the target agent, it should not get normal
 
 ### Expected pairing flow for unbound identities
 1. An unbound user or chat sends an initial message.
-2. TiClaw detects that the identity is not bound to an agent.
-3. TiClaw returns a pair code or pairing instruction.
+2. Tix detects that the identity is not bound to an agent.
+3. Tix returns a pair code or pairing instruction.
 4. The owner/admin completes pairing in a trusted control surface.
 5. The channel identity becomes bound to the target agent.
 6. Normal conversation access is enabled.
@@ -251,7 +251,7 @@ CORS policy is deny-by-default.
 
 Behavior:
 - if `ALLOWED_ORIGINS` is configured, only matching origins are echoed back
-- if `ALLOWED_ORIGINS` is empty or invalid, TiClaw does **not** emit wildcard `Access-Control-Allow-Origin: *`
+- if `ALLOWED_ORIGINS` is empty or invalid, Tix does **not** emit wildcard `Access-Control-Allow-Origin: *`
 - credentials are not broadly enabled for arbitrary origins
 
 Implication:
@@ -277,7 +277,7 @@ Path safety controls:
 Skill scope:
 - managed skill operations blocked for out-of-root paths
 - managed skill enable blocked on content hash drift diagnostics
-- runner links only in-scope skill directories
+- computer links only in-scope skill directories
 
 ## 10) Network Trust Model (Node/Hub)
 
@@ -317,7 +317,7 @@ Recommended stance:
 
 ### Intentional dev/unsafe mode
 
-TiClaw currently allows a local-development fallback when `HTTP_API_KEY` is unset:
+Tix currently allows a local-development fallback when `HTTP_API_KEY` is unset:
 - admin/API endpoints are restricted to loopback clients only
 - the HTTP listener binds to `127.0.0.1` in that mode
 - this is intended only for same-machine development workflows
@@ -331,7 +331,7 @@ Recommended examples:
 HTTP_API_KEY=<long-random-secret>
 ALLOWED_ORIGINS=^https://(app\.example\.com|admin\.example\.com)$
 SECURITY_TRUSTED_REMOTE_HOSTS=hub.example.com,api.example.com
-WORKSPACE_ALLOWED_ROOTS=/srv/ticlaw/workspaces
+WORKSPACE_ALLOWED_ROOTS=/srv/tix/workspaces
 CHILD_ENV_ALLOWLIST=GITHUB_TOKEN,RENDER_API_KEY
 ```
 
@@ -394,10 +394,10 @@ If compromise is suspected:
 2. Set node trust state to `revoked` or `suspended`.
 3. Rotate `HTTP_API_KEY`, channel keys, LLM keys, and any skill secrets.
 4. Review:
-   - `~/.ticlaw/security/enrollment-state.json`
-   - `~/.ticlaw/skills/registry.json`
-   - `~/.ticlaw/skills/audit.log`
-   - `~/.ticlaw/agents/*/sessions/*/messages.jsonl`
+   - `~/.tix/security/enrollment-state.json`
+   - `~/.tix/skills/registry.json`
+   - `~/.tix/skills/audit.log`
+   - `~/.tix/agents/*/sessions/*/messages.jsonl`
 5. Re-enroll nodes and re-enable only required skills.
 6. Review agent/channel bindings and remove any unauthorized pairings.
 

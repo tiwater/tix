@@ -15,7 +15,7 @@
     "declaration": true,
     "sourceMap": true,
     "paths": {
-      "ticlaw/*": [
+      "tix/*": [
         "../src/*"
       ]
     }

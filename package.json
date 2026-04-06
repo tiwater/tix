@@ -1,15 +1,16 @@
 {
-  "name": "ticlaw",
+  "name": "tix",
   "private": true,
   "version": "1.3.0",
-  "description": "TiClaw Workspace — core monorepo containing the TiClaw Runner, Gateway, and CLI",
+  "description": "Tix Workspace — Tiwater Agent Harness Framework (core monorepo containing the Tix Computer, Gateway, and CLI)",
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @ticlaw/gateway run build && pnpm --filter @ticlaw/runner run build",
-    "dev": "pnpm --filter @ticlaw/gateway run build && concurrently -n gateway,runner -c cyan,green \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/runner run dev\"",
-    "dev:runner": "pnpm --filter @ticlaw/runner run dev",
-    "dev:gateway": "pnpm --filter @ticlaw/gateway run dev",
-    "test": "pnpm --filter @ticlaw/runner run test",
+    "build": "pnpm --filter @tix/gateway run build && pnpm --filter @tix/computer run build",
+    "build:watch": "concurrently -n gateway,computer -c cyan,green \"pnpm --filter @tix/gateway run build:watch\" \"pnpm --filter @tix/computer run build:watch\"",
+    "dev": "pnpm --filter @tix/gateway run build && concurrently -n gateway,computer -c cyan,green \"pnpm --filter @tix/gateway run dev\" \"sleep 1 && pnpm --filter @tix/computer run dev\"",
+    "dev:computer": "pnpm --filter @tix/computer run dev",
+    "dev:gateway": "pnpm --filter @tix/gateway run dev",
+    "test": "pnpm --filter @tix/computer run test",
     "test:e2e": "bash tests/run-e2e.sh"
   },
   "devDependencies": {

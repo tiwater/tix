@@ -1,8 +1,8 @@
-# TiClaw Scheduling Architecture
+# Tix Scheduling Architecture
 
 ## Core Principle
 
-TiClaw uses one scheduler loop for all periodic work. The loop runs every 60 seconds and evaluates schedule records under each agent.
+Tix uses one scheduler loop for all periodic work. The loop runs every 60 seconds and evaluates schedule records under each agent.
 
 Current runtime behavior is **cron-first**:
 - due detection is based on `next_run <= now`
@@ -14,7 +14,7 @@ Current runtime behavior is **cron-first**:
 Each schedule is a YAML file:
 
 ```
-~/.ticlaw/agents/{agent_id}/schedules/{schedule_id}.yaml
+~/.tix/agents/{agent_id}/schedules/{schedule_id}.yaml
 ```
 
 ### Schema (Current Implementation)
@@ -50,10 +50,10 @@ created_at: "2026-03-17T12:00:00Z"
 
 ```bash
 # create
-vim ~/.ticlaw/agents/my-agent/schedules/my-task.yaml
+vim ~/.tix/agents/my-agent/schedules/my-task.yaml
 
 # delete
-rm ~/.ticlaw/agents/my-agent/schedules/my-task.yaml
+rm ~/.tix/agents/my-agent/schedules/my-task.yaml
 ```
 
 ### 2. HTTP API (Current)

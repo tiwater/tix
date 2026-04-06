@@ -21,8 +21,8 @@ TOKEN=$(echo "$TOKEN_JSON" | python3 -c 'import sys,json; d=json.load(sys.stdin)
 
 
 echo "[4/7] untrusted runtime blocked from /runs"
-HTTP_CODE=$(curl -s -o /tmp/ticlaw-e2e-runs-untrusted.json -w "%{http_code}" -X POST "${BASE}/runs" -H 'Content-Type: application/json' -d '{"chat_jid":"web:e2e-enroll","sender":"e2e","sender_name":"e2e","content":"hello"}')
-cat /tmp/ticlaw-e2e-runs-untrusted.json
+HTTP_CODE=$(curl -s -o /tmp/tix-e2e-runs-untrusted.json -w "%{http_code}" -X POST "${BASE}/runs" -H 'Content-Type: application/json' -d '{"chat_jid":"web:e2e-enroll","sender":"e2e","sender_name":"e2e","content":"hello"}')
+cat /tmp/tix-e2e-runs-untrusted.json
 if [[ "$HTTP_CODE" != "403" ]]; then
   echo "Expected 403 when untrusted, got $HTTP_CODE" >&2
   exit 1
@@ -40,8 +40,8 @@ fi
 
 
 echo "[6/7] trusted runtime can run /runs"
-HTTP_CODE2=$(curl -s -o /tmp/ticlaw-e2e-runs-trusted.json -w "%{http_code}" -X POST "${BASE}/runs" -H 'Content-Type: application/json' -d '{"chat_jid":"web:e2e-enroll","sender":"e2e","sender_name":"e2e","content":"hello after trust"}')
-cat /tmp/ticlaw-e2e-runs-trusted.json
+HTTP_CODE2=$(curl -s -o /tmp/tix-e2e-runs-trusted.json -w "%{http_code}" -X POST "${BASE}/runs" -H 'Content-Type: application/json' -d '{"chat_jid":"web:e2e-enroll","sender":"e2e","sender_name":"e2e","content":"hello after trust"}')
+cat /tmp/tix-e2e-runs-trusted.json
 if [[ "$HTTP_CODE2" != "202" ]]; then
   echo "Expected 202 when trusted, got $HTTP_CODE2" >&2
   exit 1
@@ -49,8 +49,8 @@ fi
 
 
 echo "[7/7] one-time token cannot be reused"
-HTTP_CODE3=$(curl -s -o /tmp/ticlaw-e2e-token-reuse.json -w "%{http_code}" -X POST "${BASE}/api/enroll/verify" -H 'Content-Type: application/json' -d "{\"token\":\"${TOKEN}\",\"runtime_fingerprint\":\"${FP}\"}")
-cat /tmp/ticlaw-e2e-token-reuse.json
+HTTP_CODE3=$(curl -s -o /tmp/tix-e2e-token-reuse.json -w "%{http_code}" -X POST "${BASE}/api/enroll/verify" -H 'Content-Type: application/json' -d "{\"token\":\"${TOKEN}\",\"runtime_fingerprint\":\"${FP}\"}")
+cat /tmp/tix-e2e-token-reuse.json
 if [[ "$HTTP_CODE3" == "200" ]]; then
   echo "Expected non-200 on token reuse" >&2
   exit 1

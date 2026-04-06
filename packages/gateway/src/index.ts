@@ -1,24 +1,24 @@
 /**
- * TiClaw Gateway — WebSocket relay that accepts inbound runner connections.
+ * Tix Gateway — WebSocket relay that accepts inbound computer connections.
  *
- * Standalone package — no ticlaw core dependencies.
- * Ticos/Supen can `import { attachGateway } from '@ticlaw/gateway'` to embed.
+ * Standalone package — no tix core dependencies.
+ * Ticos/Supen can `import { attachGateway } from '@tix/gateway'` to embed.
  */
 
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { listCloudRunners, launchCloudRunner, deleteCloudRunner, getCloudRunnerMeta } from './cloud-runners.js';
+import { listCloudComputers, launchCloudComputer, deleteCloudComputer, getCloudComputerMeta } from './cloud-computers.js';
 
-export interface RemoteRunner {
-  runner_id: string;
-  runner_fingerprint: string;
+export interface RemoteComputer {
+  computer_id: string;
+  computer_fingerprint: string;
   trusted: boolean;
   /** True if the WebSocket connection is currently open. */
   online: boolean;
-  /** ISO timestamp of last message received from this runner. */
+  /** ISO timestamp of last message received from this computer. */
   last_seen?: string;
-  /** IP address the runner connected from. */
+  /** IP address the computer connected from. */
   ip?: string;
   /** System telemetry data. */
   telemetry?: any;
@@ -45,22 +45,22 @@ export interface GatewayOptions {
 
 // ── State ──
 
-interface RunnerState {
-  info: RemoteRunner;
+interface ComputerState {
+  info: RemoteComputer;
   lastSeen: number;
 }
 
-const runners = new Map<WebSocket, RunnerState>();
+const computers = new Map<WebSocket, ComputerState>();
 const pendingRequests = new Map<string, PendingRequest>();
 const sseClients = new Map<string, Set<http.ServerResponse>>();
 let requestIdCounter = 0;
 
 /**
- * TICLAW_GATEWAY_API_KEY — API key that controller clients (e.g. Supen) must provide.
+ * TIX_GATEWAY_API_KEY — API key that controller clients (e.g. Supen) must provide.
  * When set, every inbound HTTP request must carry `Authorization: Bearer <key>`.
  * If unset, the gateway is in open mode (development only).
  */
-const GATEWAY_API_KEY = process.env.TICLAW_GATEWAY_API_KEY || '';
+const GATEWAY_API_KEY = process.env.TIX_GATEWAY_API_KEY || '';
 
 function parseCsvSet(value?: string): Set<string> {
   if (!value) return new Set();
@@ -72,26 +72,26 @@ function parseCsvSet(value?: string): Set<string> {
   );
 }
 
-const ALLOWED_RUNNER_IDS = parseCsvSet(
-  process.env.TICLAW_GATEWAY_ALLOWED_RUNNER_IDS,
+const ALLOWED_COMPUTER_IDS = parseCsvSet(
+  process.env.TIX_GATEWAY_ALLOWED_COMPUTER_IDS,
 );
-const ALLOWED_RUNNER_FINGERPRINTS = parseCsvSet(
-  process.env.TICLAW_GATEWAY_ALLOWED_RUNNER_FINGERPRINTS,
+const ALLOWED_COMPUTER_FINGERPRINTS = parseCsvSet(
+  process.env.TIX_GATEWAY_ALLOWED_COMPUTER_FINGERPRINTS,
 );
 
 /**
- * TICLAW_GATEWAY_SECRET — pre-shared secret for runner authentication.
+ * TIX_GATEWAY_SECRET — pre-shared secret for computer authentication.
  * When set, every enroll/auth message MUST include a valid HMAC token.
- * Token format: `${runnerId}.${timestampMs}.${hmacHex}` where hmacHex is
- * HMAC-SHA256(secret, `${runnerId}:${timestampMs}`).
+ * Token format: `${computerId}.${timestampMs}.${hmacHex}` where hmacHex is
+ * HMAC-SHA256(secret, `${computerId}:${timestampMs}`).
  * Timestamps more than TOKEN_VALIDITY_MS old are rejected (replay protection).
  */
-const GATEWAY_SECRET = process.env.TICLAW_GATEWAY_SECRET || '';
+const GATEWAY_SECRET = process.env.TIX_GATEWAY_SECRET || '';
 const TOKEN_VALIDITY_MS = 5 * 60 * 1000; // 5 minutes
 
-function verifyRunnerToken(
+function verifyComputerToken(
   token: string | undefined,
-  runnerId: string,
+  computerId: string,
 ): { ok: boolean; code?: string } {
   if (!GATEWAY_SECRET) {
     // No secret configured — gateway is in open mode (warn once at startup)
@@ -104,9 +104,9 @@ function verifyRunnerToken(
   if (parts.length !== 3) {
     return { ok: false, code: 'token_malformed' };
   }
-  const [tokenRunnerId, tsStr, givenHmac] = parts as [string, string, string];
-  if (tokenRunnerId !== runnerId) {
-    return { ok: false, code: 'token_runner_mismatch' };
+  const [tokenComputerId, tsStr, givenHmac] = parts as [string, string, string];
+  if (tokenComputerId !== computerId) {
+    return { ok: false, code: 'token_computer_mismatch' };
   }
   const ts = parseInt(tsStr, 10);
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > TOKEN_VALIDITY_MS) {
@@ -114,7 +114,7 @@ function verifyRunnerToken(
   }
   const expected = crypto
     .createHmac('sha256', GATEWAY_SECRET)
-    .update(`${runnerId}:${tsStr}`)
+    .update(`${computerId}:${tsStr}`)
     .digest('hex');
   try {
     const givenBuf = Buffer.from(givenHmac, 'hex');
@@ -131,13 +131,13 @@ function verifyRunnerToken(
   return { ok: true };
 }
 
-function isRunnerAllowed(runnerId: string, runnerFingerprint: string): boolean {
-  if (ALLOWED_RUNNER_IDS.size > 0 && !ALLOWED_RUNNER_IDS.has(runnerId)) {
+function isComputerAllowed(computerId: string, computerFingerprint: string): boolean {
+  if (ALLOWED_COMPUTER_IDS.size > 0 && !ALLOWED_COMPUTER_IDS.has(computerId)) {
     return false;
   }
   if (
-    ALLOWED_RUNNER_FINGERPRINTS.size > 0 &&
-    !ALLOWED_RUNNER_FINGERPRINTS.has(runnerFingerprint)
+    ALLOWED_COMPUTER_FINGERPRINTS.size > 0 &&
+    !ALLOWED_COMPUTER_FINGERPRINTS.has(computerFingerprint)
   ) {
     return false;
   }
@@ -146,43 +146,43 @@ function isRunnerAllowed(runnerId: string, runnerFingerprint: string): boolean {
 
 // ── Public API ──
 
-export function listRunners(): RemoteRunner[] {
-  return Array.from(runners.values()).map(({ info, lastSeen }) => ({
+export function listComputers(): RemoteComputer[] {
+  return Array.from(computers.values()).map(({ info, lastSeen }) => ({
     ...info,
     online: true,
     last_seen: new Date(lastSeen).toISOString(),
   }));
 }
 
-/** Get the WebSocket for a specific runner by runner_id. */
-export function getRunnerById(runnerId: string): WebSocket | null {
-  for (const [ws, { info }] of runners) {
-    if (info.runner_id === runnerId && info.trusted && ws.readyState === WebSocket.OPEN) return ws;
+/** Get the WebSocket for a specific computer by computer_id. */
+export function getComputerById(computerId: string): WebSocket | null {
+  for (const [ws, { info }] of computers) {
+    if (info.computer_id === computerId && info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
 }
 
-export function getActiveRunner(): WebSocket | null {
-  for (const [ws, { info }] of runners) {
+export function getActiveComputer(): WebSocket | null {
+  for (const [ws, { info }] of computers) {
     if (info.trusted && ws.readyState === WebSocket.OPEN) return ws;
   }
   return null;
 }
 
-export function relayToRunner(
+export function relayToComputer(
   method: string,
   path: string,
   body?: unknown,
   timeoutMs = 15000,
-  targetRunnerId?: string,
+  targetComputerId?: string,
 ): Promise<RelayResult> {
   return new Promise((resolve) => {
-    const runner = targetRunnerId ? getRunnerById(targetRunnerId) : getActiveRunner();
-    if (!runner) {
-      const msg = targetRunnerId
-        ? `Runner '${targetRunnerId}' is not connected to this gateway`
-        : 'No runner is currently connected to this gateway';
-      resolve({ status: 503, headers: {}, body: { error: 'no_runner_connected', message: msg } });
+    const computer = targetComputerId ? getComputerById(targetComputerId) : getActiveComputer();
+    if (!computer) {
+      const msg = targetComputerId
+        ? `Computer '${targetComputerId}' is not connected to this gateway`
+        : 'No computer is currently connected to this gateway';
+      resolve({ status: 503, headers: {}, body: { error: 'no_computer_connected', message: msg } });
       return;
     }
 
@@ -192,88 +192,88 @@ export function relayToRunner(
       resolve({
         status: 504,
         headers: {},
-        body: { error: 'timeout', message: 'Runner did not respond in time' },
+        body: { error: 'timeout', message: 'Computer did not respond in time' },
       });
     }, timeoutMs);
 
     pendingRequests.set(reqId, { resolve, timer });
-    runner.send(
+    computer.send(
       JSON.stringify({ type: 'api_request', request_id: reqId, method, path, body }),
     );
   });
 }
 
-// ── Runner message handler ──
+// ── Computer message handler ──
 
-function handleRunnerMessage(
+function handleComputerMessage(
   ws: WebSocket,
   msg: Record<string, unknown>,
   log: GatewayOptions['logger'],
 ): void {
   // Update last_seen on every message
-  const state = runners.get(ws);
+  const state = computers.get(ws);
   if (state) state.lastSeen = Date.now();
 
   switch (msg.type) {
     case 'enroll': {
-      const runner_id = msg.runner_id as string;
-      const runner_fingerprint = msg.runner_fingerprint as string;
-      const ip = runners.get(ws)?.info.ip;
+      const computer_id = msg.computer_id as string;
+      const computer_fingerprint = msg.computer_fingerprint as string;
+      const ip = computers.get(ws)?.info.ip;
       // gateway_token = HMAC credential (separate from enrollment trust_token)
-      const tokenCheck = verifyRunnerToken(msg.gateway_token as string | undefined, runner_id);
+      const tokenCheck = verifyComputerToken(msg.gateway_token as string | undefined, computer_id);
       if (!tokenCheck.ok) {
         log?.warn?.(
-          `[gateway] Rejected runner enrollment for id=${runner_id}: ${tokenCheck.code}`,
+          `[gateway] Rejected computer enrollment for id=${computer_id}: ${tokenCheck.code}`,
         );
         ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
-      if (!isRunnerAllowed(runner_id, runner_fingerprint)) {
+      if (!isComputerAllowed(computer_id, computer_fingerprint)) {
         log?.warn?.(
-          `[gateway] Rejected runner enrollment for id=${runner_id} from ${ip || 'unknown-ip'} due to allowlist policy`,
+          `[gateway] Rejected computer enrollment for id=${computer_id} from ${ip || 'unknown-ip'} due to allowlist policy`,
         );
-        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: 'runner_not_allowed' }));
+        ws.send(JSON.stringify({ type: 'enrollment_result', ok: false, code: 'computer_not_allowed' }));
         ws.close();
         break;
       }
-      runners.set(ws, { info: { runner_id, runner_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
-      log?.info?.(`[gateway] Runner enrolled: ${runner_id}`);
-      ws.send(JSON.stringify({ type: 'enrollment_result', ok: true, runner_id, runner_fingerprint }));
+      computers.set(ws, { info: { computer_id, computer_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
+      log?.info?.(`[gateway] Computer enrolled: ${computer_id}`);
+      ws.send(JSON.stringify({ type: 'enrollment_result', ok: true, computer_id, computer_fingerprint }));
       break;
     }
 
     case 'auth': {
-      const runner_id = msg.runner_id as string;
-      const runner_fingerprint = msg.runner_fingerprint as string;
-      const ip = runners.get(ws)?.info.ip;
-      const tokenCheck = verifyRunnerToken(msg.token as string | undefined, runner_id);
+      const computer_id = msg.computer_id as string;
+      const computer_fingerprint = msg.computer_fingerprint as string;
+      const ip = computers.get(ws)?.info.ip;
+      const tokenCheck = verifyComputerToken(msg.token as string | undefined, computer_id);
       if (!tokenCheck.ok) {
-        log?.warn?.(`[gateway] Rejected runner auth for id=${runner_id}: ${tokenCheck.code}`);
+        log?.warn?.(`[gateway] Rejected computer auth for id=${computer_id}: ${tokenCheck.code}`);
         ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: tokenCheck.code }));
         ws.close();
         break;
       }
-      if (!isRunnerAllowed(runner_id, runner_fingerprint)) {
-        log?.warn?.(`[gateway] Rejected runner auth for id=${runner_id} from ${ip || 'unknown-ip'} due to allowlist policy`);
-        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: 'runner_not_allowed' }));
+      if (!isComputerAllowed(computer_id, computer_fingerprint)) {
+        log?.warn?.(`[gateway] Rejected computer auth for id=${computer_id} from ${ip || 'unknown-ip'} due to allowlist policy`);
+        ws.send(JSON.stringify({ type: 'auth_result', ok: false, code: 'computer_not_allowed' }));
         ws.close();
         break;
       }
-      runners.set(ws, { info: { runner_id, runner_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
-      log?.info?.(`[gateway] Runner authenticated: ${runner_id}`);
+      computers.set(ws, { info: { computer_id, computer_fingerprint, trusted: true, online: true, ip }, lastSeen: Date.now() });
+      log?.info?.(`[gateway] Computer authenticated: ${computer_id}`);
       ws.send(JSON.stringify({ type: 'auth_result', ok: true }));
       break;
     }
 
     case 'report': {
-      const state = runners.get(ws);
+      const state = computers.get(ws);
       if (state) {
         state.lastSeen = Date.now();
         if (msg.telemetry) {
           state.info.telemetry = msg.telemetry;
         }
-        log?.debug?.(`[gateway] Report from ${state.info.runner_id}: ${msg.status}`);
+        log?.debug?.(`[gateway] Report from ${state.info.computer_id}: ${msg.status}`);
       }
       break;
     }
@@ -318,10 +318,10 @@ function handleSSERelay(
   res: http.ServerResponse,
   url: URL,
 ): void {
-  const runner = getActiveRunner();
-  if (!runner) {
+  const computer = getActiveComputer();
+  if (!computer) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'no_runner_connected' }));
+    res.end(JSON.stringify({ error: 'no_computer_connected' }));
     return;
   }
 
@@ -338,7 +338,7 @@ function handleSSERelay(
   sseClients.get(streamKey)!.add(res);
 
   const reqId = `gateway-sse-${++requestIdCounter}`;
-  runner.send(
+  computer.send(
     JSON.stringify({ type: 'sse_subscribe', request_id: reqId, path: streamKey }),
   );
 
@@ -352,7 +352,7 @@ function handleSSERelay(
 
 /**
  * Attach the WebSocket gateway to an HTTP server.
- * Call this on any http.Server to enable runner connections.
+ * Call this on any http.Server to enable computer connections.
  */
 export function attachGateway(
   httpServer: http.Server,
@@ -376,24 +376,24 @@ export function attachGateway(
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     const ipText = Array.isArray(ip) ? ip[0] : String(ip || '');
     // Pre-populate state with IP so enroll/auth handlers can read it
-    runners.set(ws, {
-      info: { runner_id: '', runner_fingerprint: '', trusted: false, online: true, ip: ipText },
+    computers.set(ws, {
+      info: { computer_id: '', computer_fingerprint: '', trusted: false, online: true, ip: ipText },
       lastSeen: Date.now(),
     });
-    log.info?.(`[gateway] New runner connection from ${ipText}`);
+    log.info?.(`[gateway] New computer connection from ${ipText}`);
 
     ws.on('message', (data) => {
       try {
-        handleRunnerMessage(ws, JSON.parse(data.toString()), log);
+        handleComputerMessage(ws, JSON.parse(data.toString()), log);
       } catch (err) {
         log.error?.('[gateway] Parse error:', err);
       }
     });
 
     ws.on('close', () => {
-      const state = runners.get(ws);
-      if (state?.info.runner_id) log.info?.(`[gateway] Runner disconnected: ${state.info.runner_id}`);
-      runners.delete(ws);
+      const state = computers.get(ws);
+      if (state?.info.computer_id) log.info?.(`[gateway] Computer disconnected: ${state.info.computer_id}`);
+      computers.delete(ws);
     });
 
     ws.on('error', (err) => {
@@ -408,7 +408,7 @@ export function attachGateway(
 // ── HTTP request handler (API relay middleware) ──
 
 /**
- * Handle an HTTP request — route gateway API or relay to runner.
+ * Handle an HTTP request — route gateway API or relay to computer.
  * Returns true if the request was handled.
  */
 export async function handleGatewayRequest(
@@ -421,42 +421,42 @@ export async function handleGatewayRequest(
   if (url.pathname === '/openapi.json' && req.method === 'GET') {
     const gatewayUrl = `http://${req.headers.host || 'localhost'}`;
 
-    // Gateway-native paths (always present, no runner needed)
+    // Gateway-native paths (always present, no computer needed)
     const gatewayPaths: Record<string, unknown> = {
       '/openapi.json': { get: { tags: ['Gateway'], summary: 'OpenAPI spec (this document)', security: [], responses: { '200': { description: 'OpenAPI 3.0 JSON' } } } },
-      '/health': { get: { tags: ['Gateway'], summary: 'Gateway health (runner count, uptime)', security: [], responses: { '200': { description: 'OK' } } } },
-      '/api/gateway/runners': { get: { tags: ['Gateway'], summary: 'List connected runners', responses: { '200': { description: 'Runners array' } } } },
+      '/health': { get: { tags: ['Gateway'], summary: 'Gateway health (computer count, uptime)', security: [], responses: { '200': { description: 'OK' } } } },
+      '/api/gateway/computers': { get: { tags: ['Gateway'], summary: 'List connected computers', responses: { '200': { description: 'Computers array' } } } },
     };
 
-    // Try to fetch runner spec and merge
-    let runnerPaths: Record<string, unknown> = {};
-    let runnerInfo: Record<string, unknown> = {};
+    // Try to fetch computer spec and merge
+    let computerPaths: Record<string, unknown> = {};
+    let computerInfo: Record<string, unknown> = {};
     try {
-      const runnerSpec = await relayToRunner('GET', '/api/v1/openapi.json', undefined, 5000);
-      if (runnerSpec.status === 200 && runnerSpec.body && typeof runnerSpec.body === 'object') {
-        const spec = runnerSpec.body as Record<string, unknown>;
-        runnerPaths = (spec.paths as Record<string, unknown>) || {};
-        runnerInfo = (spec.info as Record<string, unknown>) || {};
+      const computerSpec = await relayToComputer('GET', '/api/v1/openapi.json', undefined, 5000);
+      if (computerSpec.status === 200 && computerSpec.body && typeof computerSpec.body === 'object') {
+        const spec = computerSpec.body as Record<string, unknown>;
+        computerPaths = (spec.paths as Record<string, unknown>) || {};
+        computerInfo = (spec.info as Record<string, unknown>) || {};
       }
-    } catch { /* runner not connected — return gateway-only spec */ }
+    } catch { /* computer not connected — return gateway-only spec */ }
 
     const spec = {
       openapi: '3.0.3',
       info: {
-        title: 'TiClaw Gateway API',
-        version: (runnerInfo.version as string) || '1.0.0',
+        title: 'Tix Gateway API',
+        version: (computerInfo.version as string) || '1.0.0',
         description:
-          'TiClaw Gateway API. Gateway-native routes (/health, /api/gateway/*) plus all runner routes relayed transparently. ' +
-          'Use X-Runner-Id header to target a specific runner.',
+          'Tix Gateway API. Gateway-native routes (/health, /api/gateway/*) plus all computer routes relayed transparently. ' +
+          'Use X-Computer-Id header to target a specific computer.',
       },
-      servers: [{ url: gatewayUrl, description: 'TiClaw Gateway' }],
+      servers: [{ url: gatewayUrl, description: 'Tix Gateway' }],
       security: [{ bearerAuth: [] }],
       components: {
         securitySchemes: {
-          bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via TICLAW_GATEWAY_API_KEY env var.' },
+          bearerAuth: { type: 'http', scheme: 'bearer', description: 'Set via TIX_GATEWAY_API_KEY env var.' },
         },
       },
-      paths: { ...gatewayPaths, ...runnerPaths },
+      paths: { ...gatewayPaths, ...computerPaths },
     };
 
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -466,23 +466,23 @@ export async function handleGatewayRequest(
 
   // ── Gateway-native: health (own status, not relayed) ──
   if (url.pathname === '/health' && req.method === 'GET') {
-    const connected = Array.from(runners.values()).filter(
-      ({ info }) => info.trusted && info.runner_id,
+    const connected = Array.from(computers.values()).filter(
+      ({ info }) => info.trusted && info.computer_id,
     );
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
       status: 'ok',
       gateway: true,
-      runners_connected: connected.length,
+      computers_connected: connected.length,
       uptime_s: Math.floor(process.uptime()),
     }));
     return true;
   }
 
-  // ── Gateway-native: list runners ──
-  if (url.pathname === '/api/gateway/runners' && req.method === 'GET') {
+  // ── Gateway-native: list computers ──
+  if (url.pathname === '/api/gateway/computers' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ runners: listRunners() }));
+    res.end(JSON.stringify({ computers: listComputers() }));
     return true;
   }
 
@@ -490,7 +490,7 @@ export async function handleGatewayRequest(
   const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Runner-Id',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Computer-Id',
   };
   if (req.method === 'OPTIONS' && url.pathname.startsWith('/api/')) {
     res.writeHead(204, CORS_HEADERS);
@@ -509,31 +509,31 @@ export async function handleGatewayRequest(
     }
   }
 
-  // ── Gateway-native: cloud runner provisioning ──
-  if (url.pathname === '/api/gateway/cloud-runners' && req.method === 'GET') {
+  // ── Gateway-native: cloud computer provisioning ──
+  if (url.pathname === '/api/gateway/cloud-computers' && req.method === 'GET') {
     try {
-      const [runnersList, meta] = await Promise.all([listCloudRunners(), getCloudRunnerMeta()]);
+      const [computersList, meta] = await Promise.all([listCloudComputers(), getCloudComputerMeta()]);
       
-      const connectedRunners = listRunners();
-      for (const runner of runnersList) {
-        const isOnline = connectedRunners.some((r) => r.runner_id === runner.runnerId && r.online);
+      const connectedComputers = listComputers();
+      for (const computer of computersList) {
+        const isOnline = connectedComputers.some((r) => r.computer_id === computer.computerId && r.online);
         if (isOnline) {
-          runner.status = 'online';
-        } else if (runner.status === 'live') {
-          runner.status = 'offline';
+          computer.status = 'online';
+        } else if (computer.status === 'live') {
+          computer.status = 'offline';
         }
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ runners: runnersList, meta }));
+      res.end(JSON.stringify({ computers: computersList, meta }));
     } catch (err: any) {
       res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: err?.message || 'Failed to list cloud runners' }));
+      res.end(JSON.stringify({ error: err?.message || 'Failed to list cloud computers' }));
     }
     return true;
   }
 
-  if (url.pathname === '/api/gateway/cloud-runners' && req.method === 'POST') {
+  if (url.pathname === '/api/gateway/cloud-computers' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk; });
     req.on('end', async () => {
@@ -544,18 +544,18 @@ export async function handleGatewayRequest(
           res.end(JSON.stringify({ error: 'name, tier, and region are required' }));
           return;
         }
-        const result = await launchCloudRunner(input);
+        const result = await launchCloudComputer(input);
         res.writeHead(201, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(result));
       } catch (err: any) {
         res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: err?.message || 'Failed to launch cloud runner' }));
+        res.end(JSON.stringify({ error: err?.message || 'Failed to launch cloud computer' }));
       }
     });
     return true;
   }
 
-  if (url.pathname.startsWith('/api/gateway/cloud-runners/') && req.method === 'DELETE') {
+  if (url.pathname.startsWith('/api/gateway/cloud-computers/') && req.method === 'DELETE') {
     const serviceId = url.pathname.split('/').pop();
     if (!serviceId) {
       res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -563,12 +563,12 @@ export async function handleGatewayRequest(
       return true;
     }
     try {
-      await deleteCloudRunner(serviceId);
+      await deleteCloudComputer(serviceId);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err: any) {
       res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: err?.message || 'Failed to delete cloud runner' }));
+      res.end(JSON.stringify({ error: err?.message || 'Failed to delete cloud computer' }));
     }
     return true;
   }
@@ -579,15 +579,15 @@ export async function handleGatewayRequest(
     return true;
   }
 
-  // ── API relay to runner (with optional X-Runner-Id targeting) ──
+  // ── API relay to computer (with optional X-Computer-Id targeting) ──
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/runs')) {
-    const targetRunnerId = req.headers['x-runner-id'] as string | undefined;
+    const targetComputerId = req.headers['x-computer-id'] as string | undefined;
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk; });
     req.on('end', async () => {
       let parsedBody: unknown;
       try { parsedBody = body ? JSON.parse(body) : undefined; } catch { parsedBody = body; }
-      const result = await relayToRunner(req.method || 'GET', url.pathname + url.search, parsedBody, 15000, targetRunnerId);
+      const result = await relayToComputer(req.method || 'GET', url.pathname + url.search, parsedBody, 15000, targetComputerId);
 
       if (result.encoding === 'base64' && typeof result.body === 'string') {
         const buffer = Buffer.from(result.body, 'base64');
@@ -646,7 +646,7 @@ export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Serve
 
   return new Promise((resolve) => {
     httpServer.listen(port, host, () => {
-      log.info?.(`[gateway] TiClaw Gateway listening on ws://${host}:${port}`);
+      log.info?.(`[gateway] Tix Gateway listening on ws://${host}:${port}`);
       resolve(httpServer);
     });
   });

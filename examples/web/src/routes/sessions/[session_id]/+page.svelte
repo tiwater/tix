@@ -3,30 +3,30 @@
   import { marked } from 'marked';
   import DOMPurify from 'isomorphic-dompurify';
   import { appState } from '$lib/stores/app-state.svelte';
-  import { resolveProtocolUrls } from '$lib/ticlaw-protocol';
+  import { resolveProtocolUrls } from '$lib/tix-protocol';
   import { page } from '$app/stores';
 
 
   function renderMarkdown(text: string): string {
     const html = DOMPurify.sanitize(marked.parse(text) as string, {
       ALLOWED_URI_REGEXP:
-        /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|ticlaw):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+        /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|tix):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     });
     return resolveProtocolUrls(html);
   }
 
   function renderUserMessage(text: string): string {
-    // Parse [Attached file: name → ticlaw://url] into styled cards
-    const parts = text.split(/(\[Attached file: .+? → ticlaw:\/\/.+?\])/);
+    // Parse [Attached file: name → tix://url] into styled cards
+    const parts = text.split(/(\[Attached file: .+? → tix:\/\/.+?\])/);
     let html = '';
     for (const part of parts) {
-      const match = part.match(/^\[Attached file: (.+?) → (ticlaw:\/\/.+?)\]$/);
+      const match = part.match(/^\[Attached file: (.+?) → (tix:\/\/.+?)\]$/);
       if (match) {
-        const [, name, ticlawUrl] = match;
-        const httpUrl = ticlawUrl.replace(/^ticlaw:\/\/workspace\/([^/]+)\/(.+)$/, '/api/workspace/$2?agent_id=$1');
+        const [, name, tixUrl] = match;
+        const httpUrl = tixUrl.replace(/^tix:\/\/workspace\/([^/]+)\/(.+)$/, '/api/workspace/$2?agent_id=$1');
         const ext = name.split('.').pop()?.toLowerCase() || '';
         const icon = ['jpg','jpeg','png','gif','svg','webp'].includes(ext) ? '🖼️' : ['pdf'].includes(ext) ? '📄' : ['doc','docx'].includes(ext) ? '📝' : ['xls','xlsx','csv'].includes(ext) ? '📊' : '📎';
-        html += `<a href="${httpUrl}" target="_blank" rel="noopener" class="ticlaw-file-chip">${icon} ${DOMPurify.sanitize(name)}</a>`;
+        html += `<a href="${httpUrl}" target="_blank" rel="noopener" class="tix-file-chip">${icon} ${DOMPurify.sanitize(name)}</a>`;
       } else if (part.trim()) {
         // Handle 📎 prefixed lines (from displayContent)
         const cleaned = part.replace(/^📎 .+$/gm, '').trim();
@@ -65,9 +65,9 @@
     return ext === 'pdf';
   }
 
-  /** Intercept clicks on ticlaw file links and open preview */
+  /** Intercept clicks on tix file links and open preview */
   function handleMessageClick(e: MouseEvent) {
-    const target = (e.target as HTMLElement).closest('.ticlaw-file-chip, .ticlaw-file-card');
+    const target = (e.target as HTMLElement).closest('.tix-file-chip, .tix-file-card');
     if (!target) return;
     e.preventDefault();
     e.stopPropagation();
@@ -149,8 +149,8 @@
         previewFile = { name: detail.name, url: detail.url, ext: detail.ext || '' };
       }
     };
-    window.addEventListener('ticlaw:preview-file', handler);
-    return () => window.removeEventListener('ticlaw:preview-file', handler);
+    window.addEventListener('tix:preview-file', handler);
+    return () => window.removeEventListener('tix:preview-file', handler);
   });
 
   // Reactively switch sessions if navigating between different dynamic routes

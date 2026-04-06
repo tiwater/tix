@@ -1,14 +1,14 @@
-# TiClaw Developer Guide
+# Tix Developer Guide
 
-How to integrate TiClaw as an AI backend via the gateway relay and node APIs.
+How to integrate Tix as an AI backend via the gateway relay and node APIs.
 
 ---
 
 ## Overview
 
 Topology:
-- **Gateway** (`@ticlaw/gateway`): WebSocket node gateway + HTTP relay + SSE relay
-- **Node** (TiClaw): actual runtime (channels, storage, runner, scheduler)
+- **Gateway** (`@tix/gateway`): WebSocket node gateway + HTTP relay + SSE relay
+- **Node** (Tix): actual runtime (channels, storage, computer, scheduler)
 
 Your app usually talks only to gateway HTTP endpoints; gateway relays to the active node.
 
@@ -17,9 +17,9 @@ Your app usually talks only to gateway HTTP endpoints; gateway relays to the act
 ## 1. Install the Gateway
 
 ```bash
-npm install @ticlaw/gateway
+npm install @tix/gateway
 # or
-pnpm add @ticlaw/gateway
+pnpm add @tix/gateway
 ```
 
 ---
@@ -30,7 +30,7 @@ pnpm add @ticlaw/gateway
 
 ```ts
 import http from 'node:http';
-import { attachGateway, handleGatewayRequest } from '@ticlaw/gateway';
+import { attachGateway, handleGatewayRequest } from '@tix/gateway';
 
 const server = http.createServer((req, res) => {
   if (handleGatewayRequest(req, res)) return;
@@ -45,7 +45,7 @@ server.listen(3000);
 ### Standalone
 
 ```ts
-import { startGateway } from '@ticlaw/gateway';
+import { startGateway } from '@tix/gateway';
 
 await startGateway({ port: 3000 });
 ```
@@ -193,7 +193,7 @@ Common events from `/runs/.../stream`:
 
 ## 6. Gateway Exports
 
-`@ticlaw/gateway` exports:
+`@tix/gateway` exports:
 - `attachGateway(server, opts?)`
 - `handleGatewayRequest(req, res)`
 - `startGateway(opts?)`
@@ -228,9 +228,9 @@ Typical node-level errors:
 Common node env:
 
 ```env
-TICLAW_GATEWAY_URL=wss://your-gateway.example.com
-TICLAW_GATEWAY_TRUST_TOKEN=your-token
-TICLAW_NODE_NAME=my-node
+TIX_GATEWAY_URL=wss://your-gateway.example.com
+TIX_GATEWAY_TRUST_TOKEN=your-token
+TIX_NODE_NAME=my-node
 LLM_API_KEY=your-llm-key
 LLM_BASE_URL=https://api.anthropic.com
 ```

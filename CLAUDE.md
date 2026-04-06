@@ -1,4 +1,4 @@
-# TiClaw Project Rules
+# Tix Project Rules
 
 ## Ports — CRITICAL
 

@@ -1,8 +1,8 @@
-# TiClaw Memory System
+# Tix Memory System
 
 ## 1. Purpose
 
-This document defines the complete memory model used by TiClaw today and the next-step design for a built-in embedding + semantic search provider.
+This document defines the complete memory model used by Tix today and the next-step design for a built-in embedding + semantic search provider.
 
 Goals:
 - Make memory behavior explicit and debuggable.
@@ -16,12 +16,12 @@ Goals:
 
 | Tier | Files | Owner | Read Path | Write Path |
 |---|---|---|---|---|
-| Identity/persona | `SOUL.md`, `IDENTITY.md`, `USER.md` | Human/admin | `AgentRunner.preparePrompt()` | Manual edit / sync |
-| Long-term memory | `MEMORY.md` | Human/admin (and future memory tools) | `AgentRunner.preparePrompt()`, `/api/mind`, `/api/mind/files` | Manual edit / sync |
-| Short-term journals | `memory/YYYY-MM-DD.md` | Runtime | `AgentRunner.preparePrompt()` (latest 3 files) | `AgentRunner.consolidateMemory()` |
+| Identity/persona | `SOUL.md`, `IDENTITY.md`, `USER.md` | Human/admin | `AgentComputer.preparePrompt()` | Manual edit / sync |
+| Long-term memory | `MEMORY.md` | Human/admin (and future memory tools) | `AgentComputer.preparePrompt()`, `/api/mind`, `/api/mind/files` | Manual edit / sync |
+| Short-term journals | `memory/YYYY-MM-DD.md` | Runtime | `AgentComputer.preparePrompt()` (latest 3 files) | `AgentComputer.consolidateMemory()` |
 | Session transcript | `sessions/{sid}/messages.jsonl` | Runtime | `processMessages()` (`getMessagesSince`, `getRecentMessages`) | `storeMessage()` |
 | Session continuation handle | `.claude_sessions/{encoded_session_id}.id` | Runtime | `loadClaudeSessionId()` | `saveClaudeSessionId()` |
-| Ephemeral run state | in-memory maps (`warmSessions`, `activeHandlers`) | Runtime process | `AgentRunner.run()` | `AgentRunner.run()` |
+| Ephemeral run state | in-memory maps (`warmSessions`, `activeHandlers`) | Runtime process | `AgentComputer.run()` | `AgentComputer.run()` |
 
 ---
 
@@ -31,10 +31,10 @@ Goals:
 2. `processMessages()` collects:
    - new pending user messages since last processed timestamp;
    - recent history window (currently 10 messages) for short-term context.
-3. `AgentRunner` prepares system prompt from:
+3. `AgentComputer` prepares system prompt from:
    - root mind files (`SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`);
    - recent short-term journals (`memory/*.md`, latest 3 files).
-4. `AgentRunner.run()` sends the assembled context text as the user prompt.
+4. `AgentComputer.run()` sends the assembled context text as the user prompt.
 5. Run result is sent back to channel and appended to transcript.
 6. `consolidateMemory()` appends a compact task-result bullet into the current day journal file.
 7. Prompt cache invalidates on root mind-file changes and journal file mtime changes.
@@ -44,11 +44,11 @@ Goals:
 ## 4. Isolation Rules (Current)
 
 ### Agent isolation
-- All memory artifacts are scoped under `~/.ticlaw/agents/{agent_id}/`.
+- All memory artifacts are scoped under `~/.tix/agents/{agent_id}/`.
 - No memory should be read/written across agent directories.
 
 ### Session isolation
-- Warm runner subprocess key is `agent_id + session_id`.
+- Warm computer subprocess key is `agent_id + session_id`.
 - Claude resume ID file is session-scoped (`.claude_sessions/{encoded_session_id}.id`).
 - Concurrent runs in different sessions of the same agent must not share handlers.
 
@@ -202,7 +202,7 @@ Default recommended rollout:
    - Implement chunker + embedding + cosine ranking.
    - Add fallback lexical search.
 3. **Phase 3 (prompt integration)**
-   - Inject `Relevant Memory` snippets in runner prompt with strict budget.
+   - Inject `Relevant Memory` snippets in computer prompt with strict budget.
 4. **Phase 4 (ops + tests)**
    - Add E2E tests for memory recall/isolation.
    - Add reindex tooling and health metrics.
