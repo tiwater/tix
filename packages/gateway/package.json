@@ -1,8 +1,8 @@
 {
-  "name": "@tiwater/claw-gateway",
+  "name": "@ticlaw/gateway",
   "version": "0.1.0",
   "type": "module",
-  "description": "Claw Gateway — WebSocket relay that accepts inbound agent node connections. Embeddable by Supen, Ticos, or any controller platform.",
+  "description": "TiClaw Gateway — WebSocket multiplexer relay that accepts inbound agent runner connections. Embeddable by Supen or any controller platform.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

@@ -620,12 +620,9 @@ export interface StartGatewayOptions extends GatewayOptions {
   onRequest?: (req: http.IncomingMessage, res: http.ServerResponse) => void;
 }
 
-/** @deprecated Use startGateway() */
-export const StartHubOptions = undefined;
-
 /**
  * Create and start a standalone gateway server.
- * Convenience for quick setup — or use attachHub() for more control.
+ * Convenience for quick setup — or use attachGateway() for more control.
  */
 export function startGateway(opts: StartGatewayOptions = {}): Promise<http.Server> {
   const port = opts.port ?? parseInt(

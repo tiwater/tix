@@ -1,16 +1,16 @@
 {
-  "name": "claw-sdk-workspace",
+  "name": "ticlaw",
   "private": true,
   "version": "1.3.0",
-  "description": "Claw SDK — shared agent runtime and gateway for Supen and Ticos",
+  "description": "TiClaw Workspace — core monorepo containing the TiClaw Runner, Gateway, and CLI",
   "type": "module",
   "scripts": {
-    "build":       "pnpm --filter @tiwater/claw-gateway run build && pnpm --filter @tiwater/claw-sdk run build",
-    "dev":         "pnpm --filter @tiwater/claw-gateway run build && concurrently -n gateway,runner -c cyan,green \"pnpm --filter @tiwater/claw-gateway run dev\" \"sleep 1 && pnpm --filter @tiwater/claw-sdk run dev\"",
-    "dev:runner":  "pnpm --filter @tiwater/claw-sdk run dev",
-    "dev:gateway": "pnpm --filter @tiwater/claw-gateway run dev",
-    "test":        "pnpm --filter @tiwater/claw-sdk run test",
-    "test:e2e":    "bash tests/run-e2e.sh"
+    "build": "pnpm --filter @ticlaw/gateway run build && pnpm --filter @ticlaw/runner run build",
+    "dev": "pnpm --filter @ticlaw/gateway run build && concurrently -n gateway,runner -c cyan,green \"pnpm --filter @ticlaw/gateway run dev\" \"sleep 1 && pnpm --filter @ticlaw/runner run dev\"",
+    "dev:runner": "pnpm --filter @ticlaw/runner run dev",
+    "dev:gateway": "pnpm --filter @ticlaw/gateway run dev",
+    "test": "pnpm --filter @ticlaw/runner run test",
+    "test:e2e": "bash tests/run-e2e.sh"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
