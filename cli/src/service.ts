@@ -13,6 +13,7 @@ import {
   HOME_DIR,
   TIX_HOME,
   CONFIG_PATH,
+  TIX_LOGO,
 } from './utils.js';
 
 function getPlatform(): 'macos' | 'linux' | 'unknown' {
@@ -41,6 +42,7 @@ function getSystemdUnit(): string {
 export async function start(): Promise<void> {
   const platform = getPlatform();
 
+  console.log(TIX_LOGO);
   console.log('\n  🚀 Starting Tix service...\n');
 
   if (platform === 'macos') {
@@ -93,6 +95,7 @@ export async function start(): Promise<void> {
 export async function stop(): Promise<void> {
   const platform = getPlatform();
 
+  console.log(TIX_LOGO);
   console.log('\n  🛑 Stopping Tix service...\n');
 
   if (platform === 'macos') {
@@ -128,7 +131,8 @@ export async function status(): Promise<void> {
   const platform = getPlatform();
   const config = readConfig();
 
-  console.log('\n  🦀 Tix Status\n');
+  console.log(TIX_LOGO);
+  console.log('\n  ℧ Tix Status\n');
 
   // Service status
   if (platform === 'macos') {

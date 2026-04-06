@@ -19,6 +19,7 @@ import {
   PROJECT_ROOT,
   TIX_HOME,
   CONFIG_PATH,
+  TIX_LOGO,
 } from './utils.js';
 
 function detectCLIs(): Record<string, boolean> {
@@ -35,7 +36,8 @@ function detectCLIs(): Record<string, boolean> {
 }
 
 export async function bootstrap(): Promise<void> {
-  console.log('\n🦀 Tix Bootstrap\n');
+  console.log(TIX_LOGO);
+  console.log('℧ Tix Bootstrap\n');
 
   // 1. Detect platform
   const platform = process.platform === 'darwin' ? 'macOS' : 'Linux';

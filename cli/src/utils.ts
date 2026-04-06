@@ -32,7 +32,18 @@ export function prompt(question: string, defaultValue?: string): Promise<string>
 export function readConfig(): any {
   try {
     return yaml.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')) || {};
-  } catch {
+} catch {
     return {};
   }
 }
+
+export const TIX_LOGO = `
+ _________    ___      ___    ___ 
+|\\___   ___\\ |\\  \\    |\\  \\  /  /|
+\\|___ \\  \\_| \\ \\  \\   \\ \\  \\/  / /
+     \\ \\  \\   \\ \\  \\   \\ \\    / / 
+      \\ \\  \\   \\ \\  \\   /     \\/  
+       \\ \\__\\   \\ \\__\\ /  /\\   \\  
+        \\|__|    \\|__|/__/ /\\ __\\ 
+                      |__|/ \\|__| 
+`;
