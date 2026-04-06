@@ -1,6 +1,6 @@
 # Agent Mind Architecture (MIND.md)
 
-Tix agents possess a continuous memory and persona framework inspired by the OpenClaw standard. The agent's "mind" is defined by four distinct Markdown files that live inside the agent's dedicated workspace (`~/.tix/agents/<agent_id>/`).
+Tix agents possess a continuous memory and persona framework inspired by the OpenTix standard. The agent's "mind" is defined by four distinct Markdown files that live inside the agent's dedicated workspace (`~/.tix/agents/<agent_id>/`).
 
 The agent is fully aware of these files and actively uses its file-editing capabilities to update them as it learns new information.
 

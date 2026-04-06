@@ -106,9 +106,9 @@ export class DiscordChannel implements Channel {
       const sender = message.author.id;
       const msgId = message.id;
 
-      // Legacy: /claw is converted to @mention — the mind builder agent handles all messages.
-      if (content.startsWith('/claw')) {
-        content = content.replace(/^\/claw\s*/, '').trim();
+      // Legacy: /tix is converted to @mention — the mind builder agent handles all messages.
+      if (content.startsWith('/tix')) {
+        content = content.replace(/^\/tix\s*/, '').trim();
         if (!content) {
           await message.reply(
             'Just @mention me with your task! e.g. `@Tix fix #198`',

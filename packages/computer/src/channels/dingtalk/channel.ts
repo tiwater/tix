@@ -1,7 +1,7 @@
 /**
  * DingTalk (钉钉) channel for Tix.
  * Multi-account support via DingTalk Stream Mode.
- * Adapted from OpenClaw's high-quality implementation.
+ * Adapted from OpenTix's high-quality implementation.
  */
 
 import * as dingtalkstream from 'dingtalk-stream';

@@ -3,11 +3,11 @@ import path from 'path';
 import { SKILLS_CONFIG } from '../core/config.js';
 import { logger } from '../core/logger.js';
 import { isPathWithin } from '../core/security.js';
-import { adaptOpenClawSkill } from './adapter.js';
+import { adaptOpenTixSkill } from './adapter.js';
 import {
   hashSkillDirectory,
-  loadOpenClawSkillFromDirectory,
-  loadOpenClawSkillsDetailed,
+  loadOpenTixSkillFromDirectory,
+  loadOpenTixSkillsDetailed,
   materializeSkillSource,
   resolveSkillSourceSpec,
   writeManagedSkillManifest,
@@ -309,8 +309,8 @@ export class SkillsRegistry {
     let backupDir = '';
 
     try {
-      const discovered = loadOpenClawSkillFromDirectory(materialized.skillDir);
-      const skill = adaptOpenClawSkill({
+      const discovered = loadOpenTixSkillFromDirectory(materialized.skillDir);
+      const skill = adaptOpenTixSkill({
         ...discovered,
         sourceRef: {
           ...materialized.sourceRef,
@@ -384,8 +384,8 @@ export class SkillsRegistry {
         backupDir = '';
       }
 
-      const finalized = adaptOpenClawSkill(
-        loadOpenClawSkillFromDirectory(finalDir),
+      const finalized = adaptOpenTixSkill(
+        loadOpenTixSkillFromDirectory(finalDir),
       );
       const existing = state.installed[finalized.name];
       state.installed[finalized.name] = this.buildInstalledRecord(
@@ -627,7 +627,7 @@ export class SkillsRegistry {
     return {
       name,
       version: value.version || '0.0.0',
-      source: value.source || 'openclaw',
+      source: value.source || 'opentix',
       directory,
       sourceRef,
       description: value.description || name,
@@ -703,11 +703,11 @@ export class SkillsRegistry {
     skills: AdaptedSkill[];
     failures: FailedSkillLoad[];
   } {
-    const { skills, failures } = loadOpenClawSkillsDetailed(
+    const { skills, failures } = loadOpenTixSkillsDetailed(
       this.discoveryRoots(),
     );
     return {
-      skills: skills.map((skill) => adaptOpenClawSkill(skill)),
+      skills: skills.map((skill) => adaptOpenTixSkill(skill)),
       failures,
     };
   }

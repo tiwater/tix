@@ -131,7 +131,7 @@ function formatList(json = false): string {
 
   if (skills.length === 0) {
     return [
-      'No OpenClaw-compatible skills found.',
+      'No OpenTix-compatible skills found.',
       `Configured directories: ${registry.getConfig().directories.join(', ')}`,
     ].join('\n');
   }
@@ -475,7 +475,7 @@ function formatAuthStatus(
   }
 
   if (results.length === 0) {
-    return ok('No OpenClaw-compatible skills found.');
+    return ok('No OpenTix-compatible skills found.');
   }
 
   return ok(

@@ -40,7 +40,7 @@ async function runCoreSkillsCommand(args: string[]): Promise<void> {
 export function registerSkillsCommand(program: Command): void {
   const skills = program
     .command('skills')
-    .description('Manage OpenClaw-compatible skills');
+    .description('Manage OpenTix-compatible skills');
 
   skills
     .command('list')

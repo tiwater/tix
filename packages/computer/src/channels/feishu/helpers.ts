@@ -1,6 +1,6 @@
 /**
  * Feishu (飞书 / Lark) message parsing helpers.
- * Adapted from OpenClaw's robust Feishu implementation.
+ * Adapted from OpenTix's robust Feishu implementation.
  */
 
 import { logger } from '../../core/logger.js';

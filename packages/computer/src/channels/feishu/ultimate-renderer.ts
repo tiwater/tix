@@ -1,6 +1,6 @@
 /**
  * Tix Ultimate Feishu Card Renderer
- * Designed to provide better-than-OpenClaw visual experience.
+ * Designed to provide better-than-OpenTix visual experience.
  */
 
 export class UltimateFeishuRenderer {

@@ -12,7 +12,7 @@ import {
   COMPUTER_HOSTNAME,
   SKILLS_CONFIG,
   MIND_ADMIN_USERS,
-  configureClawComputer,
+  configureTixComputer,
   initializeDataDirs,
 } from './core/config.js';
 import './channels/index.js';
@@ -1079,17 +1079,17 @@ async function main(): Promise<void> {
   logger.info(`${productName} Computer running (trigger: @${ASSISTANT_NAME})`);
 }
 
-export interface ClawComputerConfig {
+export interface TixComputerConfig {
   productName?: string;
   dataDir?: string;
 }
 
-export class ClawComputer {
-  constructor(config: ClawComputerConfig = {}) {
+export class TixComputer {
+  constructor(config: TixComputerConfig = {}) {
     if (config.productName) {
       process.env.TIX_PRODUCT_NAME = config.productName;
     }
-    configureClawComputer({ dataDir: config.dataDir });
+    configureTixComputer({ dataDir: config.dataDir });
   }
 
   async start(): Promise<void> {
@@ -1100,7 +1100,7 @@ export class ClawComputer {
 
 import url from 'node:url';
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
-  new ClawComputer().start().catch((err) => {
+  new TixComputer().start().catch((err) => {
     console.error('Fatal computer error:', err);
     process.exit(1);
   });

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Browser Automation Skill using Playwright.
- * A lightweight version of OpenClaw's browser tool.
+ * A lightweight version of OpenTix's browser tool.
  */
 
 import { chromium } from 'playwright';

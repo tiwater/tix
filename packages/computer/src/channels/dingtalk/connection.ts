@@ -1,6 +1,6 @@
 /**
  * Robust Connection Manager for DingTalk Stream.
- * Adapted from OpenClaw's high-quality implementation.
+ * Adapted from OpenTix's high-quality implementation.
  */
 
 import { logger } from '../../core/logger.js';

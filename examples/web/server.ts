@@ -1,7 +1,7 @@
 /**
  * Tix Web — Reference implementation of a Tix controller.
  *
- * Demonstrates how to use @tiwater/claw-gateway to build a controller that:
+ * Demonstrates how to use @tiwater/tix-gateway to build a controller that:
  * - Accepts inbound WebSocket connections from nodes
  * - Provides a web UI for interacting with connected nodes
  * - Relays API requests from the UI to nodes
@@ -64,7 +64,7 @@ async function start() {
 
   // 3. Start listening
   httpServer.listen(PORT, HOST, () => {
-    console.log(`[web] Claw controller listening on http://${HOST}:${PORT}`);
+    console.log(`[web] Tix controller listening on http://${HOST}:${PORT}`);
   });
 }
 

@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { parseOpenClawSkillMarkdown } from './parser.js';
+import { parseOpenTixSkillMarkdown } from './parser.js';
 import type {
   DiscoveredSkill,
   FailedSkillLoad,
@@ -672,7 +672,7 @@ export function detectSkillEntrypoint(
   return undefined;
 }
 
-export function loadOpenClawSkillFromDirectory(
+export function loadOpenTixSkillFromDirectory(
   skillDir: string,
 ): DiscoveredSkill {
   const skillFilePath = path.join(skillDir, 'SKILL.md');
@@ -687,7 +687,7 @@ export function loadOpenClawSkillFromDirectory(
   diagnostics.push(...manifestDiagnostics);
 
   const raw = fs.readFileSync(skillFilePath, 'utf-8');
-  const parsed = parseOpenClawSkillMarkdown(raw);
+  const parsed = parseOpenTixSkillMarkdown(raw);
   diagnostics.push(...parsed.diagnostics);
 
   const entrypoint = detectSkillEntrypoint(skillDir, parsed.metadata.entry);
@@ -740,11 +740,11 @@ export function loadOpenClawSkillFromDirectory(
     },
     apiCompatibility,
     diagnostics,
-    source: 'openclaw',
+    source: 'opentix',
   };
 }
 
-export function discoverOpenClawSkillDirectories(
+export function discoverOpenTixSkillDirectories(
   skillRoots: string[],
 ): string[] {
   const directories = new Set<string>();
@@ -771,16 +771,16 @@ export function discoverOpenClawSkillDirectories(
   return Array.from(directories).sort();
 }
 
-export function loadOpenClawSkillsDetailed(skillRoots: string[]): {
+export function loadOpenTixSkillsDetailed(skillRoots: string[]): {
   skills: DiscoveredSkill[];
   failures: FailedSkillLoad[];
 } {
   const skills: DiscoveredSkill[] = [];
   const failures: FailedSkillLoad[] = [];
 
-  for (const skillDir of discoverOpenClawSkillDirectories(skillRoots)) {
+  for (const skillDir of discoverOpenTixSkillDirectories(skillRoots)) {
     try {
-      skills.push(loadOpenClawSkillFromDirectory(skillDir));
+      skills.push(loadOpenTixSkillFromDirectory(skillDir));
     } catch (error) {
       const { manifest } = readManagedSkillManifest(skillDir);
       failures.push({
@@ -794,6 +794,6 @@ export function loadOpenClawSkillsDetailed(skillRoots: string[]): {
   return { skills, failures };
 }
 
-export function loadOpenClawSkills(skillRoots: string[]): DiscoveredSkill[] {
-  return loadOpenClawSkillsDetailed(skillRoots).skills;
+export function loadOpenTixSkills(skillRoots: string[]): DiscoveredSkill[] {
+  return loadOpenTixSkillsDetailed(skillRoots).skills;
 }

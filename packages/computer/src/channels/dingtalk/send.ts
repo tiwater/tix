@@ -1,6 +1,6 @@
 /**
  * DingTalk Message Sending Service.
- * Adapted from OpenClaw's high-quality send-service implementation.
+ * Adapted from OpenTix's high-quality send-service implementation.
  */
 
 import axios from 'axios';

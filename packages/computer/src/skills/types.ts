@@ -1,4 +1,4 @@
-export type SkillCompatibilitySource = 'openclaw';
+export type SkillCompatibilitySource = 'opentix';
 export type SkillInstallSourceType = 'local' | 'git' | 'npm';
 export type SkillPermissionLevel = 1 | 2 | 3;
 export type SkillPermissionMode =
@@ -28,7 +28,7 @@ export interface SkillDiagnostic {
   message: string;
 }
 
-export interface OpenClawSkillMetadata {
+export interface OpenTixSkillMetadata {
   name: string;
   description: string;
   version?: string;
@@ -47,8 +47,8 @@ export interface ParsedSkillSection {
   lines: string[];
 }
 
-export interface ParsedOpenClawSkill {
-  metadata: OpenClawSkillMetadata;
+export interface ParsedOpenTixSkill {
+  metadata: OpenTixSkillMetadata;
   title: string;
   frontmatter: Record<string, unknown>;
   sections: Record<string, ParsedSkillSection>;
@@ -91,7 +91,7 @@ export interface DiscoveredSkill {
   version?: string;
   directory: string;
   skillFilePath: string;
-  parsed: ParsedOpenClawSkill;
+  parsed: ParsedOpenTixSkill;
   entrypoint?: SkillEntrypoint;
   layout: SkillLayout;
   sourceRef: SkillSourceReference;

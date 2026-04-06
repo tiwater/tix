@@ -1,7 +1,7 @@
 import yaml from 'yaml';
 import type {
-  OpenClawSkillMetadata,
-  ParsedOpenClawSkill,
+  OpenTixSkillMetadata,
+  ParsedOpenTixSkill,
   ParsedSkillSection,
   SkillDiagnostic,
 } from './types.js';
@@ -191,7 +191,7 @@ function buildMetadata(
   body: string,
   frontmatter: Record<string, unknown>,
   sections: Record<string, ParsedSkillSection>,
-): OpenClawSkillMetadata {
+): OpenTixSkillMetadata {
   const keyValues = extractKeyValueLines(body);
   const installLines = sectionLines(sections, 'install', 'installation');
   const requiresLines = sectionLines(sections, 'requires', 'dependencies');
@@ -226,7 +226,7 @@ function buildMetadata(
       normalizeStringValue(frontmatter.skill) ||
       keyValues.name ||
       title,
-    description: description?.trim() || 'OpenClaw-compatible skill',
+    description: description?.trim() || 'OpenTix-compatible skill',
     version:
       normalizeStringValue(frontmatter.version) ||
       keyValues.version ||
@@ -265,7 +265,7 @@ function buildMetadata(
   };
 }
 
-export function parseOpenClawSkillMarkdown(raw: string): ParsedOpenClawSkill {
+export function parseOpenTixSkillMarkdown(raw: string): ParsedOpenTixSkill {
   const { frontmatter, body, diagnostics } = extractFrontmatter(raw);
   const sections = extractSections(body);
   const metadata = buildMetadata(raw, body, frontmatter, sections);

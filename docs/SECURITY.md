@@ -201,7 +201,7 @@ If a channel identity is not bound to the target agent, it should not get normal
 5. The channel identity becomes bound to the target agent.
 6. Normal conversation access is enabled.
 
-This mirrors the OpenClaw-style model where an initial greeting can generate a pair code that must be completed from a trusted surface.
+This mirrors the OpenTix-style model where an initial greeting can generate a pair code that must be completed from a trusted surface.
 
 ## 5) Multi-User Agent Binding
 

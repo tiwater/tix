@@ -151,7 +151,7 @@ export let SKILLS_HOME = path.join(TIX_HOME, 'skills');
 export let SKILLS_STATE_PATH = path.join(SKILLS_HOME, 'registry.json');
 export let SKILLS_AUDIT_LOG_PATH = path.join(SKILLS_HOME, 'audit.log');
 
-export function configureClawComputer(options: { dataDir?: string }) {
+export function configureTixComputer(options: { dataDir?: string }) {
   if (options.dataDir) {
     TIX_HOME = options.dataDir;
     MOUNT_ALLOWLIST_PATH = path.join(TIX_HOME, 'mount-allowlist.json');
@@ -191,7 +191,7 @@ export const CHILD_ENV_ALLOWLIST = parseStringList(
   [],
 );
 
-/** OpenClaw-compatible mind files (boot-md order). Evolved through conversation. */
+/** OpenTix-compatible mind files (boot-md order). Evolved through conversation. */
 export const AGENT_MIND_FILES = [
   'SOUL.md',
   'IDENTITY.md',
@@ -199,7 +199,7 @@ export const AGENT_MIND_FILES = [
   'MEMORY.md',
 ] as const;
 
-/** Legacy: single memory file (pre–OpenClaw split). Kept for migration. */
+/** Legacy: single memory file (pre–OpenTix split). Kept for migration. */
 export const AGENT_MEMORY_FILENAME = 'MEMORY.md';
 
 export interface SkillsRuntimeConfig {

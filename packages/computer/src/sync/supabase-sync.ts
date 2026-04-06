@@ -130,7 +130,7 @@ export async function pushToSupabase(): Promise<void> {
         .upsert(routerRows, { onConflict: 'key' });
     }
 
-    // 6. Agent mind files (SOUL, MEMORY, etc. — OpenClaw-compatible)
+    // 6. Agent mind files (SOUL, MEMORY, etc. — OpenTix-compatible)
     await pushAgentFiles(supabase);
 
     logger.debug('Supabase push completed');
@@ -160,14 +160,14 @@ async function pushAgentFiles(supabase: SupabaseClient): Promise<void> {
     });
   };
 
-  // Global: all OpenClaw mind files
+  // Global: all OpenTix mind files
   for (const filename of AGENT_MIND_FILES) {
     const content = readAgentMindFile(AGENTS_DIR, filename);
     if (content)
       await uploadFile(`${STORAGE_AGENTS_PREFIX}/${filename}`, content);
   }
 
-  // Per-agent: all OpenClaw mind files
+  // Per-agent: all OpenTix mind files
   const entries = fs.readdirSync(AGENTS_DIR, { withFileTypes: true });
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
@@ -290,7 +290,7 @@ async function pullAgentFiles(supabase: SupabaseClient): Promise<void> {
   const projects = getAllRegisteredProjects();
   const folders = Object.values(projects).map((p) => p.folder);
 
-  // Global: all OpenClaw mind files (try agents/ first, fall back to groups/)
+  // Global: all OpenTix mind files (try agents/ first, fall back to groups/)
   for (const filename of AGENT_MIND_FILES) {
     const outPath = path.join(AGENTS_DIR, filename);
     const ok =
@@ -318,7 +318,7 @@ async function pullAgentFiles(supabase: SupabaseClient): Promise<void> {
     }
   }
 
-  // Per-agent: all OpenClaw mind files
+  // Per-agent: all OpenTix mind files
   for (const folder of folders) {
     const agentDir = path.join(AGENTS_DIR, folder);
     fs.mkdirSync(agentDir, { recursive: true });

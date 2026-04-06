@@ -1,4 +1,4 @@
-# Production Readiness Review (OpenClaw-Alternative Focus)
+# Production Readiness Review (OpenTix-Alternative Focus)
 
 Date: 2026-03-17
 

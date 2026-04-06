@@ -44,7 +44,7 @@ channels:
 #   enrollment_mode: "tofu_oob"
 #   runtime_id: "runtime-prod-01"
 
-# OpenClaw-compatible skills registry
+# OpenTix-compatible skills registry
 # skills:
 #   directories:
 #     - "~/.tix/skills"

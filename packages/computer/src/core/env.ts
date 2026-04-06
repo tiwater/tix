@@ -126,7 +126,7 @@ export function readConfigYaml(keys: string[]): Record<string, string> {
   return result;
 }
 
-const DEFAULT_CONFIG_YAML = `# Claw Computer Configuration
+const DEFAULT_CONFIG_YAML = `# Tix Computer Configuration
 # Edit this file to configure your Computer.
 # Docs: https://supen.ai/docs/computers
 

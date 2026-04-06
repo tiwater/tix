@@ -1,6 +1,6 @@
 /**
  * DingTalk Authentication & Token Management.
- * Adapted from OpenClaw's dingtalk-plugin.
+ * Adapted from OpenTix's dingtalk-plugin.
  */
 
 import axios from 'axios';

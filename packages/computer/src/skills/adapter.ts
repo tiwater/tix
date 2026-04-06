@@ -133,7 +133,7 @@ export function resolveSkillPermission(
   return permissionProfileForLevel(1, declared, reasons);
 }
 
-export function adaptOpenClawSkill(skill: DiscoveredSkill): AdaptedSkill {
+export function adaptOpenTixSkill(skill: DiscoveredSkill): AdaptedSkill {
   const permission = resolveSkillPermission(skill);
   const version = skill.version || '0.0.0';
 

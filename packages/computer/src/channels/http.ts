@@ -2507,7 +2507,7 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Web UI API: Trust Claw ──
+      // ── Web UI API: Trust Tix ──
 
       if ((pathname === '/api/v1/node/trust' || pathname === '/api/node/trust') && req.method === 'POST') {
         writeProtocolError(
