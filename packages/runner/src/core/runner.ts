@@ -668,8 +668,15 @@ export class AgentRunner {
               finalText +=
                 '\n\n> ⚠️ The agent was paused due to a resource limit. Please try again shortly.';
             } else if (terminalReason === 'aborted_tools' || event.is_error === true) {
-              // Prefer the stream text if available; otherwise a tidy stopped indicator
-              finalText = finalText || '(stopped)';
+              // Extract the error payload directly from the SDK stream result
+              const errorPayload = event.error || event.terminal_reason || 'Unknown network or inference error';
+              const displayError = typeof errorPayload === 'object' ? JSON.stringify(errorPayload) : String(errorPayload);
+              
+              if (displayError.includes('401') || displayError.includes('403') || displayError.includes('令牌')) {
+                finalText += `\n\n> 🚨 **API Provider Error:**\n> \`${displayError}\`\n> *Please check your LLM API Keys in \`~/.ticlaw/config.yaml\`.*`;
+              } else {
+                finalText += `\n\n> 🚨 **Agent Error:** \`${displayError}\``;
+              }
             }
 
             // Rewrite workspace file paths to ticlaw:// protocol URLs
@@ -1024,6 +1031,21 @@ export class AgentRunner {
           { err, agent_id: this.state.agent_id },
           'AgentRunner: Loop failed',
         );
+
+        // Surface the fatal auth/network exception directly to the chat interface
+        let displayError = err.message || String(err);
+        if (displayError.includes('401') || displayError.includes('403') || displayError.includes('令牌') || displayError.includes('authentication')) {
+          displayError = `**LLM Provider Authentication Failed:**\n\`${displayError}\`\n\n*Solution: Check your API Key in \`~/.ticlaw/config.yaml\` and restart the server.*`;
+        }
+        const errorTemplate = `> 🚨 **Agent Pipeline Halted:**\n> ${displayError.split('\\n').join('\\n> ')}`;
+        
+        try {
+          await this.events.onReply?.(errorTemplate);
+          await this.consolidateMemory(agentPaths(this.state.agent_id).base, errorTemplate);
+        } catch (e) {
+          // ignore ui dispatch errors on shutdown
+        }
+
         // Clean up broken warm session
         const warm = warmSessions.get(key);
         if (warm) {
