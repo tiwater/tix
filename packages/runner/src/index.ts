@@ -711,7 +711,7 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
         activeRunners.set(chatJid, runner);
         try {
-          await runner.run(aiMessages, taskId);
+          await runner.run(aiMessages, taskId, { model: latestMsg?.model });
         } finally {
           if (activeRunners.get(chatJid) === runner) {
             activeRunners.delete(chatJid);

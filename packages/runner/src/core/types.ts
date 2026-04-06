@@ -203,6 +203,7 @@ export interface NewMessage {
   attachments?: Attachment[];
   tokens_in?: number;
   tokens_out?: number;
+  model?: string;
 }
 
 export interface AvailableProject {

@@ -1650,6 +1650,7 @@ export class HttpChannel implements Channel {
           agent_id: agentId,
           session_id: sessionId,
           task_id: taskId,
+          model: typeof parsed.model === 'string' ? parsed.model : undefined,
         };
 
         // Store message and let the polling loop handle agent execution
@@ -1914,6 +1915,19 @@ export class HttpChannel implements Channel {
           .replace(/[^a-z0-9_-]/g, '-')
           .replace(/-+/g, '-');
         const agent = ensureAgent({ agent_id: agentId, name, tags: body.tags });
+        
+        // Write initial LLM config if provided during generation
+        if (typeof body.model === 'string' && body.model.trim()) {
+          const configPath = agentPaths(agentId).config;
+          let config: any = {};
+          if (fs.existsSync(configPath)) {
+            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          }
+          config.model = body.model.trim();
+          fs.mkdirSync(path.dirname(configPath), { recursive: true });
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        }
+
         writeJson(res, 201, { agent });
         return;
       }

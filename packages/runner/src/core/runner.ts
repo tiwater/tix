@@ -555,6 +555,7 @@ export class AgentRunner {
   async run(
     messages: Array<{ role: string; content: string }>,
     taskId?: string,
+    options?: { model?: string }
   ): Promise<void> {
     if (this.state.status === 'busy') {
       throw new Error(
@@ -900,6 +901,13 @@ export class AgentRunner {
         }
 
         const agentModels = getAgentModelConfig(this.state.agent_id);
+        if (options?.model) {
+          const overrideIdx = agentModels.findIndex((m) => m.id === options.model);
+          if (overrideIdx >= 0) {
+            const overrideModel = agentModels.splice(overrideIdx, 1)[0];
+            agentModels.unshift(overrideModel);
+          }
+        }
         // Feature 6: read per-agent permission mode + Feature 3: max task tokens
         const agentConfig = (() => {
           try {
