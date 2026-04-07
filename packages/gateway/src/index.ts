@@ -585,8 +585,14 @@ export async function handleGatewayRequest(
     // Expected format: /api/llm/<provider>/...
     // Examples: /api/llm/babelark/v1/chat/completions
     const segments = url.pathname.split('/');
-    const provider = segments[3];
-    const pathRest = segments.slice(4).join('/');
+    let provider = segments[3];
+    let pathRest = segments.slice(4).join('/');
+
+    // If path is /api/llm/v1/... assume default proxying (tix-cloud -> babelark)
+    if (provider === 'v1') {
+      provider = 'tix-cloud';
+      pathRest = 'v1/' + pathRest;
+    }
 
     let targetUrlBase = '';
     let apiKey = '';

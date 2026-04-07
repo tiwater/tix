@@ -153,7 +153,7 @@ const DEFAULT_CONFIG_YAML = `# Tix Computer Configuration
 providers:
   - id: tix-cloud
     api_key: "tix-session-token"
-    base_url: "http://localhost:2755/api/llm/tix-cloud/v1"
+    base_url: "http://localhost:2755/api/llm/v1"
     default: true
     models:
       - name: "qwen3.6-plus"
