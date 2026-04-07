@@ -5,6 +5,9 @@ node_modules/
 # Build output
 dist/
 build/
+# Allow compiled dist for packages consumed as git dependencies
+!packages/gateway/dist/
+!packages/computer/dist/
 
 # Local logs
 logs/

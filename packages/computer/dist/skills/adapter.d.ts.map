@@ -1,0 +1,1 @@
+{"version":3,"file":"adapter.d.ts","sourceRoot":"","sources":["../../src/skills/adapter.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EACV,YAAY,EACZ,eAAe,EAEf,sBAAsB,EACvB,MAAM,YAAY,CAAC;AAmFpB,wBAAgB,sBAAsB,CACpC,KAAK,EAAE,eAAe,GACrB,sBAAsB,CA2CxB;AAED,wBAAgB,iBAAiB,CAAC,KAAK,EAAE,eAAe,GAAG,YAAY,CA2BtE"}
