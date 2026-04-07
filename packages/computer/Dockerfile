@@ -53,7 +53,6 @@ COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml
 COPY --from=build /app/packages/computer ./packages/computer
 COPY --from=build /app/packages/gateway ./packages/gateway
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/assets ./assets
 COPY --from=build /app/skills ./skills
 COPY --from=build /app/config.example.yaml ./config.example.yaml
 COPY --from=build /app/CLAUDE.md ./CLAUDE.md
