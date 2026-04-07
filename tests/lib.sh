@@ -37,19 +37,19 @@ perform_cleanup() {
   local base_url="http://localhost:${TIX_PORT}"
   
   # 1. Delete schedules via API (safer as it updates server state)
-  for sched_id in "${CLEANUP_SCHEDULES[@]}"; do
+  for sched_id in "${CLEANUP_SCHEDULES[@]+"${CLEANUP_SCHEDULES[@]}"}"; do
     curl --max-time 2 -sf -X DELETE "${base_url}/api/schedules/${sched_id}" >/dev/null 2>&1 || true
   done
 
   # 2. Delete sessions via API
-  for sess in "${CLEANUP_SESSIONS[@]}"; do
+  for sess in "${CLEANUP_SESSIONS[@]+"${CLEANUP_SESSIONS[@]}"}"; do
     local agent_id="${sess%%:*}"
     local session_id="${sess#*:}"
     curl --max-time 2 -sf -X DELETE "${base_url}/api/sessions/${session_id}?agent_id=${agent_id}" >/dev/null 2>&1 || true
   done
 
   # 3. Delete agents/directories from filesystem
-  for agent_id in "${CLEANUP_AGENTS[@]}"; do
+  for agent_id in "${CLEANUP_AGENTS[@]+"${CLEANUP_AGENTS[@]}"}"; do
     local agent_dir="${TIX_HOME}/agents/${agent_id}"
     if [ -d "$agent_dir" ]; then
       rm -rf "$agent_dir"
@@ -57,7 +57,7 @@ perform_cleanup() {
   done
 
   # 4. Delete temp files
-  for f in "${CLEANUP_FILES[@]}"; do
+  for f in "${CLEANUP_FILES[@]+"${CLEANUP_FILES[@]}"}"; do
     rm -rf "$f"
   done
 }
