@@ -8,6 +8,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
+import { Readable } from 'node:stream';
 import { listCloudComputers, launchCloudComputer, deleteCloudComputer, getCloudComputerMeta } from './cloud-computers.js';
 
 export interface RemoteComputer {
@@ -576,6 +577,97 @@ export async function handleGatewayRequest(
   // ── SSE stream relay — any path ending in /stream ──
   if (req.method === 'GET' && url.pathname.endsWith('/stream')) {
     handleSSERelay(req, res, url);
+    return true;
+  }
+
+  // ── Gateway-native: LLM Proxy ──
+  if (url.pathname.startsWith('/api/llm/')) {
+    // Expected format: /api/llm/<provider>/...
+    // Examples: /api/llm/babelark/v1/chat/completions
+    const segments = url.pathname.split('/');
+    const provider = segments[3];
+    const pathRest = segments.slice(4).join('/');
+
+    let targetUrlBase = '';
+    let apiKey = '';
+
+    if (provider === 'babelark') {
+      targetUrlBase = 'https://api.babelark.com';
+      apiKey = process.env.BABELARK_API_KEY || '';
+    } else if (provider === 'openai') {
+      targetUrlBase = 'https://api.openai.com';
+      apiKey = process.env.OPENAI_API_KEY || '';
+    } else if (provider === 'deepseek') {
+      targetUrlBase = 'https://api.deepseek.com';
+      apiKey = process.env.DEEPSEEK_API_KEY || '';
+    } else if (provider === 'openrouter') {
+      targetUrlBase = 'https://openrouter.ai/api';
+      apiKey = process.env.OPENROUTER_API_KEY || '';
+    } else if (provider === 'anthropic') {
+      targetUrlBase = 'https://api.anthropic.com';
+      apiKey = process.env.ANTHROPIC_API_KEY || '';
+    }
+
+    if (!targetUrlBase) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'unsupported_llm_provider', provider }));
+      return true;
+    }
+
+    const targetUrl = `${targetUrlBase}/${pathRest}${url.search}`;
+    const proxyHeaders = new Headers();
+    proxyHeaders.set('Content-Type', req.headers['content-type'] || 'application/json');
+    if (apiKey) proxyHeaders.set('Authorization', `Bearer ${apiKey}`);
+    
+    // Pass Anthropic specific headers if needed
+    if (provider === 'anthropic') {
+      proxyHeaders.set('x-api-key', apiKey);
+      proxyHeaders.set('anthropic-version', '2023-06-01');
+      if (req.headers['anthropic-beta']) proxyHeaders.set('anthropic-beta', req.headers['anthropic-beta'] as string);
+    }
+    
+    // OpenRouter specific headers
+    if (provider === 'openrouter') {
+        proxyHeaders.set('HTTP-Referer', 'https://tix.computer');
+        proxyHeaders.set('X-Title', 'Tix Gateway');
+    }
+
+    let reqBody = '';
+    req.on('data', chunk => { reqBody += chunk; });
+    req.on('end', async () => {
+      try {
+        const upstreamRes = await fetch(targetUrl, {
+          method: req.method,
+          headers: proxyHeaders,
+          body: (req.method !== 'GET' && req.method !== 'HEAD') ? (reqBody || undefined) : undefined
+        });
+
+        const resHeaders: Record<string, string> = {
+          'Access-Control-Allow-Origin': '*'
+        };
+        
+        upstreamRes.headers.forEach((val, key) => {
+          if (key.toLowerCase() !== 'content-encoding' && 
+              key.toLowerCase() !== 'content-length' && 
+              key.toLowerCase() !== 'transfer-encoding') {
+            resHeaders[key] = val;
+          }
+        });
+
+        res.writeHead(upstreamRes.status, resHeaders);
+
+        if (upstreamRes.body) {
+           Readable.fromWeb(upstreamRes.body as any).pipe(res);
+        } else {
+           res.end();
+        }
+      } catch (err: any) {
+        console.error('[gateway] LLM Proxy error:', err);
+        res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'bad_gateway', message: err.message }));
+      }
+    });
+
     return true;
   }
 

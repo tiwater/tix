@@ -152,8 +152,8 @@ const DEFAULT_CONFIG_YAML = `# Tix Computer Configuration
 # The first provider's first model is the default.
 providers:
   - id: babelark
-    api_key: "your-babelark-api-key"
-    base_url: "https://api.babelark.com/v1"
+    api_key: "tix-session-token"
+    base_url: "http://localhost:2755/api/llm/babelark/v1"
     default: true
     models:
       - name: "qwen3.6-plus"
