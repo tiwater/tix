@@ -22,12 +22,6 @@ const envConfig = readEnvFile([
   'HTTP_PORT',
   'HTTP_ENABLED',
   'HTTP_API_KEY',
-  'ANTHROPIC_API_KEY',
-  'LLM_API_KEY',
-  'LLM_MODEL',
-  'LLM_BASE_URL',
-  'MINIMAX_API_KEY',
-  'MINIMAX_BASE_URL',
   'CONTROL_PLANE_URL',
   'CONTROL_PLANE_ENROLLMENT_MODE',
   'ACP_ENABLED',
@@ -296,78 +290,75 @@ export const WORKSPACE_ROOT =
 export const ALLOWED_ORIGINS =
   process.env.ALLOWED_ORIGINS || envConfig.ALLOWED_ORIGINS || '';
 
-// LLM API keys — prefer MiniMax if configured, fall back to Anthropic
-export const ANTHROPIC_API_KEY =
-  process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY || '';
-export const LLM_API_KEY =
-  process.env.LLM_API_KEY || envConfig.LLM_API_KEY || '';
-export const MINIMAX_API_KEY =
-  process.env.MINIMAX_API_KEY || envConfig.MINIMAX_API_KEY || '';
-export const MINIMAX_BASE_URL =
-  process.env.MINIMAX_BASE_URL ||
-  envConfig.MINIMAX_BASE_URL ||
-  'https://api.minimax.io/anthropic';
-
-/** Default model name. Priority: config.yaml llm.model > MiniMax > undefined (let CLI decide). */
-export const DEFAULT_LLM_MODEL =
-  process.env.LLM_MODEL ||
-  envConfig.LLM_MODEL ||
-  (MINIMAX_API_KEY ? 'MiniMax-M2.5' : undefined);
-
-/** LLM base URL from config.yaml llm.base_url (Anthropic-compatible endpoint). */
-export const LLM_BASE_URL =
-  process.env.LLM_BASE_URL || envConfig.LLM_BASE_URL || '';
+// LLM configuration is now fully provider-driven via config.yaml `providers` array.
+// No more raw env-var exports for api keys / base urls / model names.
 
 /**
- * Model registry — loaded once at startup from config.yaml `models` list.
- * Fallback order = list order. First entry (or first with default:true) is the default.
- *
- * Env-var-only setups (no config.yaml models array) will get a synthetic single-entry
- * list built from LLM_API_KEY / LLM_BASE_URL / DEFAULT_LLM_MODEL.
+ * Model registry — loaded once at startup from config.yaml `providers` list.
+ * Each entry is a (provider, model) pair with a composite ID "provider_id:model_name".
  */
-/** Pricing per 1M tokens in USD. */
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  // GLM-4 (BigModel)
-  'glm-4': { input: 0.1, output: 0.1 },
-  'glm-4v': { input: 0.1, output: 0.1 },
-  'glm-4-air': { input: 0.01, output: 0.01 },
-  'glm-4-flash': { input: 0.0, output: 0.0 }, // Free
-  
-  // Claude 3.5 (Anthropic)
-  'claude-3-5-sonnet-latest': { input: 3.0, output: 15.0 },
-  'claude-3-5-haiku-latest': { input: 0.25, output: 1.25 },
-  'claude-3-opus-latest': { input: 15.0, output: 75.0 },
-  
-  // Gemini 1.5 (Google)
-  'gemini-1.5-pro': { input: 1.25, output: 5.0 },
-  'gemini-1.5-flash': { input: 0.075, output: 0.3 },
+
+/** Provider-keyed fallback pricing per 1M tokens in USD. */
+const MODEL_PRICING: Record<string, Record<string, { input: number; output: number }>> = {
+  _global: {
+    'glm-4': { input: 0.1, output: 0.1 },
+    'glm-4v': { input: 0.1, output: 0.1 },
+    'glm-4-air': { input: 0.01, output: 0.01 },
+    'glm-4-flash': { input: 0.0, output: 0.0 },
+    'claude-3-5-sonnet': { input: 3.0, output: 15.0 },
+    'claude-3-5-haiku': { input: 0.25, output: 1.25 },
+    'claude-3-opus': { input: 15.0, output: 75.0 },
+    'claude-sonnet-4': { input: 3.0, output: 15.0 },
+    'claude-opus-4': { input: 15.0, output: 75.0 },
+    'gemini-1.5-pro': { input: 1.25, output: 5.0 },
+    'gemini-1.5-flash': { input: 0.075, output: 0.3 },
+  },
+  babelark: {
+    'qwen3.6': { input: 0.29, output: 1.74 },
+    'qwen3.5': { input: 0.12, output: 0.7 },
+    'gpt-5.4': { input: 2.5, output: 15.0 },
+    'claude-sonnet-4.6': { input: 3.0, output: 15.0 },
+  },
 };
 
-export function getModelPricing(modelName: string) {
-  // Fuzzy match: 'glm-4-plus' matches 'glm-4'
-  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
-    if (modelName.toLowerCase().startsWith(key)) {
+/**
+ * Get pricing for a model entry.
+ * Priority: 1) explicit config.yaml pricing, 2) provider-specific built-in, 3) global fallback.
+ */
+export function getModelPricing(entry: ModelEntry) {
+  // 1. Explicit pricing from config.yaml
+  if (entry.pricing && (entry.pricing.input_usd_per_1m > 0 || entry.pricing.output_usd_per_1m > 0)) {
+    return { input: entry.pricing.input_usd_per_1m, output: entry.pricing.output_usd_per_1m };
+  }
+
+  // 2. Provider-specific built-in pricing (fuzzy match)
+  const providerMap = MODEL_PRICING[entry.provider_id];
+  if (providerMap) {
+    for (const [key, pricing] of Object.entries(providerMap)) {
+      if (entry.model.toLowerCase().startsWith(key)) {
+        return pricing;
+      }
+    }
+  }
+
+  // 3. Global fallback (fuzzy match)
+  const globalMap = MODEL_PRICING._global;
+  for (const [key, pricing] of Object.entries(globalMap)) {
+    if (entry.model.toLowerCase().startsWith(key)) {
       return pricing;
     }
   }
+
   return { input: 0, output: 0 };
 }
 
 export const MODELS_REGISTRY: ModelEntry[] = (() => {
-  const fromYaml = readModelsConfig();
-  const entries: (ModelEntry & { pricing?: any })[] = fromYaml.length > 0 ? fromYaml : (() => {
-    // Env-var fallback: build a single synthetic entry
-    const apiKey = ANTHROPIC_API_KEY || LLM_API_KEY;
-    const baseUrl = LLM_BASE_URL;
-    const model = process.env.LLM_MODEL || envConfig.LLM_MODEL || '';
-    if (!apiKey) return [];
-    return [{ id: 'default', api_key: apiKey, base_url: baseUrl, model, default: true }];
-  })();
+  const entries = readModelsConfig();
 
   // Enrich with pricing
   for (const entry of entries) {
     if (!entry.pricing) {
-      const p = getModelPricing(entry.model);
+      const p = getModelPricing(entry);
       if (p.input > 0 || p.output > 0) {
         entry.pricing = { input_usd_per_1m: p.input, output_usd_per_1m: p.output };
       }
@@ -507,7 +498,7 @@ export function agentPaths(agentId: string) {
 /**
  * Get the ordered list of models for a specific agent.
  *
- * 1. Checks `agent-config.json` for `model`: "model_id"
+ * 1. Checks `agent-config.json` for `model`: "provider_id:model_name" (composite key)
  * 2. If present, puts that model first, followed by the rest of the registry for fallback.
  * 3. If absent or invalid, returns the full registry (which puts the default model first).
  */
@@ -530,19 +521,18 @@ export function getAgentModelConfig(agentId: string, silent = false): ModelEntry
 
   // If no model explicitly selected or registry empty, return registry as-is
   if (!selectedModelId || MODELS_REGISTRY.length === 0) {
-    // If we have no registry, build one from env fallback (handled by MODELS_REGISTRY init)
     return MODELS_REGISTRY;
   }
 
-  // Find the selected model
-  const selectedIdx = MODELS_REGISTRY.findIndex(m => m.id === selectedModelId);
+  // Find by composite key (e.g. "babelark:qwen3.6-plus")
+  let selectedIdx = MODELS_REGISTRY.findIndex(m => m.id === selectedModelId);
 
-  // If the agent requested a model that isn't in config.yaml, fall back to default registry
+  // If the agent requested a model that isn't in the registry, fall back to default
   if (selectedIdx === -1) {
     if (!silent) {
       logger.warn(
         { agentId, requestedModel: selectedModelId },
-        'Agent requested model ID not found in config.yaml models block. Falling back to default.'
+        'Agent requested model ID not found in config.yaml providers block. Falling back to default.'
       );
     }
     return MODELS_REGISTRY;

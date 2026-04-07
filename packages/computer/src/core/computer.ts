@@ -11,15 +11,12 @@ import { logger } from './logger.js';
 import {
   AGENT_MIND_FILES,
   ASSISTANT_NAME,
-  DEFAULT_LLM_MODEL,
-  ANTHROPIC_API_KEY,
   CHILD_ENV_ALLOWLIST,
-  LLM_API_KEY,
-  LLM_BASE_URL,
   getAgentModelConfig,
   SKILLS_CONFIG,
   agentPaths,
   TIX_HOME,
+  DEFAULT_MODEL,
 } from './config.js';
 import { getSessionForAgent } from './store.js';
 import { createRequire } from 'module';
@@ -347,21 +344,24 @@ function buildQueryOptions(
     model?: string;
     permissionMode?: PermissionMode;
     maxTaskTokens?: number;
+    effort?: 'low' | 'medium' | 'high' | 'max';
+    maxTurns?: number;
+    maxBudgetUsd?: number;
   },
 ) {
   const cliPath = getClaudeCliPath();
 
-  // Resolve API key: prefer dedicated ANTHROPIC_API_KEY, fall back to LLM_API_KEY
-  const effectiveApiKey = overrides?.apiKey ?? (ANTHROPIC_API_KEY || LLM_API_KEY || '');
-  const effectiveBaseUrl = overrides?.baseUrl ?? (LLM_BASE_URL || '');
-  const effectiveModel = overrides?.model ?? DEFAULT_LLM_MODEL;
+  // Resolve API key from the model entry (via provider config)
+  const effectiveApiKey = overrides?.apiKey ?? '';
+  const effectiveBaseUrl = overrides?.baseUrl ?? '';
+  const effectiveModel = overrides?.model ?? DEFAULT_MODEL?.model;
   // Feature 6: per-agent permissionMode from agent-config.json; default = 'acceptEdits'
   const effectivePermissionMode: PermissionMode = overrides?.permissionMode ?? 'acceptEdits';
   // Feature 3: per-agent taskBudget from agent-config.json (undefined = no limit)
   const taskBudget = overrides?.maxTaskTokens;
 
   if (!effectiveApiKey) {
-    logger.warn('No API key configured (ANTHROPIC_API_KEY or LLM_API_KEY)');
+    logger.warn('No API key configured — check your providers block in ~/.tix/config.yaml');
   } else {
     logger.debug({ hasBaseUrl: !!effectiveBaseUrl }, 'Agent subprocess API key configured');
   }
@@ -390,6 +390,10 @@ function buildQueryOptions(
     persistSession: true,
     // Feature 3: API-side token budget — prevents runaway tasks
     ...(taskBudget ? { taskBudget: { total: taskBudget } } : {}),
+    // SDK parameter passthrough: effort, maxTurns, maxBudgetUsd
+    ...(overrides?.effort ? { effort: overrides.effort } : {}),
+    ...(overrides?.maxTurns ? { maxTurns: overrides.maxTurns } : {}),
+    ...(overrides?.maxBudgetUsd ? { maxBudgetUsd: overrides.maxBudgetUsd } : {}),
     env: buildChildProcessEnv({
       workspace,
       effectiveApiKey,
@@ -927,6 +931,19 @@ export class AgentComputer {
           typeof agentConfig.max_task_tokens === 'number' && agentConfig.max_task_tokens > 0
             ? agentConfig.max_task_tokens
             : undefined;
+        const agentEffort = (
+          ['low', 'medium', 'high', 'max'].includes(agentConfig.effort)
+            ? agentConfig.effort
+            : undefined
+        ) as 'low' | 'medium' | 'high' | 'max' | undefined;
+        const agentMaxTurns: number | undefined =
+          typeof agentConfig.max_turns === 'number' && agentConfig.max_turns > 0
+            ? agentConfig.max_turns
+            : undefined;
+        const agentMaxBudgetUsd: number | undefined =
+          typeof agentConfig.max_budget_usd === 'number' && agentConfig.max_budget_usd > 0
+            ? agentConfig.max_budget_usd
+            : undefined;
 
         const spawnQuery = (modelOverride: { apiKey?: string; baseUrl?: string; model?: string }) => {
           const spawnOpts = buildQueryOptions(
@@ -935,7 +952,14 @@ export class AgentComputer {
             this.state.agent_id,
             this.state.session_id,
             this.state.task_id!,
-            { ...modelOverride, permissionMode: agentPermissionMode, maxTaskTokens: agentMaxTaskTokens },
+            {
+              ...modelOverride,
+              permissionMode: agentPermissionMode,
+              maxTaskTokens: agentMaxTaskTokens,
+              effort: agentEffort,
+              maxTurns: agentMaxTurns,
+              maxBudgetUsd: agentMaxBudgetUsd,
+            },
           );
           spawnOpts.plugins = compiledPlugins;
           return query({
@@ -991,7 +1015,7 @@ export class AgentComputer {
         }
 
         if (!agentQueryObj) {
-          throw new Error('No LLM API keys configured. Set ANTHROPIC_API_KEY, LLM_API_KEY, or configure the models block in ~/.tix/config.yaml');
+          throw new Error('No LLM API keys configured. Configure the providers block in ~/.tix/config.yaml');
         }
 
         const agentQuery = agentQueryObj;

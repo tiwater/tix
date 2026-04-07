@@ -2074,7 +2074,7 @@ export class HttpChannel implements Channel {
             config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
           }
           // Merge in allowed top-level config fields
-          const allowed = ['model', 'name', 'llm_base_url', 'system_prompt', 'tags'];
+          const allowed = ['model', 'name', 'system_prompt', 'tags', 'effort', 'max_turns', 'max_budget_usd', 'max_task_tokens'];
           for (const key of allowed) {
             if (body[key] !== undefined) config[key] = body[key];
           }

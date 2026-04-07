@@ -4,15 +4,39 @@ import path from 'path';
 import yaml from 'yaml';
 import { logger } from './logger.js';
 
+/** A model definition within a provider entry in config.yaml. */
+export interface ProviderModelDef {
+  /** Model name sent to the LLM API (e.g. "claude-3-5-sonnet-latest"). */
+  name: string;
+  /** Human-friendly display name (optional). */
+  display_name?: string;
+  /** Per-model pricing overrides from config.yaml. */
+  pricing?: {
+    input_usd_per_1m: number;
+    output_usd_per_1m: number;
+  };
+}
+
+/**
+ * Expanded model entry — one per (provider, model) pair.
+ * Flattened from the config.yaml `providers` array at startup.
+ */
 export interface ModelEntry {
-  /** Unique identifier for this model config. */
+  /** Composite key: "provider_id:model_name" — uniquely identifies this configuration. */
   id: string;
+  /** Provider identifier (e.g. "babelark", "anthropic"). */
+  provider_id: string;
+  /** Provider API key. */
   api_key: string;
+  /** Provider base URL. */
   base_url: string;
+  /** Model name sent to the API. */
   model: string;
-  /** If true, this model is used when no agent-level model is specified. First in list wins if none marked default. */
+  /** Human-friendly display name. */
+  display_name?: string;
+  /** If true, this is the default model. First in list wins if none marked default. */
   default?: boolean;
-  /** Optional pricing information per 1M tokens. */
+  /** Per-provider pricing for this model. */
   pricing?: {
     input_usd_per_1m: number;
     output_usd_per_1m: number;
@@ -46,18 +70,11 @@ const YAML_KEY_MAP: Record<string, string[]> = {
   TIX_FEISHU_ENABLED: ['channels', 'feishu', 'enabled'],
   HTTP_API_KEY: ['security', 'http_api_key'],
   GEMINI_API_KEY: ['api_keys', 'gemini'],
-  ANTHROPIC_API_KEY: ['api_keys', 'anthropic'],
   CLAUDE_CODE_OAUTH_TOKEN: ['api_keys', 'claude_oauth'],
   TIX_PREVIEW_URL_PATTERN: ['preview_url_pattern'],
   CONTAINER_IMAGE: ['container', 'image'],
   CONTAINER_TIMEOUT: ['container', 'timeout'],
   MAX_CONCURRENT_CONTAINERS: ['container', 'max_concurrent'],
-  LLM_API_KEY: ['llm', 'api_key'],
-  LLM_MODEL: ['llm', 'model'],
-  LLM_BASE_URL: ['llm', 'base_url'],
-  LLM_FALLBACK_API_KEY: ['llm', 'fallback', 'api_key'],
-  LLM_FALLBACK_MODEL: ['llm', 'fallback', 'model'],
-  LLM_FALLBACK_BASE_URL: ['llm', 'fallback', 'base_url'],
   SUPABASE_URL: ['supabase', 'url'],
   SUPABASE_SERVICE_KEY: ['supabase', 'service_key'],
   SUPABASE_SYNC_ENABLED: ['supabase', 'sync_enabled'],
@@ -130,12 +147,23 @@ const DEFAULT_CONFIG_YAML = `# Tix Computer Configuration
 # Edit this file to configure your Computer.
 # Docs: https://supen.ai/docs/computers
 
-# ── LLM Provider ──
-# BigModel (recommended): get a key at https://open.bigmodel.cn
-llm:
-  # api_key: "your-bigmodel-api-key"
-  # base_url: "https://open.bigmodel.cn/api/anthropic"
-  # model: "glm-4.7"  # Optional: override default model
+# ── LLM Providers ──
+# Each provider defines API credentials and available models.
+# The first provider's first model is the default.
+providers:
+  - id: babelark
+    api_key: "your-babelark-api-key"
+    base_url: "https://api.babelark.com/v1"
+    default: true
+    models:
+      - name: "qwen3.6-plus"
+      - name: "claude-sonnet-4.6"
+      - name: "gpt-5.4"
+
+  # - id: anthropic
+  #   api_key: "your-anthropic-api-key"
+  #   models:
+  #     - name: "claude-3-5-sonnet-latest"
 
 # ── Agent Settings ──
 # assistant_name: "Andy"
@@ -163,11 +191,11 @@ export function readEnvFile(keys: string[]): Record<string, string> {
 export { TIX_CONFIG_PATH };
 
 /**
- * Read the models registry from config.yaml.
+ * Read the models registry from config.yaml `providers` array.
  *
- * Supports two formats:
- *  1. New: `models: [{ id, api_key, base_url, model, default? }, ...]`
- *  2. Legacy: `llm: { api_key, base_url, model }` — treated as a single entry with id "default"
+ * Each provider entry contains API credentials and a list of models.
+ * This function expands them into a flat list of `ModelEntry` objects,
+ * each with a composite key `"provider_id:model_name"`.
  *
  * Returns entries in list order. Fallback order = list order.
  */
@@ -181,41 +209,60 @@ export function readModelsConfig(): ModelEntry[] {
   }
   if (!doc || typeof doc !== 'object') return [];
 
-  // New format: models array
-  if (Array.isArray(doc.models) && doc.models.length > 0) {
-    const entries: ModelEntry[] = [];
-    for (const m of doc.models) {
+  if (!Array.isArray(doc.providers) || doc.providers.length === 0) {
+    return [];
+  }
+
+  const entries: ModelEntry[] = [];
+  let hasDefault = false;
+
+  for (const provider of doc.providers) {
+    if (!provider || typeof provider !== 'object') continue;
+    const providerId = String(provider.id || 'unnamed');
+    const apiKey = String(provider.api_key || '');
+    const baseUrl = String(provider.base_url || '');
+    const isProviderDefault = !!provider.default;
+
+    const models: any[] = Array.isArray(provider.models) ? provider.models : [];
+    if (models.length === 0) continue;
+
+    for (let i = 0; i < models.length; i++) {
+      const m = models[i];
       if (!m || typeof m !== 'object') continue;
+      const modelName = String(m.name || '');
+      if (!modelName) continue;
+
+      const isDefault = isProviderDefault && i === 0 && !hasDefault;
+      if (isDefault) hasDefault = true;
+
+      const pricing = m.pricing && typeof m.pricing === 'object'
+        ? {
+            input_usd_per_1m: Number(m.pricing.input_usd_per_1m || 0),
+            output_usd_per_1m: Number(m.pricing.output_usd_per_1m || 0),
+          }
+        : undefined;
+
       entries.push({
-        id: String(m.id || 'unnamed'),
-        api_key: String(m.api_key || ''),
-        base_url: String(m.base_url || ''),
-        model: String(m.model || ''),
-        default: !!m.default,
+        id: `${providerId}:${modelName}`,
+        provider_id: providerId,
+        api_key: apiKey,
+        base_url: baseUrl,
+        model: modelName,
+        display_name: m.display_name ? String(m.display_name) : undefined,
+        default: isDefault,
+        pricing: (pricing && (pricing.input_usd_per_1m > 0 || pricing.output_usd_per_1m > 0))
+          ? pricing
+          : undefined,
       });
     }
-    // If none explicitly marked default, mark first entry
-    if (entries.length > 0 && !entries.some((e) => e.default)) {
-      entries[0].default = true;
-    }
-    return entries;
   }
 
-  // Legacy format: llm.* single entry
-  const llm = doc.llm;
-  if (llm && typeof llm === 'object') {
-    return [
-      {
-        id: 'default',
-        api_key: String(llm.api_key || ''),
-        base_url: String(llm.base_url || ''),
-        model: String(llm.model || ''),
-        default: true,
-      },
-    ];
+  // If no entry was marked default, mark the first one
+  if (entries.length > 0 && !hasDefault) {
+    entries[0].default = true;
   }
 
-  return [];
+  return entries;
 }
 
 
