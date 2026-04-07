@@ -151,14 +151,14 @@ const DEFAULT_CONFIG_YAML = `# Tix Computer Configuration
 # Each provider defines API credentials and available models.
 # The first provider's first model is the default.
 providers:
-  - id: tix-cloud
+  - id: tix
     api_key: "tix-session-token"
-    base_url: "http://localhost:2755/api/llm/v1"
+    base_url: "http://localhost:2755/api/llm"
     default: true
     models:
-      - name: "qwen3.6-plus"
-      - name: "claude-sonnet-4.6"
-      - name: "gpt-5.4"
+      - name: "claude-sonnet-4-6"
+      - name: "claude-opus-4-6"
+      - name: "claude-haiku-4-5-20251001"
 
   # - id: anthropic
   #   api_key: "your-anthropic-api-key"

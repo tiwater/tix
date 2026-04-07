@@ -361,7 +361,7 @@ function buildQueryOptions(
   const taskBudget = overrides?.maxTaskTokens;
 
   if (!effectiveApiKey) {
-    logger.warn('No API key configured — check your providers block in ~/.tix/config.yaml');
+    logger.debug('No API key configured locally, assuming Gateway will inject it.');
   } else {
     logger.debug({ hasBaseUrl: !!effectiveBaseUrl }, 'Agent subprocess API key configured');
   }

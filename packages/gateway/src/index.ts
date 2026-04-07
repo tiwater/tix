@@ -588,17 +588,18 @@ export async function handleGatewayRequest(
     let provider = segments[3];
     let pathRest = segments.slice(4).join('/');
 
-    // If path is /api/llm/v1/... assume default proxying (tix-cloud -> babelark)
+    // If path is /api/llm/v1/... assume default proxying (tix -> babelark)
     if (provider === 'v1') {
-      provider = 'tix-cloud';
+      provider = 'tix';
       pathRest = 'v1/' + pathRest;
     }
 
     let targetUrlBase = '';
     let apiKey = '';
 
-    if (provider === 'babelark' || provider === 'tix-cloud') {
-      targetUrlBase = 'https://api.babelark.com';
+    if (provider === 'babelark' || provider === 'tix') {
+      // User explicitly requested to stick with BabelArk and avoid 'wecitytech'
+      targetUrlBase = process.env.BABELARK_BASE_URL || 'https://api.babelark.com';
       apiKey = process.env.BABELARK_API_KEY || '';
     } else if (provider === 'openai') {
       targetUrlBase = 'https://api.openai.com';
@@ -620,14 +621,20 @@ export async function handleGatewayRequest(
       return true;
     }
 
-    const targetUrl = `${targetUrlBase}/${pathRest}${url.search}`;
+    // Ensure no double slashes or double /v1/v1
+    let finalPath = pathRest.replace(/^\/+/, '');
+    const cleanBase = targetUrlBase.replace(/\/+$/, '');
+    if (cleanBase.endsWith('/v1') && finalPath.startsWith('v1/')) {
+      finalPath = finalPath.slice(3);
+    }
+    const targetUrl = `${cleanBase}/${finalPath}${url.search}`;
     const proxyHeaders = new Headers();
     proxyHeaders.set('Content-Type', req.headers['content-type'] || 'application/json');
     if (apiKey) proxyHeaders.set('Authorization', `Bearer ${apiKey}`);
     
     // Pass Anthropic specific headers if needed
-    if (provider === 'anthropic') {
-      proxyHeaders.set('x-api-key', apiKey);
+    if (provider === 'anthropic' || provider === 'tix' || provider === 'babelark') {
+      if (apiKey) proxyHeaders.set('x-api-key', apiKey);
       proxyHeaders.set('anthropic-version', '2023-06-01');
       if (req.headers['anthropic-beta']) proxyHeaders.set('anthropic-beta', req.headers['anthropic-beta'] as string);
     }
@@ -642,11 +649,16 @@ export async function handleGatewayRequest(
     req.on('data', chunk => { reqBody += chunk; });
     req.on('end', async () => {
       try {
+        console.log(`[gateway] Proxying LLM request to: ${targetUrl}`);
+        console.log(`[gateway] Using API Key prefix: ${apiKey.substring(0, 7)}...`);
+        
         const upstreamRes = await fetch(targetUrl, {
           method: req.method,
           headers: proxyHeaders,
           body: (req.method !== 'GET' && req.method !== 'HEAD') ? (reqBody || undefined) : undefined
         });
+
+        console.log(`[gateway] Upstream Res Status: ${upstreamRes.status} ${upstreamRes.statusText}`);
 
         const resHeaders: Record<string, string> = {
           'Access-Control-Allow-Origin': '*'
