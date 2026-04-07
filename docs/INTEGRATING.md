@@ -32,10 +32,10 @@ TIX_GATEWAY_API_KEY=your-secret pnpm --filter @tix/gateway start
 
 ```bash
 # Node 1 (connects to gateway automatically)
-TIX_GATEWAY_URL=ws://localhost:2755 pnpm --filter @tix/node dev
+TIX_GATEWAY_URL=ws://localhost:2755 pnpm --filter @tix/computer dev
 
 # Node 2 (different HTTP port)
-HTTP_PORT=2757 TIX_GATEWAY_URL=ws://localhost:2755 pnpm --filter @tix/node dev
+HTTP_PORT=2757 TIX_GATEWAY_URL=ws://localhost:2755 pnpm --filter @tix/computer dev
 ```
 
 ### 3. Verify connectivity

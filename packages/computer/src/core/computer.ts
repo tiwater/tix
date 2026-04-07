@@ -984,10 +984,14 @@ export class AgentComputer {
                );
                continue;
              } else {
-               // Ether it's a non-provider logic error, or we've exhausted all models
-               throw err;
-             }
-          }
+               // Either it's a non-provider logic error, or we've exhausted all models
+                throw err;
+              }
+           }
+        }
+
+        if (!agentQueryObj) {
+          throw new Error('No LLM API keys configured. Set ANTHROPIC_API_KEY, LLM_API_KEY, or configure the models block in ~/.tix/config.yaml');
         }
 
         const agentQuery = agentQueryObj;
@@ -996,7 +1000,7 @@ export class AgentComputer {
         // arrives at an already-running process (~20x faster first-turn latency).
         // We fire-and-forget in the background — the current cold-start query will
         // complete regardless, and subsequent turns will benefit immediately.
-        if (typeof agentQuery.startup === 'function') {
+        if (agentQuery && typeof agentQuery.startup === 'function') {
           agentQuery.startup().catch((err: any) => {
             logger.debug({ err: err?.message }, 'AgentComputer: startup() pre-warm failed (non-fatal)');
           });

@@ -39,7 +39,7 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
 FROM base AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/node/package.json packages/node/package.json
+COPY packages/computer/package.json packages/computer/package.json
 COPY packages/gateway/package.json packages/gateway/package.json
 
 RUN pnpm install --frozen-lockfile
@@ -50,7 +50,7 @@ RUN pnpm run build
 FROM base AS runtime
 WORKDIR /app
 COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
-COPY --from=build /app/packages/node ./packages/node
+COPY --from=build /app/packages/computer ./packages/computer
 COPY --from=build /app/packages/gateway ./packages/gateway
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/assets ./assets
@@ -68,4 +68,4 @@ ENV HTTP_PORT=10000
 
 EXPOSE 10000
 
-CMD ["node", "packages/node/dist/index.js"]
+CMD ["node", "packages/computer/dist/index.js"]

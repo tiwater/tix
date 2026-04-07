@@ -16,7 +16,7 @@ print_scenario_header "Scenario 19: Skills Security (Level 3 / Hash Drift / Path
 # ── Test 19.1: Bootstrap context has approveLevel3 = false ──
 echo -e "  Checking bootstrap context flags in index.ts..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-if grep -q "approveLevel3: false" packages/node/src/index.ts 2>/dev/null; then
+if grep -q "approveLevel3: false" packages/computer/src/index.ts 2>/dev/null; then
   echo -e "  ${GREEN}✓${NC} Bootstrap context uses approveLevel3: false (issue #50 fixed)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -74,8 +74,8 @@ fi
 # ── Test 19.3: Hash drift blocks enableSkill for managed skills ──
 echo -e "  Testing hash drift blocks enable for managed skills..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-if grep -q "content_hash_drift" packages/node/src/skills/registry.ts 2>/dev/null \
-   && grep -A3 "content_hash_drift" packages/node/src/skills/registry.ts | grep -q "registryError"; then
+if grep -q "content_hash_drift" packages/computer/src/skills/registry.ts 2>/dev/null \
+   && grep -A3 "content_hash_drift" packages/computer/src/skills/registry.ts | grep -q "registryError"; then
   echo -e "  ${GREEN}✓${NC} Hash drift blocks enableSkill (issue #51 confirmed fixed in registry)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -86,8 +86,8 @@ fi
 # ── Test 19.4: removeSkill validates path within managed root ──
 echo -e "  Testing managed skill removal path validation..."
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
-if grep -q "isPathWithin" packages/node/src/skills/registry.ts 2>/dev/null \
-   && grep -B2 "isPathWithin" packages/node/src/skills/registry.ts | grep -q "managed"; then
+if grep -q "isPathWithin" packages/computer/src/skills/registry.ts 2>/dev/null \
+   && grep -B2 "isPathWithin" packages/computer/src/skills/registry.ts | grep -q "managed"; then
   echo -e "  ${GREEN}✓${NC} Remove validates path is within managed root (issue #53 confirmed fixed)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else

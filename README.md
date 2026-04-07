@@ -107,7 +107,7 @@ This repository is now set up for **separate container deployments** of the
 public gateway and the background node service on Render:
 
 - `packages/gateway/Dockerfile` builds the public gateway container.
-- `packages/node/Dockerfile` builds the background node container with Chrome included for browser automation.
+- `packages/computer/Dockerfile` builds the background node container with Chrome included for browser automation.
 - `render.yaml` wires the node to the gateway over Render's private network.
 
 Deploy the Blueprint, then point your consumer app to the gateway service URL
@@ -115,7 +115,7 @@ and send `Authorization: Bearer <TIX_GATEWAY_API_KEY>` on every request. The nod
 service should stay private. See `docs/INTEGRATING.md` for the end-to-end flow.
 If you configure Render services manually instead of syncing the Blueprint, set
 the public web service Dockerfile path to `packages/gateway/Dockerfile` and the
-background worker service Dockerfile path to `packages/node/Dockerfile`.
+background worker service Dockerfile path to `packages/computer/Dockerfile`.
 The node service also needs `HTTP_API_KEY` configured so it binds `0.0.0.0` on
 Render; the Blueprint now generates that value automatically.
 

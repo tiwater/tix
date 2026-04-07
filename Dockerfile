@@ -63,4 +63,4 @@ ENV HTTP_PORT=10000
 EXPOSE 10000
 
 # Start Tix Edge with the compiled distribution
-CMD ["node", "packages/node/dist/index.js"]
+CMD ["node", "packages/computer/dist/index.js"]

@@ -13,7 +13,7 @@ source "$(dirname "$0")/lib.sh"
 
 print_scenario_header "Scenario 20: Supabase Sync Schema Alignment"
 
-SYNC_FILE="packages/node/src/sync/supabase-sync.ts"
+SYNC_FILE="packages/computer/src/sync/supabase-sync.ts"
 MIGRATION_V2="supabase/migrations/20250317000000_fix_sessions_schema.sql"
 
 # ── Test 20.1: Migration v2 exists ──
