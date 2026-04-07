@@ -631,7 +631,7 @@ function recoverPendingMessages() {
 let sendFn;
 let createChannelFn;
 async function main() {
-    const productName = process.env.TIX_PRODUCT_NAME || 'Supen';
+    const productName = process.env.TIX_PRODUCT_NAME || 'Tix';
     logger.info(`${productName} Computer starting`);
     initStore();
     cleanupStaleSessions();

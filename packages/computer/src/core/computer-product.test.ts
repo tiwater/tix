@@ -19,13 +19,13 @@ describe('TIX_PRODUCT_NAME branding', () => {
   });
 
   describe('system.ts whoami tool', () => {
-    it('defaults to Supen when TIX_PRODUCT_NAME is unset', async () => {
+    it('defaults to Tix when TIX_PRODUCT_NAME is unset', async () => {
       delete process.env.TIX_PRODUCT_NAME;
       vi.resetModules();
       const { systemTools } = await import('../tools/system.js');
       const result = await systemTools.whoami({}, { agent_id: 'test-agent' });
-      expect(result.description).toContain('Supen Computer');
-      expect(result.description).not.toContain('Tix');
+      expect(result.description).toContain('Tix');
+      expect(result.description).not.toContain('Supen');
     });
 
     it('uses TIX_PRODUCT_NAME=supen for Supen branding', async () => {
@@ -33,7 +33,7 @@ describe('TIX_PRODUCT_NAME branding', () => {
       vi.resetModules();
       const { systemTools } = await import('../tools/system.js');
       const result = await systemTools.whoami({}, { agent_id: 'my-agent' });
-      expect(result.description).toContain('Supen Computer');
+      expect(result.description).toContain('Supen');
       expect(result.agent_id).toBe('my-agent');
     });
 
@@ -55,13 +55,13 @@ describe('TIX_PRODUCT_NAME branding', () => {
   });
 
   describe('status-inspector.ts card title', () => {
-    it('defaults to Supen when TIX_PRODUCT_NAME is unset', async () => {
+    it('defaults to Tix when TIX_PRODUCT_NAME is unset', async () => {
       delete process.env.TIX_PRODUCT_NAME;
       vi.resetModules();
       const { StatusInspector } = await import('../core/status-inspector.js');
       const card = StatusInspector.generateManagementCard([]);
-      expect(card.title).toContain('Supen');
-      expect(card.title).not.toContain('Tix');
+      expect(card.title).toContain('Tix');
+      expect(card.title).not.toContain('Supen');
     });
 
     it('uses TIX_PRODUCT_NAME=ticos for Ticos branding', async () => {

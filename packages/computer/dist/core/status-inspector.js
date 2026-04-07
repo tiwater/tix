@@ -24,7 +24,7 @@ export class StatusInspector {
      */
     static generateManagementCard(statuses) {
         return {
-            title: `${process.env.TIX_PRODUCT_NAME ? process.env.TIX_PRODUCT_NAME.charAt(0).toUpperCase() + process.env.TIX_PRODUCT_NAME.slice(1) : 'Supen'} Computer 实时运行状态`,
+            title: `${process.env.TIX_PRODUCT_NAME ? process.env.TIX_PRODUCT_NAME.charAt(0).toUpperCase() + process.env.TIX_PRODUCT_NAME.slice(1) : 'Tix'} Computer 实时运行状态`,
             elements: statuses.map((s) => ({
                 type: 'bot_row',
                 channel: s.channel,

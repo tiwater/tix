@@ -7,9 +7,10 @@
   "scripts": {
     "build": "pnpm --filter @tix/gateway run build && pnpm --filter @tix/computer run build",
     "build:watch": "concurrently -n gateway,computer -c cyan,green \"pnpm --filter @tix/gateway run build:watch\" \"pnpm --filter @tix/computer run build:watch\"",
-    "dev": "pnpm --filter @tix/gateway run build && concurrently -n gateway,computer -c cyan,green \"pnpm --filter @tix/gateway run dev\" \"sleep 1 && pnpm --filter @tix/computer run dev\"",
+    "dev": "pnpm --filter @tix/gateway run build && concurrently -n devui,computer -c cyan,green \"pnpm --filter devui run dev\" \"sleep 1 && pnpm --filter @tix/computer run dev\"",
     "dev:computer": "pnpm --filter @tix/computer run dev",
     "dev:gateway": "pnpm --filter @tix/gateway run dev",
+    "dev:ui": "pnpm --filter devui run dev",
     "test": "pnpm --filter @tix/computer run test",
     "test:e2e": "bash tests/run-e2e.sh"
   },

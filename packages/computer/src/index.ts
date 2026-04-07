@@ -887,7 +887,7 @@ let sendFn: (
 let createChannelFn: (fromJid: string, name: string) => Promise<string | null>;
 
 async function main(): Promise<void> {
-  const productName = process.env.TIX_PRODUCT_NAME || 'Supen';
+  const productName = process.env.TIX_PRODUCT_NAME || 'Tix';
   logger.info(`${productName} Computer starting`);
 
   initStore();
