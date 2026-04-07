@@ -591,7 +591,7 @@ export async function handleGatewayRequest(
     let targetUrlBase = '';
     let apiKey = '';
 
-    if (provider === 'babelark') {
+    if (provider === 'babelark' || provider === 'tix-cloud') {
       targetUrlBase = 'https://api.babelark.com';
       apiKey = process.env.BABELARK_API_KEY || '';
     } else if (provider === 'openai') {
