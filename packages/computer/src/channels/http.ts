@@ -1,9 +1,9 @@
 /**
  * HTTP SSE channel for Tix — REST API v1
  *
- * Node:
- *   GET  /api/v1/node                                      — node status
- *   POST /api/v1/node/trust                                — trust node
+ * Computer:
+ *   GET  /api/v1/computer                                  — computer status
+ *   POST /api/v1/computer/trust                            — trust computer
  *
  * Agents:
  *   GET    /api/v1/agents                                  — list agents
@@ -420,7 +420,7 @@ export function getHttpSecurityPosture(config: {
       'HTTP listener is restricted to 127.0.0.1 until HTTP_API_KEY is configured.',
     );
     warnings.push(
-      'Do not expose this node beyond localhost without setting HTTP_API_KEY.',
+      'Do not expose this computer beyond localhost without setting HTTP_API_KEY.',
     );
   }
 
@@ -706,7 +706,7 @@ export class HttpChannel implements Channel {
             ws.send(
               JSON.stringify({
                 type: 'error',
-                error: 'node_not_trusted',
+                error: 'computer_not_trusted',
                 trust_state: enrollState.trust_state,
               }),
             );
@@ -1587,17 +1587,19 @@ export class HttpChannel implements Channel {
       const postMsgV1Match = pathname.match(/^\/api\/v1\/agents\/([^/]+)\/sessions\/([^/]+)\/messages$/);
       if ((postMsgV1Match || pathname === '/runs') && req.method === 'POST') {
         const parsed = await readJsonBody(req);
+        
+        // v1: override agent_id and session_id from path params
+        if (postMsgV1Match) {
+          (parsed as any).agent_id = decodeURIComponent(postMsgV1Match[1]);
+          (parsed as any).session_id = decodeURIComponent(postMsgV1Match[2]);
+        }
+
         const {
           agent_id: rawAgentId,
           session_id: rawSessionId,
           task_id: rawTaskId,
           content,
         } = parsed;
-        // v1: override agent_id and session_id from path params
-        if (postMsgV1Match) {
-          (parsed as any).agent_id = decodeURIComponent(postMsgV1Match[1]);
-          (parsed as any).session_id = decodeURIComponent(postMsgV1Match[2]);
-        }
 
         if (!content || typeof content !== 'string') {
           writeProtocolError(
@@ -1643,7 +1645,7 @@ export class HttpChannel implements Channel {
         const enrollState = readEnrollmentState(COMPUTER_HOSTNAME || undefined);
         if (enrollState.trust_state !== 'trusted') {
           writeJson(res, 403, {
-            error: 'node_not_trusted',
+            error: 'computer_not_trusted',
             trust_state: enrollState.trust_state,
           });
           return;
@@ -2442,8 +2444,8 @@ export class HttpChannel implements Channel {
       // ── OpenAPI spec (auto-generated from route registry) ──
 
       if (pathname === '/api/v1/openapi.json' && req.method === 'GET') {
-        const { buildNodeOpenApiSpec } = await import('./http-routes.js');
-        const spec = buildNodeOpenApiSpec({
+        const { buildComputerOpenApiSpec } = await import('./http-routes.js');
+        const spec = buildComputerOpenApiSpec({
           serverUrl: `http://${req.headers.host || `localhost:${HTTP_PORT}`}`,
         });
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -2451,9 +2453,9 @@ export class HttpChannel implements Channel {
         return;
       }
 
-      // ── Web UI API: Node ──
+      // ── Web UI API: Computer ──
 
-      if ((pathname === '/api/v1/computer' || pathname === '/api/node') && req.method === 'GET') {
+      if ((pathname === '/api/v1/computer' || pathname === '/api/computer') && req.method === 'GET') {
         const enrollment = readEnrollmentState(COMPUTER_HOSTNAME || undefined);
         const stats = getExecutorStats();
 
@@ -2509,13 +2511,13 @@ export class HttpChannel implements Channel {
 
       // ── Web UI API: Trust Tix ──
 
-      if ((pathname === '/api/v1/node/trust' || pathname === '/api/node/trust') && req.method === 'POST') {
+      if ((pathname === '/api/v1/computer/trust' || pathname === '/api/computer/trust') && req.method === 'POST') {
         writeProtocolError(
           res,
           410,
           'auth_error',
           'trust_endpoint_removed',
-          'Direct trust elevation is disabled. Use the enrollment flow (/api/enroll/token + /api/enroll/verify) to transition a node to trusted state.',
+          'Direct trust elevation is disabled. Use the enrollment flow (/api/enroll/token + /api/enroll/verify) to transition a computer to trusted state.',
         );
         return;
       }

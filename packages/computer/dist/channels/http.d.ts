@@ -1,9 +1,9 @@
 /**
  * HTTP SSE channel for Tix — REST API v1
  *
- * Node:
- *   GET  /api/v1/node                                      — node status
- *   POST /api/v1/node/trust                                — trust node
+ * Computer:
+ *   GET  /api/v1/computer                                  — computer status
+ *   POST /api/v1/computer/trust                            — trust computer
  *
  * Agents:
  *   GET    /api/v1/agents                                  — list agents

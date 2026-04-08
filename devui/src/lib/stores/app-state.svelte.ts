@@ -105,7 +105,7 @@ export interface ScheduleInfo {
   created_at: string;
 }
 
-export interface NodeInfo {
+export interface ComputerInfo {
   hostname: string;
   skills?: {
     total_available: number;
@@ -157,8 +157,8 @@ export type DailyUsageLedger = Record<string, DailyUsageDay>;
 function createAppState() {
   let sseConnected = $state(false);
   let sseLog = $state<string[]>([]);
-  let nodeInfo = $state<NodeInfo | null>(null);
-  let nodeLoading = $state(false);
+  let computerInfo = $state<ComputerInfo | null>(null);
+  let computerLoading = $state(false);
   let dailyUsage = $state<DailyUsageLedger>({});
   let dailyUsageLoading = $state(false);
 
@@ -491,7 +491,7 @@ function createAppState() {
       } catch { /* ignore */ }
     };
 
-    eventSource.onerror = () => { sseConnected = false; progressCategory = ''; addLog('SSE disconnected — retrying…'); };
+    eventSource.onerror = () => { sseConnected = false; progressCategory = ''; addLog('SSE disconnected — retrying...'); };
   }
 
   function disconnectSSE() {
@@ -638,14 +638,14 @@ function createAppState() {
     dailyUsageLoading = false;
   }
 
-  async function fetchNode() {
-    nodeLoading = true;
-    try { const res = await fetch('/api/v1/node'); if (res.ok) { nodeInfo = await res.json(); } } catch { /* */ }
-    nodeLoading = false;
+  async function fetchComputer() {
+    computerLoading = true;
+    try { const res = await fetch('/api/v1/computer'); if (res.ok) { computerInfo = await res.json(); } } catch { /* */ }
+    computerLoading = false;
   }
 
-  async function trustNode() {
-    try { const res = await fetch('/api/v1/node/trust', { method: 'POST' }); if (res.ok) { await fetchNode(); addLog('Node trusted ✓'); } } catch { /* */ }
+  async function trustComputer() {
+    try { const res = await fetch('/api/v1/computer/trust', { method: 'POST' }); if (res.ok) { await fetchComputer(); addLog('Computer trusted ✓'); } } catch { /* */ }
   }
 
   async function toggleSkill(name: string, enabled: boolean) {
@@ -848,8 +848,8 @@ function createAppState() {
         if (res.status === 403) {
           try {
             const errData = await res.json();
-            if (errData.error === 'node_not_trusted') {
-              messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `🔒 Node is not trusted (${errData.trust_state}). Go to the Node tab and click "Trust this Node" to enable messaging.`, time: '' }];
+            if (errData.error === 'computer_not_trusted') {
+              messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `🔒 Computer is not trusted (${errData.trust_state}). Click "Trust this Computer" to enable messaging.`, time: '' }];
             } else {
               messages = [...messages, { id: `err-${Date.now()}`, role: 'system', text: `⚠️ Forbidden: ${errData.error || res.status}`, time: '' }];
             }
@@ -906,8 +906,8 @@ function createAppState() {
     // Getters (reactive)
     get sseConnected() { return sseConnected; },
     get sseLog() { return sseLog; },
-    get nodeInfo() { return nodeInfo; },
-    get nodeLoading() { return nodeLoading; },
+    get computerInfo() { return computerInfo; },
+    get computerLoading() { return computerLoading; },
     get agentId() { return agentId; },
     set agentId(v: string) { 
       agentId = v; 
@@ -960,7 +960,7 @@ function createAppState() {
     // Methods
     connectSSE, disconnectSSE, addLog,
     fetchMind, fetchMindFiles, fetchSkills, fetchAgents, fetchDailyUsage,
-    fetchSchedules, fetchNode, trustNode, toggleSkill, fetchModels,
+    fetchSchedules, fetchComputer, trustComputer, toggleSkill, fetchModels,
     createAgent, createSession, createSchedule, toggleSchedule, removeSchedule, deleteSession, stopSession,
     send, selectSession, reconnect, toggleAgentExpanded, sessionsForAgent, updateAgentModel,
     addFiles, removeFile,

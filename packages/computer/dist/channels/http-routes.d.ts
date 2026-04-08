@@ -1,5 +1,5 @@
 /**
- * Tix Node — declarative route registry.
+ * Tix Computer — declarative route registry.
  *
  * This is the single source of truth for all HTTP routes. Both:
  *   1. The OpenAPI spec (GET /api/v1/openapi.json) is generated from here.
@@ -35,9 +35,9 @@ export interface RouteDef {
 }
 export declare const ROUTES: RouteDef[];
 /** Build an OpenAPI 3.0 paths object from ROUTES. */
-export declare function buildNodePaths(): Record<string, unknown>;
-/** Full OpenAPI spec for the node's HTTP API. */
-export declare function buildNodeOpenApiSpec(opts?: {
+export declare function buildComputerPaths(): Record<string, unknown>;
+/** Full OpenAPI spec for the computer's HTTP API. */
+export declare function buildComputerOpenApiSpec(opts?: {
     serverUrl?: string;
 }): object;
 //# sourceMappingURL=http-routes.d.ts.map

@@ -18,7 +18,7 @@
 import http from 'node:http';
 import { attachGateway, handleGatewayRequest } from '@tix/gateway';
 
-const PORT = parseInt(process.env.PORT || '2756', 10);
+const PORT = parseInt(process.env.PORT || '2755', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const DEV = process.env.NODE_ENV !== 'production';
 
@@ -26,7 +26,7 @@ async function start() {
   const httpServer = http.createServer();
 
   // 1. Attach gateway WebSocket server (same in dev and prod)
-  attachGateway(httpServer);
+  attachGateway(httpServer, { handleUpgrade: true });
 
   // 2. Set up request handling
   if (DEV) {

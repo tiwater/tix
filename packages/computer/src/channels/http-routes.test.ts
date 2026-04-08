@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildNodeOpenApiSpec } from './http-routes.js';
+import { buildComputerOpenApiSpec } from './http-routes.js';
 
 describe('HTTP routes', () => {
   it('includes the session stop endpoint in the OpenAPI spec', () => {
-    const spec = buildNodeOpenApiSpec() as any;
+    const spec = buildComputerOpenApiSpec() as any;
     const stopPath =
       spec.paths['/api/v1/agents/{agent_id}/sessions/{session_id}/stop'];
 
@@ -13,7 +13,7 @@ describe('HTTP routes', () => {
   });
 
   it('marks nullable pairing fields consistently in OpenAPI schemas', () => {
-    const spec = buildNodeOpenApiSpec() as any;
+    const spec = buildComputerOpenApiSpec() as any;
     const listResponse =
       spec.paths['/api/v1/pairings'].get.responses['200'].content[
         'application/json'

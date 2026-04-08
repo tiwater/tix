@@ -1,5 +1,5 @@
 /**
- * Tix Node — declarative route registry.
+ * Tix Computer — declarative route registry.
  *
  * This is the single source of truth for all HTTP routes. Both:
  *   1. The OpenAPI spec (GET /api/v1/openapi.json) is generated from here.
@@ -78,12 +78,12 @@ const pendingPairingSchema = {
 } as const;
 
 export const ROUTES: RouteDef[] = [
-  // ── Node ────────────────────────────────────────────────────────────────
-  { method: 'GET',    path: '/health',                                     tag: 'Node',      summary: 'Health check' },
-  { method: 'GET',    path: '/api/v1/node',                                tag: 'Node',      summary: 'Node status and identity' },
-  { method: 'POST',   path: '/api/v1/node/trust',                          tag: 'Node',      summary: 'Mark node as trusted' },
-  { method: 'GET',    path: '/api/v1/models',                              tag: 'Node',      summary: 'List available LLM models' },
-  { method: 'GET',    path: '/api/v1/tasks',                               tag: 'Node',      summary: 'List active tasks' },
+  // ── Computer ────────────────────────────────────────────────────────────────
+  { method: 'GET',    path: '/health',                                     tag: 'Computer',  summary: 'Health check' },
+  { method: 'GET',    path: '/api/v1/computer',                            tag: 'Computer',  summary: 'Computer status and identity' },
+  { method: 'POST',   path: '/api/v1/computer/trust',                      tag: 'Computer',  summary: 'Mark computer as trusted' },
+  { method: 'GET',    path: '/api/v1/models',                              tag: 'Computer',  summary: 'List available LLM models' },
+  { method: 'GET',    path: '/api/v1/tasks',                               tag: 'Computer',  summary: 'List active tasks' },
 
   // ── Agents ──────────────────────────────────────────────────────────────
   { method: 'GET',    path: '/api/v1/agents',                              tag: 'Agents',    summary: 'List agents' },
@@ -180,7 +180,7 @@ export const ROUTES: RouteDef[] = [
 ];
 
 /** Build an OpenAPI 3.0 paths object from ROUTES. */
-export function buildNodePaths(): Record<string, unknown> {
+export function buildComputerPaths(): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
 
   for (const route of ROUTES) {
@@ -224,16 +224,16 @@ export function buildNodePaths(): Record<string, unknown> {
   return paths;
 }
 
-/** Full OpenAPI spec for the node's HTTP API. */
-export function buildNodeOpenApiSpec(opts: { serverUrl?: string } = {}): object {
+/** Full OpenAPI spec for the computer's HTTP API. */
+export function buildComputerOpenApiSpec(opts: { serverUrl?: string } = {}): object {
   return {
     openapi: '3.0.3',
     info: {
-      title: 'Tix Node API',
+      title: 'Tix Computer API',
       version: '1.0.0',
-      description: 'HTTP API served by a Tix Node. Normally accessed via the Gateway relay.',
+      description: 'HTTP API served by a Tix Computer. Normally accessed via the Gateway relay.',
     },
-    servers: [{ url: opts.serverUrl || 'http://localhost:2756', description: 'Tix Node' }],
+    servers: [{ url: opts.serverUrl || 'http://localhost:2756', description: 'Tix Computer' }],
     security: [{ apiKey: [] }],
     components: {
       securitySchemes: {
@@ -241,10 +241,10 @@ export function buildNodeOpenApiSpec(opts: { serverUrl?: string } = {}): object 
           type: 'apiKey',
           in: 'header',
           name: 'X-API-Key',
-          description: 'Set via HTTP_API_KEY env var on the node.',
+          description: 'Set via HTTP_API_KEY env var on the computer.',
         },
       },
     },
-    paths: buildNodePaths(),
+    paths: buildComputerPaths(),
   };
 }

@@ -470,7 +470,6 @@ export async function handleGatewayRequest(req, res) {
         let targetUrlBase = '';
         let apiKey = '';
         if (provider === 'babelark' || provider === 'tix') {
-            // User explicitly requested to stick with BabelArk and avoid 'wecitytech'
             targetUrlBase = process.env.BABELARK_BASE_URL || 'https://api.babelark.com';
             apiKey = process.env.BABELARK_API_KEY || '';
         }

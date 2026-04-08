@@ -26,7 +26,6 @@
 
   function isActive(href: string) {
     const path = $page.url.pathname;
-    if (href === '/nodes') return path === '/' || path === '/nodes';
     return path === href;
   }
 
@@ -48,7 +47,7 @@
   });
 
   onMount(async () => {
-    await appState.fetchNode();
+    await appState.fetchComputer();
     appState.fetchMind();
     appState.fetchMindFiles();
     appState.fetchModels();
@@ -73,7 +72,7 @@
   <Sidebar.Root>
     <Sidebar.Header class="px-4 pt-4">
       <a
-        href="/nodes"
+        href="/"
         class="flex items-center gap-2.5 font-bold text-[15px] text-primary tracking-tight no-underline mb-2"
         >Tix DevUI</a
       >
@@ -83,70 +82,26 @@
       <Sidebar.Group class="py-0">
         <Sidebar.GroupContent class="flex flex-col gap-1">
           <Sidebar.Menu>
-            <!-- Node Switcher -->
+            <!-- Computer Switcher -->
             <Sidebar.MenuItem>
-              <DropdownMenu.Root>
-                <div class="flex items-center w-full">
-                  <Sidebar.MenuButton>
-                    {#snippet child({
-                      props,
-                    }: {
-                      props: Record<string, unknown>;
-                    })}
-                      <a
-                        href="/nodes"
-                        {...props}
-                        class="{props.class} flex-1 justify-start"
-                      >
-                        <div class="relative">
-                          <Monitor size={15} />
-                          <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-sidebar {appState.sseConnected ? 'bg-green-500' : 'bg-muted-foreground/50'}"></span>
-                        </div>
-                        <span class="truncate"
-                          >{appState.nodeInfo?.hostname || 'Manage Nodes'}</span
-                        >
-                      </a>
-                    {/snippet}
-                  </Sidebar.MenuButton>
-
-                  <DropdownMenu.Trigger>
-                    {#snippet child({
-                      props,
-                    }: {
-                      props: Record<string, unknown>;
-                    })}
-                      <Sidebar.MenuAction {...props} showOnHover={false}>
-                        <ChevronsUpDown size={14} class="opacity-50" />
-                        <span class="sr-only">Toggle Node Menu</span>
-                      </Sidebar.MenuAction>
-                    {/snippet}
-                  </DropdownMenu.Trigger>
+              <div class="flex items-center w-full px-2 py-1.5 cursor-default group hover:bg-muted/50 rounded-md transition-colors">
+                <div class="flex-1 flex items-center justify-start gap-2">
+                  <div class="relative flex-shrink-0">
+                    <Monitor size={15} class="text-primary/70" />
+                    <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-sidebar {appState.sseConnected ? 'bg-green-500' : 'bg-muted-foreground/50'}"></span>
+                  </div>
+                  <div class="flex flex-col min-w-0">
+                    <span class="truncate text-[13px] font-medium text-foreground pb-0.5">
+                      {appState.computerInfo?.hostname || 'Local Computer'}
+                    </span>
+                    {#if appState.computerInfo}
+                    <span class="text-[10px] text-muted-foreground leading-none">
+                      {appState.sseConnected ? 'Connected' : 'Offline'} · {appState.computerInfo.enrollment.trust_state}
+                    </span>
+                    {/if}
+                  </div>
                 </div>
-                <DropdownMenu.Content class="w-[200px]" align="start">
-                  <DropdownMenu.Label>Nodes</DropdownMenu.Label>
-                  {#if appState.nodeInfo}
-                    <DropdownMenu.Item
-                      class="flex flex-col items-start gap-1 cursor-default opacity-100 hover:bg-transparent focus:bg-transparent"
-                    >
-                      <div class="font-medium flex items-center gap-1.5">
-                        <Monitor size={13} />
-                        {appState.nodeInfo.hostname}
-                      </div>
-                      <div class="text-[10px] opacity-70 flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 rounded-full {appState.sseConnected ? 'bg-green-500' : 'bg-muted-foreground/50'}"></span>
-                        {appState.sseConnected ? 'Connected' : 'Offline'} · Trust: {appState.nodeInfo.enrollment.trust_state}
-                      </div>
-                    </DropdownMenu.Item>
-                  {/if}
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item
-                    class="cursor-pointer text-muted-foreground"
-                    onclick={() => (window.location.href = '/nodes')}
-                  >
-                    <Monitor size={14} class="mr-2" /> Manage Nodes...
-                  </DropdownMenu.Item>
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
+              </div>
             </Sidebar.MenuItem>
 
           </Sidebar.Menu>
@@ -154,7 +109,7 @@
       </Sidebar.Group>
 
       <!-- Agent/Session Folder Tree -->
-      {#if appState.nodeInfo?.enrollment?.trust_state === 'trusted'}
+      {#if appState.computerInfo?.enrollment?.trust_state === 'trusted'}
         <Sidebar.Group
           class="flex flex-col gap-0 flex-1 min-h-0 overflow-hidden px-2 py-0"
         >
@@ -284,7 +239,7 @@
     </Sidebar.Content>
 
     <Sidebar.Footer>
-      {#if appState.nodeInfo?.enrollment?.trust_state === 'trusted'}
+      {#if appState.computerInfo?.enrollment?.trust_state === 'trusted'}
       <Sidebar.Menu class="px-2">
         <Sidebar.MenuItem>
           <Sidebar.MenuButton isActive={isActive('/schedules')}>
@@ -325,19 +280,16 @@
 
   <!-- Main Content + optional sidebar -->
   <main class="w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden bg-background">
-    {#if appState.nodeInfo && appState.nodeInfo.enrollment.trust_state !== 'trusted'}
+    {#if appState.computerInfo && appState.computerInfo.enrollment.trust_state !== 'trusted'}
       <div
         class="flex items-center justify-between gap-3 px-5 py-2.5 bg-destructive/10 border-b border-destructive/20 text-sm"
       >
-        <span
-          >🔒 This node is not trusted ({appState.nodeInfo.enrollment
-            .trust_state}). Messaging is disabled.</span
-        >
+        <span>🔒 This computer is not trusted ({appState.computerInfo.enrollment.trust_state}). Messaging is disabled.</span>
         <button
           class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium bg-primary/10 text-primary border border-primary rounded-md cursor-pointer hover:bg-primary/20"
-          onclick={appState.trustNode}
+          onclick={appState.trustComputer}
         >
-          <Unlock size={12} /> Trust this Node
+          <Unlock size={12} /> Trust this Computer
         </button>
       </div>
     {/if}

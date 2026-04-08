@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildNodeOpenApiSpec } from './http-routes.js';
+import { buildComputerOpenApiSpec } from './http-routes.js';
 
 describe('HTTP pairing OpenAPI schema', () => {
   it('includes structured success schemas for pairing endpoints', () => {
-    const spec = buildNodeOpenApiSpec() as any;
+    const spec = buildComputerOpenApiSpec() as any;
     const paths = spec.paths;
 
     const listSchema = paths['/api/v1/pairings'].get.responses['200'].content['application/json'].schema;
