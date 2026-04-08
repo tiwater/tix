@@ -141,6 +141,18 @@
     }
   });
 
+  // Watch input text for auto-resize
+  $effect(() => {
+    const text = appState.inputText;
+    if (inputEl) {
+      // Use tick to let DOM update layout first
+      tick().then(() => {
+        inputEl.style.height = 'auto'; // Reset to auto
+        inputEl.style.height = inputEl.scrollHeight + 'px'; // Set to actual scroll height
+      });
+    }
+  });
+
   // Listen for file preview events from workspace browser
   onMount(() => {
     const handler = (e: Event) => {
@@ -191,12 +203,13 @@
   <!-- Main Chat Area -->
   <div class="flex flex-col flex-1 min-w-0 h-[100dvh]">
     <!-- Messages -->
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       class="flex-1 overflow-y-auto w-full px-5 flex flex-col items-center bg-background"
       bind:this={messagesEl}
       onscroll={handleScroll}
       onclick={handleMessageClick}
+      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleMessageClick(e as any); }}
       role="log"
     >
       <div class="w-full max-w-4xl py-6 flex flex-col gap-6 pb-8">
